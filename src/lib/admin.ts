@@ -619,7 +619,7 @@ export async function parseSubmissionMetadata(rawUrl: string): Promise<{
       redirect: "follow",
       signal: controller.signal,
       headers: {
-        "user-agent": "AIPriceHubBot/1.0 (+https://ai-price-hub.vercel.app)",
+        "user-agent": "AIPriceHubBot/1.0 (+https://priceai.cc)",
         accept: "text/html,application/xhtml+xml",
       },
     });

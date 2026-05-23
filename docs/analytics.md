@@ -52,7 +52,7 @@ npm run setup:ga4 -- --list-accounts
 
 ```bash
 npm run setup:ga4 -- \
-  --site-url https://priceai.tider.cc \
+  --site-url https://priceai.cc \
   --write-env
 ```
 
@@ -63,7 +63,7 @@ npm run setup:ga4 -- \
   --account accounts/123456789 \
   --property PriceAI \
   --stream "PriceAI Web" \
-  --site-url https://priceai.tider.cc \
+  --site-url https://priceai.cc \
   --write-env
 ```
 
@@ -123,4 +123,4 @@ gcloud auth application-default login \
 - 线上 Vercel 已配置 `NEXT_PUBLIC_GA_MEASUREMENT_ID`。
 - 已重新部署。
 - 浏览器没有拦截 Google Analytics。
-- 访问的是主域名 `https://priceai.tider.cc`。
+- 访问的是主域名 `https://priceai.cc`。

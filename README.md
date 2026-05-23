@@ -45,7 +45,7 @@ NEXT_PUBLIC_GA_MEASUREMENT_ID=
 项目内置 GA4 接入骨架，未配置 `NEXT_PUBLIC_GA_MEASUREMENT_ID` 时不会加载统计脚本。创建或复用 GA4 Property 可运行：
 
 ```bash
-npm run setup:ga4 -- --site-url https://priceai.tider.cc --write-env
+npm run setup:ga4 -- --site-url https://priceai.cc --write-env
 ```
 
 首次使用前需要先配置 Google Cloud CLI 和 Analytics API，详见 [docs/analytics.md](./docs/analytics.md)。
