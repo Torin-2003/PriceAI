@@ -1,8 +1,12 @@
 import { z } from "zod";
 import { createSubmission } from "@/lib/admin";
 
+const MAX_BATCH_SIZE = 10;
+const BATCH_RATE_LIMIT_PER_HOUR = 30;
+
 const schema = z.object({
-  url: z.string().url().max(2048),
+  url: z.string().url().max(2048).optional().nullable(),
+  urls: z.array(z.string().url().max(2048)).max(MAX_BATCH_SIZE).optional(),
   name: z.string().trim().max(200).optional().nullable(),
   contact: z.string().trim().max(200).optional().nullable(),
   notes: z.string().trim().max(500).optional().nullable(),
@@ -16,6 +20,7 @@ function getClientIp(request: Request): string | null {
 }
 
 function getErrorMessage(error: unknown): string {
+  if (error instanceof z.ZodError) return "提交内容格式不正确，请检查链接。";
   if (error instanceof Error) return error.message;
   if (error && typeof error === "object" && "message" in error) {
     return String((error as { message?: unknown }).message || "提交失败。");
@@ -38,6 +43,11 @@ function getErrorStatus(error: unknown, message: string): number {
   return 500;
 }
 
+function uniqueUrls(payload: z.infer<typeof schema>): string[] {
+  const urls = payload.urls?.length ? payload.urls : payload.url ? [payload.url] : [];
+  return Array.from(new Set(urls.map((url) => url.trim()).filter(Boolean)));
+}
+
 export async function POST(request: Request) {
   try {
     const json = await request.json();
@@ -47,19 +57,55 @@ export async function POST(request: Request) {
       return Response.json({ ok: true });
     }
 
-    const result = await createSubmission({
-      url: payload.url,
-      name: payload.name ?? null,
-      contact: payload.contact ?? null,
-      notes: payload.notes ?? null,
-      honeypot: null,
-      submitterIp: getClientIp(request),
-    });
-
-    if ("ignored" in result) {
-      return Response.json({ ok: true });
+    const urls = uniqueUrls(payload);
+    if (!urls.length) {
+      return Response.json({ ok: false, message: "请至少提交一个链接。" }, { status: 400 });
     }
-    return Response.json({ ok: true, id: result.id });
+
+    const submitterIp = getClientIp(request);
+    const results = [];
+
+    for (const url of urls) {
+      try {
+        const result = await createSubmission({
+          url,
+          name: payload.name ?? null,
+          contact: payload.contact ?? null,
+          notes: payload.notes ?? null,
+          honeypot: null,
+          submitterIp,
+          rateLimitPerHour: urls.length > 1 ? BATCH_RATE_LIMIT_PER_HOUR : undefined,
+        });
+        if ("ignored" in result) {
+          results.push({ url, ok: true, ignored: true });
+        } else {
+          results.push({ url, ok: true, id: result.id });
+        }
+      } catch (error) {
+        results.push({ url, ok: false, message: getErrorMessage(error) });
+      }
+    }
+
+    const accepted = results.filter((result) => result.ok).length;
+    const failed = results.length - accepted;
+
+    if (!accepted) {
+      return Response.json(
+        {
+          ok: false,
+          message: results[0]?.message || "提交失败，请稍后再试。",
+          results,
+          summary: { accepted, failed, total: results.length },
+        },
+        { status: getErrorStatus(new Error(results[0]?.message || ""), results[0]?.message || "") },
+      );
+    }
+
+    return Response.json({
+      ok: true,
+      results,
+      summary: { accepted, failed, total: results.length },
+    });
   } catch (error) {
     const message = getErrorMessage(error);
     const status = getErrorStatus(error, message);

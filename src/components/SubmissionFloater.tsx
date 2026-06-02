@@ -1,15 +1,20 @@
 "use client";
 
 import { CheckCircle2, Loader2, Plus, X } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 type Status = "idle" | "submitting" | "success" | "error";
+
+const MAX_BATCH_SIZE = 10;
 
 export function SubmissionFloater() {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [urlsText, setUrlsText] = useState("");
   const formRef = useRef<HTMLFormElement | null>(null);
+
+  const parsed = useMemo(() => parseUrls(urlsText), [urlsText]);
 
   useEffect(() => {
     if (!open) return;
@@ -33,8 +38,18 @@ export function SubmissionFloater() {
     setStatus("submitting");
     setMessage(null);
     const form = new FormData(event.currentTarget);
+    if (!parsed.urls.length) {
+      setStatus("error");
+      setMessage("请至少填写一个有效链接。");
+      return;
+    }
+    if (parsed.urls.length > MAX_BATCH_SIZE) {
+      setStatus("error");
+      setMessage(`单次最多提交 ${MAX_BATCH_SIZE} 个链接，请分批提交。`);
+      return;
+    }
     const body = {
-      url: String(form.get("url") || "").trim(),
+      urls: parsed.urls,
       name: String(form.get("name") || "").trim() || null,
       contact: String(form.get("contact") || "").trim() || null,
       notes: String(form.get("notes") || "").trim() || null,
@@ -54,7 +69,15 @@ export function SubmissionFloater() {
         return;
       }
       setStatus("success");
-      setMessage("已收到。系统会先解析链接，采集成功并审核后进入比价。");
+      const summary = json.summary as { accepted?: number; failed?: number } | undefined;
+      const accepted = summary?.accepted ?? parsed.urls.length;
+      const failed = summary?.failed ?? 0;
+      setMessage(
+        failed > 0
+          ? `已收到 ${accepted} 条，${failed} 条未提交成功。系统会先解析链接，采集成功并审核后进入比价。`
+          : `已收到 ${accepted} 条。系统会先解析链接，采集成功并审核后进入比价。`,
+      );
+      setUrlsText("");
       formRef.current?.reset();
     } catch (error) {
       setStatus("error");
@@ -66,6 +89,7 @@ export function SubmissionFloater() {
     setOpen(false);
     setStatus("idle");
     setMessage(null);
+    setUrlsText("");
   }
 
   return (
@@ -105,14 +129,23 @@ export function SubmissionFloater() {
             {status !== "success" ? (
               <form ref={formRef} onSubmit={submit} className="mt-4 space-y-3">
                 <Field label="渠道链接" required>
-                  <input
-                    name="url"
-                    type="url"
+                  <textarea
+                    name="urlsText"
+                    rows={5}
                     required
-                    placeholder="https://example.com/"
-                    className="h-10 w-full rounded-lg border border-stone-300 bg-stone-50 px-3 text-sm outline-none focus:border-[#2d3435]"
+                    value={urlsText}
+                    onChange={(event) => setUrlsText(event.target.value)}
+                    placeholder={"每行一个链接，也可以直接粘贴一整段文字\nhttps://example.com/\nhttps://example.com/shop/demo"}
+                    className="w-full resize-y rounded-lg border border-stone-300 bg-stone-50 px-3 py-2 text-sm outline-none focus:border-[#2d3435]"
                   />
                 </Field>
+                {urlsText.trim() ? (
+                  <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-[#5a6061]">
+                    已识别 {parsed.urls.length} 个链接
+                    {parsed.duplicateCount > 0 ? `，已去重 ${parsed.duplicateCount} 个重复链接` : ""}
+                    {parsed.urls.length > MAX_BATCH_SIZE ? `。单次最多 ${MAX_BATCH_SIZE} 个，请分批提交。` : "。"}
+                  </div>
+                ) : null}
                 <Field label="渠道名称（可选）">
                   <input
                     name="name"
@@ -175,6 +208,32 @@ export function SubmissionFloater() {
       ) : null}
     </>
   );
+}
+
+function parseUrls(text: string): { urls: string[]; duplicateCount: number } {
+  const matches = text.match(/https?:\/\/[^\s"'<>，,；;]+/gi) || [];
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  let duplicateCount = 0;
+
+  for (const raw of matches) {
+    const candidate = raw.replace(/[)。）\].!?！？]+$/g, "");
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;
+      const normalized = parsed.toString();
+      if (seen.has(normalized)) {
+        duplicateCount += 1;
+        continue;
+      }
+      seen.add(normalized);
+      urls.push(normalized);
+    } catch {
+      /* ignore invalid pasted text */
+    }
+  }
+
+  return { urls, duplicateCount };
 }
 
 function Field({

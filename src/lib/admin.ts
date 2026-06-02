@@ -876,6 +876,7 @@ export async function createSubmission(input: {
   notes?: string | null;
   honeypot?: string | null;
   submitterIp?: string | null;
+  rateLimitPerHour?: number;
 }): Promise<{ id: string; status: SubmissionStatus } | { ignored: true }> {
   if (input.honeypot) {
     return { ignored: true };
@@ -910,12 +911,13 @@ export async function createSubmission(input: {
   }
 
   if (ip) {
+    const rateLimitPerHour = input.rateLimitPerHour ?? 5;
     const { count } = await supabase
       .from("channel_submissions")
       .select("id", { count: "exact", head: true })
       .eq("submitter_ip", ip)
       .gte("created_at", oneHourAgo);
-    if ((count || 0) >= 5) {
+    if ((count || 0) >= rateLimitPerHour) {
       throw new Error("提交过于频繁，请稍后再试。");
     }
   }
