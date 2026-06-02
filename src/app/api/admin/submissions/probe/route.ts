@@ -30,6 +30,7 @@ export async function POST(request: Request) {
     if (submission.status !== "pending") throw new Error("该提交已被处理。");
 
     const meta = asRecord(submission.parsed_meta);
+    const sourceUrl = stringMeta(meta, "canonical_source_url") || submission.url;
     const result = await probeSource({
       sourceId: stringMeta(meta, "suggested_source_id") || undefined,
       sourceName:
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
         stringMeta(meta, "suggested_source_name") ||
         submission.parsed_title ||
         undefined,
-      sourceUrl: submission.url,
+      sourceUrl,
       baseUrl: stringMeta(meta, "base_url") || undefined,
       collectorKind: stringMeta(meta, "suggested_collector_kind") || undefined,
       rawOffers: [{ url: submission.url }],

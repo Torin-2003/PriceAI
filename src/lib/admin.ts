@@ -563,6 +563,7 @@ async function ensurePublicHost(hostname: string): Promise<void> {
 
 const MAX_FETCH_BYTES = 256 * 1024;
 const FETCH_TIMEOUT_MS = 5000;
+const SHOP_API_TIMEOUT_MS = 8000;
 const KAMI_HOSTS = new Set([
   "ai666.dnxb.cc",
   "aisou.pro",
@@ -609,6 +610,8 @@ export async function parseSubmissionMetadata(rawUrl: string): Promise<{
     meta.parse_error = error instanceof Error ? error.message : String(error);
     throw error;
   }
+
+  Object.assign(meta, await resolveSubmittedSource(parsed, null));
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -662,7 +665,7 @@ export async function parseSubmissionMetadata(rawUrl: string): Promise<{
       meta.canonical_product_id = canonical.id;
       meta.platform = canonical.platform;
       meta.product_type = canonical.productType;
-      Object.assign(meta, analyzeSubmissionUrl(parsed, parsedTitle));
+      Object.assign(meta, await resolveSubmittedSource(parsed, parsedTitle, html));
     }
   } catch (error) {
     meta.parse_error = error instanceof Error ? error.message : String(error);
@@ -677,13 +680,16 @@ function analyzeSubmissionUrl(parsed: URL, parsedTitle: string | null): Record<s
   const host = normalizeHostname(parsed.hostname);
   const baseUrl = `${parsed.protocol}//${parsed.host}`;
   const shopToken = getShopToken(parsed.pathname);
+  const submittedUrlType = getSubmittedUrlType(parsed);
   const collectorKind = inferCollectorKind(host);
   const collectionMethod: CollectionMethod = collectorKind === "browser" ? "browser" : "http";
   const suggestedName = inferSubmittedSourceName(host, parsedTitle, shopToken);
 
   return {
     normalized_url: parsed.toString(),
+    submitted_url_type: submittedUrlType,
     base_url: baseUrl,
+    canonical_source_url: shopToken ? `${baseUrl}/shop/${encodeURIComponent(shopToken)}` : baseUrl,
     shop_token: shopToken,
     suggested_source_name: suggestedName,
     suggested_source_id: inferSubmittedSourceId(host, suggestedName, shopToken),
@@ -697,6 +703,43 @@ function analyzeSubmissionUrl(parsed: URL, parsedTitle: string | null): Record<s
       collectorKind === "browser"
         ? "暂未识别到公开接口，建议先试采集；失败后加入采集器待办。"
         : `已识别 ${collectorKind} 采集器，可通过自动采集拉取商品。`,
+  };
+}
+
+async function resolveSubmittedSource(
+  parsed: URL,
+  parsedTitle: string | null,
+  html: string | null = null,
+): Promise<Record<string, unknown>> {
+  const host = normalizeHostname(parsed.hostname);
+  if ((host !== "pay.ldxp.cn" && host !== "pay.qxvx.cn") || !getGoodsKey(parsed.pathname) || getShopToken(parsed.pathname)) {
+    return analyzeSubmissionUrl(parsed, parsedTitle);
+  }
+
+  const baseUrl = `${parsed.protocol}//${parsed.host}`;
+  const baseMeta = analyzeSubmissionUrl(parsed, parsedTitle);
+  const tokenFromHtml = getShopTokenFromHtml(html);
+  const tokenFromApi = tokenFromHtml || await fetchShopTokenFromGoods(baseUrl, parsed.toString(), getGoodsKey(parsed.pathname) || "");
+  if (!tokenFromApi) {
+    return {
+      ...baseMeta,
+      submitted_url_type: "product",
+      canonical_source_status: "unresolved",
+      canonical_source_reason: "商品链接暂未反查到店铺入口，审核时会按域名兜底。",
+    };
+  }
+
+  const shopUrl = `${baseUrl}/shop/${encodeURIComponent(tokenFromApi)}`;
+  const suggestedName = inferSubmittedSourceName(host, parsedTitle, tokenFromApi);
+  return {
+    ...baseMeta,
+    submitted_url_type: "product",
+    canonical_source_status: "resolved",
+    canonical_source_reason: "已从商品链接反查到店铺入口，审核通过时会按渠道入口入库。",
+    canonical_source_url: shopUrl,
+    shop_token: tokenFromApi,
+    suggested_source_name: suggestedName,
+    suggested_source_id: inferSubmittedSourceId(host, suggestedName, tokenFromApi),
   };
 }
 
@@ -726,6 +769,14 @@ function inferSubmittedSourceName(host: string, parsedTitle: string | null, shop
   return host;
 }
 
+function getSubmittedUrlType(parsed: URL): "source" | "product" | "unknown" {
+  if (getShopToken(parsed.pathname)) return "source";
+  if (getGoodsKey(parsed.pathname)) return "product";
+  if (parsed.searchParams.has("commodity") || parsed.searchParams.has("id")) return "product";
+  if (parsed.pathname.match(/\/products\/[^/?#]+/i)) return "product";
+  return parsed.pathname === "/" || parsed.pathname === "" ? "source" : "unknown";
+}
+
 function inferSubmittedSourceId(host: string, sourceName: string, shopToken: string | null): string {
   if (host === "ai666.dnxb.cc") return "ai666-gmail-wholesale";
   if (host === "pay.ldxp.cn") return `ldxp-${slugify(shopToken || sourceName) || stableId(host, sourceName)}`;
@@ -741,6 +792,45 @@ function inferSubmittedSourceId(host: string, sourceName: string, shopToken: str
 function getShopToken(pathname: string): string | null {
   const match = pathname.match(/\/shop\/([^/?#]+)/i);
   return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+function getGoodsKey(pathname: string): string | null {
+  const match = pathname.match(/\/item\/([^/?#]+)/i);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+function getShopTokenFromHtml(html: string | null): string | null {
+  if (!html) return null;
+  const hrefMatch = html.match(/href=["'][^"']*\/shop\/([^"'/?#]+)[^"']*["']/i);
+  if (hrefMatch?.[1]) return decodeURIComponent(hrefMatch[1]);
+  const tokenMatch = html.match(/["']token["']\s*:\s*["']([^"']+)["']/i);
+  if (tokenMatch?.[1]) return tokenMatch[1];
+  return null;
+}
+
+async function fetchShopTokenFromGoods(baseUrl: string, itemUrl: string, goodsKey: string): Promise<string | null> {
+  if (!goodsKey) return null;
+
+  try {
+    const response = await fetch(`${baseUrl}/shopApi/Shop/goodsInfo`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/plain, */*",
+        "user-agent": "AIPriceHubBot/1.0 (+https://priceai.cc)",
+        referer: itemUrl,
+        visitorid: `review${Math.random().toString(36).slice(2, 10)}`,
+      },
+      body: JSON.stringify({ goods_key: goodsKey, trade_no: "" }),
+      signal: AbortSignal.timeout(SHOP_API_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json().catch(() => null) as { data?: { user?: { token?: unknown } } } | null;
+    const token = payload?.data?.user?.token;
+    return typeof token === "string" && token.trim() ? token.trim() : null;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeHostname(value: string): string {
@@ -1003,7 +1093,8 @@ export async function approveSubmission(
   if (row.status !== "pending") throw new Error("该提交已被处理。");
 
   const submission = mapSubmissionRow(row);
-  const baseUrl = deriveBaseUrl(submission.url);
+  const canonicalSourceUrl = getCanonicalSourceUrl(submission.parsedMeta) || submission.url;
+  const baseUrl = deriveBaseUrl(canonicalSourceUrl);
   const suggestedMethod = getSuggestedCollectionMethod(submission.parsedMeta);
   const suggestedCollectorKind = getSuggestedCollectorKind(submission.parsedMeta);
   const selectedCollectorKind = overrides.collectorKind || suggestedCollectorKind;
@@ -1021,7 +1112,7 @@ export async function approveSubmission(
     await upsertSource({
       id: suggestedId,
       name: fallbackName,
-      entryUrl: submission.url,
+      entryUrl: canonicalSourceUrl,
       baseUrl,
       collectionMethod: overrides.collectionMethod || suggestedMethod || "http",
       collectorKind: selectedCollectorKind,
@@ -1036,7 +1127,7 @@ export async function approveSubmission(
     });
   }
 
-  const importedOffers = getProbeOffersForImport(submission.parsedMeta, source, submission.url);
+  const importedOffers = getProbeOffersForImport(submission.parsedMeta, source, canonicalSourceUrl);
   const hasRunnableCollector =
     selectedCollectorKind &&
     selectedCollectorKind !== "auto" &&
@@ -1081,6 +1172,7 @@ export async function approveSubmission(
     approved_offer_count: importedOfferCount,
     matched_existing_source: Boolean(existingSource),
     approved_collector_kind: selectedCollectorKind || null,
+    approved_source_url: canonicalSourceUrl,
   };
   const { data: updated, error: updateError } = await supabase
     .from("channel_submissions")
@@ -1185,6 +1277,12 @@ function getSuggestedSourceName(meta: Record<string, unknown>): string | null {
 function getSuggestedSourceId(meta: Record<string, unknown>): string | null {
   return typeof meta.suggested_source_id === "string" && meta.suggested_source_id.trim()
     ? meta.suggested_source_id.trim()
+    : null;
+}
+
+function getCanonicalSourceUrl(meta: Record<string, unknown>): string | null {
+  return typeof meta.canonical_source_url === "string" && meta.canonical_source_url.trim()
+    ? meta.canonical_source_url.trim()
     : null;
 }
 

@@ -10,6 +10,7 @@ import {
   Clock,
   Database,
   Trash2,
+  ExternalLink,
   FileInput,
   History,
   Inbox,
@@ -1364,6 +1365,10 @@ function SubmissionCard({
   const suggestedMethod = collectionMethodMeta(meta, "suggested_collection_method");
   const suggestedCollector = collectorKindMeta(meta, "suggested_collector_kind");
   const supportReason = stringMeta(meta, "support_reason");
+  const canonicalSourceUrl = stringMeta(meta, "canonical_source_url");
+  const canonicalSourceStatus = stringMeta(meta, "canonical_source_status");
+  const canonicalSourceReason = stringMeta(meta, "canonical_source_reason");
+  const submittedUrlType = stringMeta(meta, "submitted_url_type");
   const parseError = typeof meta.parse_error === "string" ? meta.parse_error : null;
   const currentProbe = probeResult || probeResultFromMeta(meta);
   const hasSuccessfulProbe = currentProbe?.status === "success" && currentProbe.offerCount > 0;
@@ -1453,8 +1458,11 @@ function SubmissionCard({
               {domain && <span className="text-xs text-[#adb3b4]">{domain}</span>}
               <span className="text-xs text-[#adb3b4]">{formatRelativeTime(submission.createdAt)}</span>
             </div>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
               {probeStatusBadge}
+              {submittedUrlType === "product" && <Badge tone="info">商品链接</Badge>}
+              {canonicalSourceStatus === "resolved" && <Badge tone="info">已反查渠道</Badge>}
+              {canonicalSourceStatus === "unresolved" && <Badge tone="warn">未反查渠道</Badge>}
               {platform && <Badge>{platform}</Badge>}
               {productType && <Badge>{productType}</Badge>}
               {existingSource && <Badge tone="info">已有源: {existingSource.name}</Badge>}
@@ -1507,7 +1515,12 @@ function SubmissionCard({
       {/* Expanded content */}
       {expanded && (
         <div className="border-t border-[#adb3b4]/15 px-4 py-4">
-          <p className="break-all text-xs text-[#adb3b4]">{submission.url}</p>
+          <div className="space-y-1.5 text-xs">
+            <UrlLine label="提交链接" href={submission.url} />
+            {canonicalSourceUrl && canonicalSourceUrl !== submission.url && (
+              <UrlLine label="建议渠道入口" href={canonicalSourceUrl} tone="strong" />
+            )}
+          </div>
 
           <div className="mt-2 flex flex-wrap gap-1.5">
             {suggestedMethod && <Badge tone="info">建议: {collectionMethodLabel(suggestedMethod)}</Badge>}
@@ -1521,6 +1534,7 @@ function SubmissionCard({
             <p><span className="font-medium text-[#2d3435]">建议采集方式：</span>{collectionMethodLabel(suggestedMethod || "browser")}</p>
             <p><span className="font-medium text-[#2d3435]">建议解析器：</span>{collectorKindLabel(suggestedCollector || "auto")}</p>
             <p><span className="font-medium text-[#2d3435]">初步判断：</span>{supportReason || "已完成基础链接解析。"}</p>
+            {canonicalSourceReason && <p><span className="font-medium text-[#2d3435]">渠道解析：</span>{canonicalSourceReason}</p>}
             {existingSource && <p><span className="font-medium text-[#2d3435]">合并目标：</span>{existingSource.name}</p>}
           </div>
 
@@ -1903,6 +1917,25 @@ function Badge({ children, tone = "default" }: { children: ReactNode; tone?: "de
         ? "bg-[#fff7e8] text-[#7a541b]"
         : "bg-[#f2f4f4] text-[#5a6061]";
   return <span className={`rounded-full px-2 py-0.5 text-xs ${styles}`}>{children}</span>;
+}
+
+function UrlLine({ label, href, tone = "muted" }: { label: string; href: string; tone?: "muted" | "strong" }) {
+  const textClass = tone === "strong" ? "text-[#2f7a4b] hover:text-[#256a3d]" : "text-[#5a6061] hover:text-[#2d3435]";
+
+  return (
+    <p className="flex min-w-0 flex-wrap items-center gap-1.5">
+      <span className="font-medium text-[#2d3435]">{label}：</span>
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`inline-flex min-w-0 items-center gap-1 break-all transition-colors ${textClass}`}
+      >
+        <span className="break-all">{href}</span>
+        <ExternalLink size={12} className="shrink-0" />
+      </a>
+    </p>
+  );
 }
 
 function SourceTable({
