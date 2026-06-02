@@ -136,11 +136,61 @@ export async function getPublicProductSummary(id: string) {
 }
 
 export async function listPublicProductOffers(id: string) {
+  const supabase = getSupabaseServerClient();
+
+  if (supabase) {
+    try {
+      const { data: productRows, error: productError } = await supabase
+        .from("canonical_products")
+        .select("*")
+        .eq("is_active", true);
+      if (productError) throw productError;
+
+      const products = (productRows || []).map(mapCanonicalProduct);
+      const product =
+        products.find((item) => item.id === id || item.slug === id) ||
+        canonicalCatalog.find((item) => item.id === id || item.slug === id);
+
+      if (!product) {
+        return {
+          offers: [],
+          total: 0,
+          generatedAt: new Date().toISOString(),
+        };
+      }
+
+      const { data: offerRows, error: offerError } = await supabase
+        .from("raw_offers")
+        .select("*")
+        .eq("hidden", false)
+        .eq("canonical_product_id", product.id)
+        .order("price", { ascending: true, nullsFirst: false })
+        .limit(PUBLIC_OFFER_LIMIT);
+      if (offerError) throw offerError;
+
+      const offers = (offerRows || [])
+        .map(mapRawOffer)
+        .filter((offer) => resolveOfferProduct(offer, products.length ? products : canonicalCatalog).id === product.id)
+        .sort(comparePublicOffers);
+
+      return {
+        offers,
+        total: offers.length,
+        generatedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.warn("Falling back to cached product offers because Supabase read failed:", error);
+    }
+  }
+
   const product = await getPublicProductGroup(id);
+  const offers = (product?.offers ?? []).filter(
+    (offer) => product && resolveOfferProduct(offer, canonicalCatalog).id === product.id,
+  );
 
   return {
-    offers: product?.offers ?? [],
-    total: product?.offers.length ?? 0,
+    offers,
+    total: offers.length,
     generatedAt: new Date().toISOString(),
   };
 }
