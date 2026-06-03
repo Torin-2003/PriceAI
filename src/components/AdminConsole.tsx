@@ -50,6 +50,8 @@ type Message = {
   text: string;
 };
 
+type AdminProduct = AdminSummary["products"][number];
+
 type ProbeOffer = {
   sourceStoreName?: string | null;
   sourceTitle: string;
@@ -152,6 +154,21 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     () => new Map(sources.map((s) => [s.id, s])),
     [sources],
   );
+  const offerById = useMemo(() => {
+    const map = new Map<string, RawOffer>();
+    for (const offer of data.rawOffers) map.set(offer.id, offer);
+    for (const offer of data.hiddenRawOffers || []) map.set(offer.id, offer);
+    return map;
+  }, [data.hiddenRawOffers, data.rawOffers]);
+  const productByKey = useMemo(() => {
+    const map = new Map<string, AdminProduct>();
+    for (const product of data.products) {
+      map.set(product.id, product);
+      map.set(product.slug, product);
+      map.set(product.displayName, product);
+    }
+    return map;
+  }, [data.products]);
 
   const filteredReview = useMemo(() => {
     if (!searchQuery.trim()) return reviewSubmissions;
@@ -1467,6 +1484,8 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                 </div>
                 <OfferFeedbackList
                   feedback={offerFeedback}
+                  offerById={offerById}
+                  productByKey={productByKey}
                   loadingAction={loadingAction}
                   rowFeedback={rowFeedback}
                   onHideOffer={hideOfferFromFeedback}
@@ -2334,6 +2353,8 @@ function ProbePreview({ result }: { result: ProbeResult }) {
 
 function OfferFeedbackList({
   feedback,
+  offerById,
+  productByKey,
   loadingAction,
   rowFeedback,
   onHideOffer,
@@ -2342,6 +2363,8 @@ function OfferFeedbackList({
   onIgnore,
 }: {
   feedback: OfferFeedback[];
+  offerById: Map<string, RawOffer>;
+  productByKey: Map<string, AdminProduct>;
   loadingAction: string | null;
   rowFeedback: RowFeedback | null;
   onHideOffer: (feedback: OfferFeedback) => void;
@@ -2367,40 +2390,75 @@ function OfferFeedbackList({
         const resolveLoading = loadingAction === `feedback-resolved-${item.id}`;
         const ignoreLoading = loadingAction === `feedback-ignored-${item.id}`;
         const rowState = rowFeedback?.id === item.id ? rowFeedback : null;
+        const matchedOffer = item.offerId ? offerById.get(item.offerId) : null;
+        const matchedProduct =
+          (item.productId ? productByKey.get(item.productId) : null) ||
+          (item.productSlug ? productByKey.get(item.productSlug) : null) ||
+          (item.productName ? productByKey.get(item.productName) : null);
+        const productName = matchedProduct?.displayName || item.productName || "未记录标准商品";
+        const sourceName = offerSourceLabel(matchedOffer, item);
+        const sourceTitle = item.sourceTitle || matchedOffer?.sourceTitle || "未记录原始商品名";
+        const offerUrl = item.offerUrl || matchedOffer?.url || null;
+        const currentStatus = matchedOffer ? offerStatusLabel(matchedOffer.status) : "未记录";
+        const currentPrice = matchedOffer ? formatCurrency(matchedOffer.price, matchedOffer.currency) : "未记录";
+        const updatedAt = matchedOffer ? offerTimestamp(matchedOffer) : null;
+        const categoryText = matchedProduct
+          ? [matchedProduct.platform, matchedProduct.productType, matchedProduct.spec].filter(Boolean).join(" / ")
+          : item.productSlug || item.productId || "未匹配到当前标准商品";
+        const isLegacyCategoryFeedback = item.reason === "wrong_category";
 
         return (
-          <article key={item.id} className="rounded-lg border border-[#adb3b4]/20 bg-white p-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
+          <article key={item.id} className="rounded-lg border border-[#adb3b4]/20 bg-white p-4 shadow-[0_12px_34px_rgba(45,52,53,0.035)]">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${feedbackReasonClass(item.reason)}`}>
                     {feedbackReasonLabel(item.reason)}
                   </span>
                   <span className="text-xs text-[#adb3b4]">{formatRelativeTime(item.createdAt)}</span>
-                  {item.productName ? <span className="text-xs text-[#5a6061]">{item.productName}</span> : null}
                 </div>
-                <p className="mt-2 line-clamp-2 text-sm font-medium text-[#2d3435]">
-                  {item.sourceTitle || "未记录原始商品名"}
-                </p>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[#adb3b4]">
-                  <span>{item.sourceName || "未记录渠道"}</span>
-                  {item.offerId ? <span>报价 ID: {item.offerId}</span> : null}
-                  {item.sourceId ? <span>渠道 ID: {item.sourceId}</span> : null}
+                <div className="mt-3 grid gap-3 lg:grid-cols-[1.1fr_1fr]">
+                  <div className="rounded-lg bg-[#f2f4f4] px-3 py-2.5">
+                    <p className="text-[0.68rem] font-semibold uppercase tracking-wider text-[#5a6061]">当前归类</p>
+                    <p className="mt-1 text-sm font-semibold text-[#202829]">{productName}</p>
+                    <p className="mt-0.5 text-xs leading-5 text-[#5a6061]">{categoryText}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+                    <FeedbackFact label="价格" value={currentPrice} strong />
+                    <FeedbackFact label="状态" value={currentStatus} tone={currentStatus === "缺货" ? "danger" : currentStatus === "有货" ? "success" : "muted"} />
+                    <FeedbackFact label="更新" value={updatedAt ? formatRelativeTime(updatedAt) : "未记录"} />
+                  </div>
                 </div>
-                {item.offerUrl ? (
+
+                <div className="mt-3 rounded-lg border border-[#adb3b4]/15 px-3 py-2.5">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#5a6061]">
+                    <span className="font-semibold text-[#2d3435]">{sourceName}</span>
+                    {item.offerId ? <span>报价 ID: {item.offerId}</span> : null}
+                    {item.sourceId ? <span>渠道 ID: {item.sourceId}</span> : null}
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-sm font-medium leading-6 text-[#2d3435]">
+                    {sourceTitle}
+                  </p>
+                </div>
+                {offerUrl ? (
                   <a
-                    href={item.offerUrl}
+                    href={offerUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="mt-2 inline-flex max-w-full items-center gap-1 break-all text-xs text-[#47657a] transition-colors hover:text-[#2d3435]"
                   >
-                    <span className="break-all">{item.offerUrl}</span>
+                    <span className="break-all">{offerUrl}</span>
                     <ExternalLink size={12} className="shrink-0" />
                   </a>
                 ) : null}
                 {item.notes ? (
-                  <p className="mt-2 rounded-lg bg-[#f2f4f4] px-3 py-2 text-xs leading-5 text-[#5a6061]">
+                  <p className="mt-2 rounded-lg bg-[#fff7e8] px-3 py-2 text-xs leading-5 text-[#7a541b]">
                     {item.notes}
+                  </p>
+                ) : null}
+                {isLegacyCategoryFeedback ? (
+                  <p className="mt-2 rounded-lg bg-[#eef3f8] px-3 py-2 text-xs leading-5 text-[#47657a]">
+                    这是历史分类反馈。分类问题后续走分类规则和模型辅助归类流程，这里建议标记已处理或忽略。
                   </p>
                 ) : null}
                 {item.contact ? (
@@ -2413,10 +2471,10 @@ function OfferFeedbackList({
                 ) : null}
               </div>
 
-              <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[360px] lg:justify-end">
+              <div className="flex shrink-0 flex-wrap gap-2 xl:max-w-[360px] xl:justify-end">
                 <button
                   type="button"
-                  disabled={!item.offerId || hideOfferLoading}
+                  disabled={isLegacyCategoryFeedback || !item.offerId || hideOfferLoading}
                   onClick={() => onHideOffer(item)}
                   className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#9b3328]/20 bg-white px-3 text-xs font-medium text-[#9b3328] transition-colors hover:bg-[#fbe9e7] disabled:opacity-50"
                 >
@@ -2425,7 +2483,7 @@ function OfferFeedbackList({
                 </button>
                 <button
                   type="button"
-                  disabled={!item.sourceId || hideSourceLoading}
+                  disabled={isLegacyCategoryFeedback || !item.sourceId || hideSourceLoading}
                   onClick={() => onHideSource(item)}
                   className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#9b3328]/20 bg-white px-3 text-xs font-medium text-[#9b3328] transition-colors hover:bg-[#fbe9e7] disabled:opacity-50"
                 >
@@ -2489,6 +2547,32 @@ function MessageBox({ message, onDismiss }: { message: Message; onDismiss?: () =
           <X size={15} />
         </button>
       )}
+    </div>
+  );
+}
+
+function FeedbackFact({
+  label,
+  value,
+  tone = "muted",
+  strong = false,
+}: {
+  label: string;
+  value: string;
+  tone?: "success" | "danger" | "muted";
+  strong?: boolean;
+}) {
+  const toneClass =
+    tone === "success"
+      ? "text-[#2f7a4b]"
+      : tone === "danger"
+        ? "text-[#9b3328]"
+        : "text-[#2d3435]";
+
+  return (
+    <div className="rounded-lg bg-[#f2f4f4] px-3 py-2.5">
+      <p className="text-[0.68rem] font-semibold uppercase tracking-wider text-[#5a6061]">{label}</p>
+      <p className={`mt-1 truncate text-sm ${strong ? "font-semibold" : "font-medium"} ${toneClass}`}>{value}</p>
     </div>
   );
 }
@@ -3069,6 +3153,18 @@ function feedbackReasonClass(value: OfferFeedback["reason"]): string {
   if (value === "wrong_price" || value === "stock_mismatch" || value === "item_removed") return "bg-[#fff7e8] text-[#7a541b]";
   if (value === "wrong_category") return "bg-[#eef3f8] text-[#47657a]";
   return "bg-[#f2f4f4] text-[#5a6061]";
+}
+
+function offerSourceLabel(offer: RawOffer | null | undefined, feedback: OfferFeedback): string {
+  return feedback.sourceName || offer?.sourceStoreName || offer?.sourceName || "未记录渠道";
+}
+
+function offerStatusLabel(status: OfferStatus): string {
+  return status === "out_of_stock" ? "缺货" : "有货";
+}
+
+function offerTimestamp(offer: RawOffer): string | null | undefined {
+  return offer.verifiedAt || offer.lastSeenAt || offer.capturedAt || offer.sourceUpdatedAt;
 }
 
 function filterAdminOffers(offers: RawOffer[], query: string): RawOffer[] {

@@ -6,7 +6,6 @@ const reasonSchema = z.enum([
   "item_removed",
   "stock_mismatch",
   "fraud",
-  "wrong_category",
   "bad_source",
   "other",
 ]);
