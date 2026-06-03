@@ -11,6 +11,9 @@ import type {
   CollectionMethod,
   CollectorKind,
   OfferInput,
+  OfferFeedback,
+  OfferFeedbackReason,
+  OfferFeedbackStatus,
   RawOffer,
   Source,
   SubmissionStatus,
@@ -708,6 +711,28 @@ function mapSubmissionRow(row: Record<string, unknown>): ChannelSubmission {
   };
 }
 
+function mapOfferFeedbackRow(row: Record<string, unknown>): OfferFeedback {
+  return {
+    id: String(row.id),
+    productId: row.product_id ? String(row.product_id) : null,
+    productSlug: row.product_slug ? String(row.product_slug) : null,
+    productName: row.product_name ? String(row.product_name) : null,
+    offerId: row.offer_id ? String(row.offer_id) : null,
+    sourceId: row.source_id ? String(row.source_id) : null,
+    sourceName: row.source_name ? String(row.source_name) : null,
+    sourceTitle: row.source_title ? String(row.source_title) : null,
+    offerUrl: row.offer_url ? String(row.offer_url) : null,
+    reason: String(row.reason || "other") as OfferFeedbackReason,
+    notes: row.notes ? String(row.notes) : null,
+    contact: row.contact ? String(row.contact) : null,
+    status: String(row.status || "pending") as OfferFeedbackStatus,
+    reviewerNote: row.reviewer_note ? String(row.reviewer_note) : null,
+    submitterIp: row.submitter_ip ? String(row.submitter_ip) : null,
+    createdAt: String(row.created_at || new Date().toISOString()),
+    reviewedAt: row.reviewed_at ? String(row.reviewed_at) : null,
+  };
+}
+
 function mapSourceRow(row: Record<string, unknown>): Source {
   return {
     id: String(row.id),
@@ -1323,6 +1348,114 @@ export async function createSubmission(input: {
   if (error) throw error;
 
   return { id, status: "pending" };
+}
+
+export async function createOfferFeedback(input: {
+  productId?: string | null;
+  productSlug?: string | null;
+  productName?: string | null;
+  offerId?: string | null;
+  sourceId?: string | null;
+  sourceName?: string | null;
+  sourceTitle?: string | null;
+  offerUrl?: string | null;
+  reason: OfferFeedbackReason;
+  notes?: string | null;
+  contact?: string | null;
+  submitterIp?: string | null;
+  rateLimitPerHour?: number;
+}): Promise<{ id: string; status: "pending" }> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) throw new Error("Supabase 尚未配置，无法接受反馈。");
+
+  const ip = input.submitterIp || null;
+  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  if (input.offerId) {
+    const { data: dupRows } = await supabase
+      .from("offer_feedback")
+      .select("id")
+      .eq("offer_id", input.offerId)
+      .eq("reason", input.reason)
+      .gte("created_at", fiveMinAgo)
+      .limit(1);
+    if (dupRows && dupRows.length) {
+      throw new Error("这条问题刚刚被反馈过，请稍后再试。");
+    }
+  }
+
+  if (ip) {
+    const rateLimitPerHour = input.rateLimitPerHour ?? 10;
+    const { count } = await supabase
+      .from("offer_feedback")
+      .select("id", { count: "exact", head: true })
+      .eq("submitter_ip", ip)
+      .gte("created_at", oneHourAgo);
+    if ((count || 0) >= rateLimitPerHour) {
+      throw new Error("反馈过于频繁，请稍后再试。");
+    }
+  }
+
+  const id = stableId("offer-feedback", input.offerId || "", input.reason, ip || "", Date.now().toString());
+  const { error } = await supabase.from("offer_feedback").insert({
+    id,
+    product_id: input.productId || null,
+    product_slug: input.productSlug || null,
+    product_name: input.productName || null,
+    offer_id: input.offerId || null,
+    source_id: input.sourceId || null,
+    source_name: input.sourceName || null,
+    source_title: input.sourceTitle || null,
+    offer_url: input.offerUrl || null,
+    reason: input.reason,
+    notes: input.notes?.trim() || null,
+    contact: input.contact?.trim() || null,
+    status: "pending",
+    submitter_ip: ip,
+  });
+  if (error) throw error;
+
+  return { id, status: "pending" };
+}
+
+export async function listOfferFeedback(status: OfferFeedbackStatus = "pending"): Promise<OfferFeedback[]> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("offer_feedback")
+    .select("*")
+    .eq("status", status)
+    .order("created_at", { ascending: false })
+    .limit(300);
+  if (error) throw error;
+  return (data || []).map(mapOfferFeedbackRow);
+}
+
+export async function updateOfferFeedbackStatus(input: {
+  id: string;
+  status: OfferFeedbackStatus;
+  reviewerNote?: string | null;
+}): Promise<OfferFeedback> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) throw new Error("Supabase 尚未配置。");
+
+  const reviewedAt = input.status === "pending" ? null : new Date().toISOString();
+  const { data, error } = await supabase
+    .from("offer_feedback")
+    .update({
+      status: input.status,
+      reviewer_note: input.reviewerNote?.trim() || null,
+      reviewed_at: reviewedAt,
+    })
+    .eq("id", input.id)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("反馈记录不存在。");
+
+  return mapOfferFeedbackRow(data);
 }
 
 function buildFallbackSubmissionMeta(url: string, error: unknown): Record<string, unknown> {

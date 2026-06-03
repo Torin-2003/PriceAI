@@ -1,7 +1,7 @@
 "use client";
 
-import { ExternalLink } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { ExternalLink, Flag, X } from "lucide-react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { isAvailable } from "@/lib/catalog";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { readSessionCache, writeSessionCache } from "@/lib/client-cache";
@@ -21,10 +21,14 @@ const productOffersMemoryCache = new Map<string, ProductOffersResponse>();
 
 export function ProductOffersPanel({
   productId,
+  productSlug,
+  productName,
   initialCount,
   initialData = null,
 }: {
   productId: string;
+  productSlug: string;
+  productName: string;
   initialCount: number;
   initialData?: ProductOffersResponse | null;
 }) {
@@ -34,6 +38,7 @@ export function ProductOffersPanel({
   const [loading, setLoading] = useState(!cachedInitialData);
   const [paging, setPaging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [feedbackOffer, setFeedbackOffer] = useState<RawOffer | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -170,10 +175,10 @@ export function ProductOffersPanel({
 
   return (
     <>
-      <OfferTable offers={offers} />
+      <OfferTable offers={offers} onFeedback={setFeedbackOffer} />
       <section className="mt-5 grid gap-3 md:hidden">
         {offers.map((offer) => (
-          <OfferListItem key={offer.id} offer={offer} />
+          <OfferListItem key={offer.id} offer={offer} onFeedback={setFeedbackOffer} />
         ))}
       </section>
       {hasMore ? (
@@ -187,6 +192,15 @@ export function ProductOffersPanel({
             {paging ? "正在加载更多报价..." : `继续加载报价 (${offers.length}/${total})`}
           </button>
         </div>
+      ) : null}
+      {feedbackOffer ? (
+        <OfferFeedbackDialog
+          productId={productId}
+          productSlug={productSlug}
+          productName={productName}
+          offer={feedbackOffer}
+          onClose={() => setFeedbackOffer(null)}
+        />
       ) : null}
     </>
   );
@@ -214,7 +228,7 @@ function productOffersCacheKey(productId: string, offset: number): string {
   return `priceai:product-offers:v2:${productId}:${offset}:${OFFER_PAGE_SIZE}`;
 }
 
-function OfferTable({ offers }: { offers: RawOffer[] }) {
+function OfferTable({ offers, onFeedback }: { offers: RawOffer[]; onFeedback: (offer: RawOffer) => void }) {
   return (
     <section className="mt-6 hidden overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15 md:block">
       <div className="overflow-x-auto">
@@ -225,7 +239,7 @@ function OfferTable({ offers }: { offers: RawOffer[] }) {
             <col />
             <col className="w-[130px]" />
             <col className="w-[150px]" />
-            <col className="w-[140px]" />
+            <col className="w-[170px]" />
           </colgroup>
           <thead className="bg-[#f2f4f4] text-[0.68rem] font-semibold text-[#5a6061]">
             <tr>
@@ -264,7 +278,7 @@ function OfferTable({ offers }: { offers: RawOffer[] }) {
                   </td>
                   <td className="whitespace-nowrap px-5 py-4 text-[#5a6061]">{formatRelativeTime(offerTimestamp(offer))}</td>
                   <td className="px-5 py-4">
-                    <OfferLink offer={offer} available={available} compact />
+                    <OfferActions offer={offer} available={available} onFeedback={onFeedback} compact />
                   </td>
                 </tr>
               );
@@ -276,7 +290,7 @@ function OfferTable({ offers }: { offers: RawOffer[] }) {
   );
 }
 
-function OfferListItem({ offer }: { offer: RawOffer }) {
+function OfferListItem({ offer, onFeedback }: { offer: RawOffer; onFeedback: (offer: RawOffer) => void }) {
   const available = isOfferAvailable(offer);
 
   return (
@@ -295,7 +309,7 @@ function OfferListItem({ offer }: { offer: RawOffer }) {
           </p>
           <p className="mt-1 text-xs text-[#5a6061]">{formatRelativeTime(offerTimestamp(offer))}</p>
         </div>
-        <OfferLink offer={offer} available={available} compact />
+        <OfferActions offer={offer} available={available} onFeedback={onFeedback} compact />
       </div>
     </article>
   );
@@ -348,6 +362,173 @@ function OfferLink({
     </a>
   );
 }
+
+function OfferActions({
+  offer,
+  available,
+  onFeedback,
+  compact = false,
+}: {
+  offer: RawOffer;
+  available: boolean;
+  onFeedback: (offer: RawOffer) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <OfferLink offer={offer} available={available} compact={compact} />
+      <button
+        type="button"
+        onClick={() => onFeedback(offer)}
+        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-[#adb3b4]/30 bg-white px-3 text-xs font-semibold text-[#5a6061] transition hover:bg-[#f2f4f4]"
+      >
+        <Flag size={14} />
+        反馈
+      </button>
+    </div>
+  );
+}
+
+function OfferFeedbackDialog({
+  productId,
+  productSlug,
+  productName,
+  offer,
+  onClose,
+}: {
+  productId: string;
+  productSlug: string;
+  productName: string;
+  offer: RawOffer;
+  onClose: () => void;
+}) {
+  const [reason, setReason] = useState("wrong_price");
+  const [notes, setNotes] = useState("");
+  const [contact, setContact] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId,
+          productSlug,
+          productName,
+          offerId: offer.id,
+          sourceId: offer.sourceId || null,
+          sourceName: sourceLabel(offer),
+          sourceTitle: offer.sourceTitle,
+          offerUrl: offer.url,
+          reason,
+          notes: notes || null,
+          contact: contact || null,
+          website: "",
+        }),
+      });
+      const json = await response.json().catch(() => ({ ok: false, message: response.statusText }));
+      if (!response.ok || !json.ok) {
+        throw new Error(json.message || "反馈提交失败。");
+      }
+      setMessage({ type: "success", text: "已收到反馈，我会在后台审核处理。" });
+      window.setTimeout(onClose, 1200);
+    } catch (currentError) {
+      setMessage({ type: "error", text: currentError instanceof Error ? currentError.message : "反馈提交失败。" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#202829]/35 px-4 py-4 sm:items-center">
+      <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-[0_24px_80px_rgba(32,40,41,0.22)]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="font-serif text-xl font-semibold text-[#202829]">反馈报价问题</h3>
+            <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#5a6061]">{offer.sourceTitle}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#adb3b4]/25 text-[#5a6061] transition hover:bg-[#f2f4f4]"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="mt-4 space-y-3">
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-[#5a6061]">问题类型</span>
+            <select
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              className="h-10 w-full rounded-lg border border-[#adb3b4]/40 bg-white px-3 text-sm outline-none transition focus:border-[#2d3435]"
+            >
+              {feedbackReasonOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-[#5a6061]">补充说明</span>
+            <textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              rows={3}
+              maxLength={500}
+              placeholder="例如：点进去实际价格是 1280，或原站已下架。"
+              className="w-full resize-y rounded-lg border border-[#adb3b4]/40 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#2d3435]"
+            />
+          </label>
+          <label className="hidden">
+            Website
+            <input tabIndex={-1} autoComplete="off" name="website" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-[#5a6061]">联系方式（可选）</span>
+            <input
+              value={contact}
+              onChange={(event) => setContact(event.target.value)}
+              maxLength={200}
+              placeholder="方便需要时追问，可留空"
+              className="h-10 w-full rounded-lg border border-[#adb3b4]/40 bg-white px-3 text-sm outline-none transition focus:border-[#2d3435]"
+            />
+          </label>
+          {message ? (
+            <div className={`rounded-lg px-3 py-2 text-sm ${
+              message.type === "success" ? "bg-[#e8f3ec] text-[#2f7a4b]" : "bg-[#fbe9e7] text-[#9b3328]"
+            }`}>
+              {message.text}
+            </div>
+          ) : null}
+          <button
+            type="submit"
+            disabled={loading}
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#2d3435] px-4 text-sm font-semibold text-white transition hover:bg-[#202829] disabled:opacity-60"
+          >
+            {loading ? "提交中..." : "提交反馈"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+const feedbackReasonOptions = [
+  { value: "wrong_price", label: "价格不准" },
+  { value: "item_removed", label: "商品已下架" },
+  { value: "stock_mismatch", label: "库存状态不准" },
+  { value: "fraud", label: "疑似虚假/欺诈" },
+  { value: "wrong_category", label: "分类错误" },
+  { value: "bad_source", label: "渠道不可信" },
+  { value: "other", label: "其他问题" },
+];
 
 function Skeleton({ className }: { className: string }) {
   return <div className={`animate-pulse bg-[#e4e9ea] ${className}`} />;

@@ -79,6 +79,8 @@ export default async function ProductDetail({
 
         <ProductOffersPanel
           productId={product.id}
+          productSlug={product.slug}
+          productName={product.displayName}
           initialCount={product.offerCount}
           initialData={initialOffers}
         />

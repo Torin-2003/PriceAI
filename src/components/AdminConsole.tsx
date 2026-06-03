@@ -12,6 +12,7 @@ import {
   Trash2,
   ExternalLink,
   FileInput,
+  Flag,
   History,
   Inbox,
   KeyRound,
@@ -33,6 +34,8 @@ import type {
   CollectionMethod,
   CollectorKind,
   CrawlRun,
+  OfferFeedback,
+  OfferFeedbackStatus,
   OfferStatus,
   RawOffer,
   Source,
@@ -72,7 +75,7 @@ type ProbeResult = {
   finishedAt?: string;
 };
 
-type AdminTab = "review" | "todo" | "history" | "collect" | "sources" | "manual" | "logs";
+type AdminTab = "review" | "todo" | "feedback" | "history" | "collect" | "sources" | "manual" | "logs";
 
 type RowFeedback = {
   id: string;
@@ -112,6 +115,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
   const [globalMessage, setGlobalMessage] = useState<Message | null>(null);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [submissions, setSubmissions] = useState<ChannelSubmission[]>(data.pendingSubmissions || []);
+  const [offerFeedback, setOfferFeedback] = useState<OfferFeedback[]>(data.pendingOfferFeedback || []);
   const [probeResults, setProbeResults] = useState<Record<string, ProbeResult>>({});
   const [activeTab, setActiveTab] = useState<AdminTab>("review");
   const [searchQuery, setSearchQuery] = useState("");
@@ -213,9 +217,10 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       { label: "标准商品", value: data.products.length, icon: <Database key="d" size={15} /> },
       { label: "报价", value: data.rawOffers.length, icon: <FileInput key="f" size={15} /> },
       { label: "待审核", value: reviewSubmissions.length, icon: <Inbox key="i" size={15} /> },
+      { label: "反馈", value: offerFeedback.length, icon: <Flag key="fb" size={15} /> },
       { label: "采集待办", value: collectorTodoSubmissions.length, icon: <TerminalSquare key="t" size={15} /> },
     ],
-    [collectorTodoSubmissions.length, data.products.length, data.rawOffers.length, reviewSubmissions.length, sources.length],
+    [collectorTodoSubmissions.length, data.products.length, data.rawOffers.length, offerFeedback.length, reviewSubmissions.length, sources.length],
   );
   const sourceStatsById = useMemo(
     () => new Map((data.sourceOfferStats || []).map((stats) => [stats.sourceId, stats])),
@@ -262,13 +267,14 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     () => [
       { id: "review", label: "审核", count: reviewSubmissions.length, icon: <Inbox size={15} /> },
       { id: "todo", label: "待办", count: collectorTodoSubmissions.length, icon: <ClipboardList size={15} /> },
+      { id: "feedback", label: "反馈", count: offerFeedback.length, icon: <Flag size={15} /> },
       { id: "history", label: "历史", count: null, icon: <History size={15} /> },
       { id: "collect", label: "采集", count: failedRunCount || null, icon: <RefreshCcw size={15} /> },
       { id: "sources", label: "渠道", count: sources.length, icon: <Store size={15} /> },
       { id: "manual", label: "维护", count: null, icon: <Plus size={15} /> },
       { id: "logs", label: "日志", count: data.crawlRuns.length, icon: <Clock size={15} /> },
     ],
-    [collectorTodoSubmissions.length, data.crawlRuns.length, failedRunCount, reviewSubmissions.length, sources.length],
+    [collectorTodoSubmissions.length, data.crawlRuns.length, failedRunCount, offerFeedback.length, reviewSubmissions.length, sources.length],
   );
 
   /* ─── Keyboard shortcuts ─── */
@@ -313,6 +319,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       setAuthed(true);
       setGlobalMessage({ type: "success", text: "后台已解锁。" });
       void refreshSubmissions(password);
+      void refreshOfferFeedback(password);
     } else {
       setGlobalMessage({ type: "error", text: result.message || "登录失败。" });
     }
@@ -722,6 +729,88 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     }
   }
 
+  async function refreshOfferFeedback(currentPassword = password) {
+    try {
+      const response = await fetch("/api/admin/feedback?status=pending", {
+        headers: { "x-admin-password": currentPassword },
+      });
+      const json = await response.json().catch(() => ({ ok: false }));
+      if (response.ok && json.ok) {
+        setOfferFeedback(json.feedback || []);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function updateFeedbackStatus(feedback: OfferFeedback, status: OfferFeedbackStatus, reviewerNote?: string) {
+    setLoadingAction(`feedback-${status}-${feedback.id}`);
+    const result = await requestWithMethod("/api/admin/feedback", "PATCH", password, {
+      id: feedback.id,
+      status,
+      reviewerNote: reviewerNote || null,
+    });
+    setLoadingAction(null);
+
+    if (result.ok && result.feedback) {
+      setOfferFeedback((prev) => prev.filter((item) => item.id !== feedback.id));
+      showRowFeedback(feedback.id, "success", status === "ignored" ? "反馈已忽略。" : "反馈已标记处理。");
+    } else {
+      showRowFeedback(feedback.id, "error", result.message || "处理反馈失败。");
+    }
+  }
+
+  async function hideOfferFromFeedback(feedback: OfferFeedback) {
+    if (!feedback.offerId) {
+      showRowFeedback(feedback.id, "error", "这条反馈没有关联报价 ID。");
+      return;
+    }
+    const confirmed = window.confirm(`确定下架这条报价吗？\n${feedback.sourceTitle || feedback.offerUrl || feedback.offerId}`);
+    if (!confirmed) return;
+
+    setLoadingAction(`feedback-hide-offer-${feedback.id}`);
+    const result = await request("/api/admin/toggle-offer", password, {
+      id: feedback.offerId,
+      hidden: true,
+      reason: `用户反馈：${feedbackReasonLabel(feedback.reason)}`,
+    });
+    if (result.ok) {
+      await updateFeedbackStatus(feedback, "resolved", "已按用户反馈下架报价");
+      setGlobalMessage({ type: "success", text: "报价已下架，反馈已标记处理。" });
+      router.refresh();
+    } else {
+      setLoadingAction(null);
+      showRowFeedback(feedback.id, "error", result.message || "下架报价失败。");
+    }
+  }
+
+  async function hideSourceFromFeedback(feedback: OfferFeedback) {
+    if (!feedback.sourceId) {
+      showRowFeedback(feedback.id, "error", "这条反馈没有关联渠道 ID。");
+      return;
+    }
+    const confirmed = window.confirm(`确定下架「${feedback.sourceName || feedback.sourceId}」整个渠道的可见报价，并停用采集吗？`);
+    if (!confirmed) return;
+
+    setLoadingAction(`feedback-hide-source-${feedback.id}`);
+    const result = await requestWithMethod("/api/admin/sources", "PATCH", password, {
+      id: feedback.sourceId,
+      offersHidden: true,
+      reason: `用户反馈：${feedbackReasonLabel(feedback.reason)}`,
+    });
+    if (result.ok) {
+      if (result.source) {
+        setSourcePatches((prev) => ({ ...prev, [feedback.sourceId!]: result.source as Source }));
+      }
+      await updateFeedbackStatus(feedback, "resolved", "已按用户反馈下架渠道报价");
+      setGlobalMessage({ type: "success", text: `已下架 ${result.updatedOfferCount || 0} 条渠道报价，反馈已标记处理。` });
+      router.refresh();
+    } else {
+      setLoadingAction(null);
+      showRowFeedback(feedback.id, "error", result.message || "下架渠道失败。");
+    }
+  }
+
   async function loadHistory() {
     if (historyLoading) return;
     setHistoryLoading(true);
@@ -1103,6 +1192,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                     setFocusedIndex(-1);
                     setExpandedId(null);
                     if (tab.id === "history" && !historySubmissions.length) void loadHistory();
+                    if (tab.id === "feedback") void refreshOfferFeedback();
                   }}
                   className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
                     activeTab === tab.id
@@ -1358,6 +1448,32 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                     />
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Feedback tab */}
+            {activeTab === "feedback" && (
+              <div role="tabpanel" id="tabpanel-feedback">
+                <div className="mb-4 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => refreshOfferFeedback()}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4]"
+                  >
+                    <RefreshCcw size={14} />
+                    刷新
+                  </button>
+                  <span className="text-xs text-[#adb3b4]">{offerFeedback.length} 条待处理反馈</span>
+                </div>
+                <OfferFeedbackList
+                  feedback={offerFeedback}
+                  loadingAction={loadingAction}
+                  rowFeedback={rowFeedback}
+                  onHideOffer={hideOfferFromFeedback}
+                  onHideSource={hideSourceFromFeedback}
+                  onResolve={(item) => updateFeedbackStatus(item, "resolved", "已人工确认处理")}
+                  onIgnore={(item) => updateFeedbackStatus(item, "ignored", "已忽略")}
+                />
               </div>
             )}
 
@@ -2216,6 +2332,133 @@ function ProbePreview({ result }: { result: ProbeResult }) {
   );
 }
 
+function OfferFeedbackList({
+  feedback,
+  loadingAction,
+  rowFeedback,
+  onHideOffer,
+  onHideSource,
+  onResolve,
+  onIgnore,
+}: {
+  feedback: OfferFeedback[];
+  loadingAction: string | null;
+  rowFeedback: RowFeedback | null;
+  onHideOffer: (feedback: OfferFeedback) => void;
+  onHideSource: (feedback: OfferFeedback) => void;
+  onResolve: (feedback: OfferFeedback) => void;
+  onIgnore: (feedback: OfferFeedback) => void;
+}) {
+  if (!feedback.length) {
+    return (
+      <EmptyState
+        icon={<Flag size={32} className="text-[#adb3b4]" />}
+        title="暂无待处理反馈"
+        description="用户在商品详情页提交的问题会出现在这里。"
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {feedback.map((item) => {
+        const hideOfferLoading = loadingAction === `feedback-hide-offer-${item.id}`;
+        const hideSourceLoading = loadingAction === `feedback-hide-source-${item.id}`;
+        const resolveLoading = loadingAction === `feedback-resolved-${item.id}`;
+        const ignoreLoading = loadingAction === `feedback-ignored-${item.id}`;
+        const rowState = rowFeedback?.id === item.id ? rowFeedback : null;
+
+        return (
+          <article key={item.id} className="rounded-lg border border-[#adb3b4]/20 bg-white p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${feedbackReasonClass(item.reason)}`}>
+                    {feedbackReasonLabel(item.reason)}
+                  </span>
+                  <span className="text-xs text-[#adb3b4]">{formatRelativeTime(item.createdAt)}</span>
+                  {item.productName ? <span className="text-xs text-[#5a6061]">{item.productName}</span> : null}
+                </div>
+                <p className="mt-2 line-clamp-2 text-sm font-medium text-[#2d3435]">
+                  {item.sourceTitle || "未记录原始商品名"}
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[#adb3b4]">
+                  <span>{item.sourceName || "未记录渠道"}</span>
+                  {item.offerId ? <span>报价 ID: {item.offerId}</span> : null}
+                  {item.sourceId ? <span>渠道 ID: {item.sourceId}</span> : null}
+                </div>
+                {item.offerUrl ? (
+                  <a
+                    href={item.offerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-flex max-w-full items-center gap-1 break-all text-xs text-[#47657a] transition-colors hover:text-[#2d3435]"
+                  >
+                    <span className="break-all">{item.offerUrl}</span>
+                    <ExternalLink size={12} className="shrink-0" />
+                  </a>
+                ) : null}
+                {item.notes ? (
+                  <p className="mt-2 rounded-lg bg-[#f2f4f4] px-3 py-2 text-xs leading-5 text-[#5a6061]">
+                    {item.notes}
+                  </p>
+                ) : null}
+                {item.contact ? (
+                  <p className="mt-1 text-xs text-[#adb3b4]">联系方式：{item.contact}</p>
+                ) : null}
+                {rowState ? (
+                  <div className={`mt-3 rounded-lg px-3 py-2 text-xs ${rowFeedbackClass(rowState.type)}`}>
+                    {rowState.text}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[360px] lg:justify-end">
+                <button
+                  type="button"
+                  disabled={!item.offerId || hideOfferLoading}
+                  onClick={() => onHideOffer(item)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#9b3328]/20 bg-white px-3 text-xs font-medium text-[#9b3328] transition-colors hover:bg-[#fbe9e7] disabled:opacity-50"
+                >
+                  {hideOfferLoading ? <Loader2 size={14} className="animate-spin" /> : null}
+                  下架报价
+                </button>
+                <button
+                  type="button"
+                  disabled={!item.sourceId || hideSourceLoading}
+                  onClick={() => onHideSource(item)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#9b3328]/20 bg-white px-3 text-xs font-medium text-[#9b3328] transition-colors hover:bg-[#fbe9e7] disabled:opacity-50"
+                >
+                  {hideSourceLoading ? <Loader2 size={14} className="animate-spin" /> : null}
+                  下架渠道
+                </button>
+                <button
+                  type="button"
+                  disabled={resolveLoading}
+                  onClick={() => onResolve(item)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#2f7a4b]/20 bg-white px-3 text-xs font-medium text-[#2f7a4b] transition-colors hover:bg-[#e8f3ec] disabled:opacity-60"
+                >
+                  {resolveLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                  已处理
+                </button>
+                <button
+                  type="button"
+                  disabled={ignoreLoading}
+                  onClick={() => onIgnore(item)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4] disabled:opacity-60"
+                >
+                  {ignoreLoading ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                  忽略
+                </button>
+              </div>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 function Panel({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
   return (
     <section className="rounded-lg border border-[#adb3b4]/20 bg-white p-5">
@@ -2806,6 +3049,26 @@ function rowFeedbackClass(value: RowFeedback["type"]): string {
   if (value === "success") return "bg-[#e8f3ec] text-[#2f7a4b]";
   if (value === "info") return "bg-[#eef3f8] text-[#47657a]";
   return "bg-[#fbe9e7] text-[#9b3328]";
+}
+
+function feedbackReasonLabel(value: OfferFeedback["reason"]): string {
+  const labels: Record<OfferFeedback["reason"], string> = {
+    wrong_price: "价格不准",
+    item_removed: "商品已下架",
+    stock_mismatch: "库存不准",
+    fraud: "疑似虚假",
+    wrong_category: "分类错误",
+    bad_source: "渠道问题",
+    other: "其他问题",
+  };
+  return labels[value] || "其他问题";
+}
+
+function feedbackReasonClass(value: OfferFeedback["reason"]): string {
+  if (value === "fraud" || value === "bad_source") return "bg-[#fbe9e7] text-[#9b3328]";
+  if (value === "wrong_price" || value === "stock_mismatch" || value === "item_removed") return "bg-[#fff7e8] text-[#7a541b]";
+  if (value === "wrong_category") return "bg-[#eef3f8] text-[#47657a]";
+  return "bg-[#f2f4f4] text-[#5a6061]";
 }
 
 function filterAdminOffers(offers: RawOffer[], query: string): RawOffer[] {

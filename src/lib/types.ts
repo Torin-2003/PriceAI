@@ -121,6 +121,7 @@ export type DashboardData = {
 export type AdminSummary = DashboardData & {
   crawlRuns: CrawlRun[];
   pendingSubmissions: ChannelSubmission[];
+  pendingOfferFeedback: OfferFeedback[];
   sourceOfferStats: SourceOfferStats[];
   hiddenRawOffers: RawOffer[];
 };
@@ -163,6 +164,16 @@ export type OfferInput = {
 
 export type SubmissionStatus = "pending" | "approved" | "rejected";
 
+export type OfferFeedbackStatus = "pending" | "resolved" | "ignored";
+export type OfferFeedbackReason =
+  | "wrong_price"
+  | "item_removed"
+  | "stock_mismatch"
+  | "fraud"
+  | "wrong_category"
+  | "bad_source"
+  | "other";
+
 export type ChannelSubmission = {
   id: string;
   url: string;
@@ -174,6 +185,26 @@ export type ChannelSubmission = {
   status: SubmissionStatus;
   reviewerNote: string | null;
   approvedSourceId: string | null;
+  submitterIp: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+};
+
+export type OfferFeedback = {
+  id: string;
+  productId: string | null;
+  productSlug: string | null;
+  productName: string | null;
+  offerId: string | null;
+  sourceId: string | null;
+  sourceName: string | null;
+  sourceTitle: string | null;
+  offerUrl: string | null;
+  reason: OfferFeedbackReason;
+  notes: string | null;
+  contact: string | null;
+  status: OfferFeedbackStatus;
+  reviewerNote: string | null;
   submitterIp: string | null;
   createdAt: string;
   reviewedAt: string | null;
