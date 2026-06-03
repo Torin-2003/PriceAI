@@ -607,13 +607,13 @@ function buildOfferSearchText(offers: RawOffer[]): string {
   const parts = new Set<string>();
 
   for (const offer of offers) {
-    if (parts.size >= 24) break;
+    if (parts.size >= 10) break;
     [offer.sourceTitle, offer.sourceName, offer.sourceStoreName || ""]
       .filter(Boolean)
       .forEach((value) => parts.add(value));
   }
 
-  return Array.from(parts).join(" ").slice(0, 3000);
+  return Array.from(parts).join(" ").slice(0, 1000);
 }
 
 function resolveExplorerProduct(

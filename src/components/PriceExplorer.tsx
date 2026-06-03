@@ -91,7 +91,11 @@ const PRODUCT_SKELETON_ROWS = [0, 1, 2];
 const EXPLORER_CACHE_KEY = "priceai:explorer:v1";
 const EXPLORER_CACHE_TTL_MS = 5 * 60 * 1000;
 const OFFER_LIST_CACHE_TTL_MS = 2 * 60 * 1000;
-const PRODUCT_DETAIL_PREFETCH_LIMIT = 8;
+const PRODUCT_DETAIL_PREFETCH_LIMIT = 3;
+const stockOptions = ["all", "available", "out_of_stock"] as const;
+const sortOptions = ["available_price", "price", "updated", "channels"] as const;
+const viewOptions = ["cards", "table"] as const;
+const scopeOptions = ["products", "offers"] as const;
 
 const EMPTY_EXPLORER_DATA: ExplorerData = {
   generatedAt: "",
@@ -107,9 +111,11 @@ const offerListMemoryCache = new Map<string, OfferListResponse>();
 export function PriceExplorer({
   data,
   initialState = {},
+  restoreStateFromUrl = false,
 }: {
   data?: ExplorerData;
   initialState?: ExplorerInitialState;
+  restoreStateFromUrl?: boolean;
 }) {
   const router = useRouter();
   const [explorerData, setExplorerData] = useState<ExplorerData>(
@@ -127,12 +133,33 @@ export function PriceExplorer({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(initialState.viewMode ?? "table");
   const [scopeMode, setScopeMode] = useState<ScopeMode>(initialState.scopeMode ?? "products");
+  const [urlStateReady, setUrlStateReady] = useState(!restoreStateFromUrl);
   const [offerResponse, setOfferResponse] = useState<OfferListResponse | null>(null);
   const [offersLoading, setOffersLoading] = useState(false);
   const [offersPaging, setOffersPaging] = useState(false);
   const [offersError, setOffersError] = useState<string | null>(null);
   const offerLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const prefetchedDetailHrefsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!restoreStateFromUrl || typeof window === "undefined") return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      const nextState = parseExplorerInitialState(new URLSearchParams(window.location.search));
+      setQuery(nextState.query ?? "");
+      setPlatform(nextState.platform ?? "全部");
+      setProductType(nextState.productType ?? "全部");
+      setStock(nextState.stock ?? "all");
+      setSort(nextState.sort ?? "available_price");
+      setMinPrice(nextState.minPrice ?? "");
+      setMaxPrice(nextState.maxPrice ?? "");
+      setViewMode(nextState.viewMode ?? "table");
+      setScopeMode(nextState.scopeMode ?? "products");
+      setUrlStateReady(true);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [restoreStateFromUrl]);
 
   const products = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -318,6 +345,7 @@ export function PriceExplorer({
   }
 
   useEffect(() => {
+    if (!urlStateReady) return;
     if (window.location.pathname !== "/") return;
 
     const nextUrl = explorerQueryString ? `/?${explorerQueryString}` : "/";
@@ -326,9 +354,10 @@ export function PriceExplorer({
     if (currentUrl !== nextUrl) {
       window.history.replaceState(null, "", nextUrl);
     }
-  }, [explorerQueryString]);
+  }, [explorerQueryString, urlStateReady]);
 
   useEffect(() => {
+    if (!urlStateReady) return;
     if (!showingOffers) return;
 
     const controller = new AbortController();
@@ -367,7 +396,7 @@ export function PriceExplorer({
     loadOffers();
 
     return () => controller.abort();
-  }, [explorerQueryString, showingOffers]);
+  }, [explorerQueryString, showingOffers, urlStateReady]);
 
   const loadMoreOffers = useCallback(async () => {
     if (!showingOffers || !offerResponse || offersLoading || offersPaging) return;
@@ -1351,6 +1380,30 @@ function buildExplorerSearchParams({
   if (scopeMode === "offers") params.set("scope", scopeMode);
 
   return params;
+}
+
+function parseExplorerInitialState(params: URLSearchParams): ExplorerInitialState {
+  return {
+    query: params.get("q") || "",
+    platform: pickParam(params.get("platform") || "", ["全部", ...platformOptions], "全部"),
+    productType: pickParam(params.get("type") || "", ["全部", ...productTypeOptions], "全部"),
+    stock: pickParam(params.get("stock") || "", stockOptions, "all"),
+    sort: pickParam(params.get("sort") || "", sortOptions, "available_price"),
+    minPrice: numericParam(params.get("min") || ""),
+    maxPrice: numericParam(params.get("max") || ""),
+    viewMode: pickParam(params.get("view") || "", viewOptions, "table"),
+    scopeMode: pickParam(params.get("scope") || "", scopeOptions, "products"),
+  };
+}
+
+function pickParam<T extends string>(value: string, options: readonly T[], fallback: T): T {
+  return options.includes(value as T) ? (value as T) : fallback;
+}
+
+function numericParam(value: string): string {
+  const normalized = value.trim();
+  if (!normalized || Number.isNaN(Number(normalized))) return "";
+  return Number(normalized) >= 0 ? normalized : "";
 }
 
 function productSortPenalty(product: ExplorerProductSummary): number {
