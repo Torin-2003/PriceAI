@@ -75,15 +75,27 @@ const productTypeLabels: Record<string, string> = {
 };
 
 const OFFER_PAGE_SIZE = 80;
+const PRODUCT_SKELETON_ROWS = [0, 1, 2];
+
+const EMPTY_EXPLORER_DATA: ExplorerData = {
+  generatedAt: "",
+  configured: true,
+  products: [],
+  sources: [],
+  offerTotal: 0,
+};
 
 export function PriceExplorer({
   data,
   initialState = {},
 }: {
-  data: ExplorerData;
+  data?: ExplorerData;
   initialState?: ExplorerInitialState;
 }) {
   const router = useRouter();
+  const [explorerData, setExplorerData] = useState<ExplorerData>(data ?? EMPTY_EXPLORER_DATA);
+  const [dataLoading, setDataLoading] = useState(!data);
+  const [dataError, setDataError] = useState<string | null>(null);
   const [query, setQuery] = useState(initialState.query ?? "");
   const [platform, setPlatform] = useState(initialState.platform ?? "全部");
   const [productType, setProductType] = useState(initialState.productType ?? "全部");
@@ -105,7 +117,7 @@ export function PriceExplorer({
     const min = minPrice ? Number(minPrice) : null;
     const max = maxPrice ? Number(maxPrice) : null;
 
-    const filtered = data.products.filter((product) => {
+    const filtered = explorerData.products.filter((product) => {
       const haystack = [
         product.displayName,
         product.platform,
@@ -148,10 +160,10 @@ export function PriceExplorer({
 
       return (a.lowestPrice ?? Number.MAX_SAFE_INTEGER) - (b.lowestPrice ?? Number.MAX_SAFE_INTEGER);
     });
-  }, [data.products, maxPrice, minPrice, platform, productType, query, sort, stock]);
+  }, [explorerData.products, maxPrice, minPrice, platform, productType, query, sort, stock]);
 
-  const totalAvailable = data.products.reduce((sum, product) => sum + product.inStockCount, 0);
-  const totalOutOfStock = data.products.reduce((sum, product) => sum + product.outOfStockCount, 0);
+  const totalAvailable = explorerData.products.reduce((sum, product) => sum + product.inStockCount, 0);
+  const totalOutOfStock = explorerData.products.reduce((sum, product) => sum + product.outOfStockCount, 0);
   const showingOffers = scopeMode === "offers";
   const title = buildTitle(platform, productType, showingOffers);
   const activeFilters = buildActiveFilters({ platform, productType, stock, minPrice, maxPrice });
@@ -173,6 +185,31 @@ export function PriceExplorer({
       }).toString(),
     [maxPrice, minPrice, platform, productType, query, scopeMode, sort, stock, viewMode],
   );
+
+  useEffect(() => {
+    if (data) return;
+
+    const controller = new AbortController();
+
+    async function loadExplorerData() {
+      setDataLoading(true);
+      setDataError(null);
+
+      try {
+        const nextData = await fetchExplorerData(controller.signal);
+        setExplorerData(nextData);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setDataError(error instanceof Error ? error.message : "商品数据加载失败");
+      } finally {
+        if (!controller.signal.aborted) setDataLoading(false);
+      }
+    }
+
+    loadExplorerData();
+
+    return () => controller.abort();
+  }, [data]);
 
   function changePlatform(nextPlatform: string) {
     setPlatform(nextPlatform);
@@ -296,10 +333,10 @@ export function PriceExplorer({
           </Link>
           <div className="flex items-center gap-3">
             <div className="hidden items-center gap-3 lg:flex">
-              <Metric label="标准商品" value={data.products.length.toString()} icon={<PackageCheck size={15} />} />
-              <Metric label="报价" value={data.offerTotal.toString()} icon={<Database size={15} />} />
-              <Metric label="有货" value={totalAvailable.toString()} icon={<CheckCircle2 size={15} />} />
-              <Metric label="缺货" value={totalOutOfStock.toString()} icon={<Store size={15} />} />
+              <Metric label="标准商品" value={metricValue(explorerData.products.length, dataLoading)} icon={<PackageCheck size={15} />} />
+              <Metric label="报价" value={metricValue(explorerData.offerTotal, dataLoading)} icon={<Database size={15} />} />
+              <Metric label="有货" value={metricValue(totalAvailable, dataLoading)} icon={<CheckCircle2 size={15} />} />
+              <Metric label="缺货" value={metricValue(totalOutOfStock, dataLoading)} icon={<Store size={15} />} />
             </div>
             <FeedbackLink compact />
           </div>
@@ -323,7 +360,7 @@ export function PriceExplorer({
       </section>
 
       <main className="mx-auto max-w-[1500px] px-5 py-10 sm:px-8 lg:py-12">
-        {!data.configured ? (
+        {!dataLoading && !explorerData.configured ? (
           <div className="mb-8 rounded-lg bg-[#fff7e8] px-5 py-4 text-sm text-[#6a4b16] shadow-[0_18px_50px_rgba(45,52,53,0.04)]">
             当前使用内置演示数据。配置 Supabase 后，可在后台维护渠道并保存真实采集结果。
           </div>
@@ -336,10 +373,10 @@ export function PriceExplorer({
             </h1>
             <div className="mt-4 flex flex-wrap items-center gap-3 text-[0.72rem] font-medium text-[#5a6061]">
               <span>
-                最近更新：<RelativeTime value={data.generatedAt} />
+                最近更新：{dataLoading ? "正在同步" : <RelativeTime value={explorerData.generatedAt} />}
               </span>
               <span className="h-1 w-1 rounded-full bg-[#adb3b4]" />
-              <span>{resultCount} {showingOffers ? "条报价" : "个商品"}</span>
+              <span>{dataLoading && !showingOffers ? "正在加载" : resultCount} {showingOffers ? "条报价" : "个商品"}</span>
               <span className="h-1 w-1 rounded-full bg-[#adb3b4]" />
               <span>主价格优先取有货最低价，缺货会明显标注</span>
             </div>
@@ -491,6 +528,12 @@ export function PriceExplorer({
           </div>
         ) : null}
 
+        {dataError ? (
+          <div className="mb-6 rounded-lg bg-[#fff7e8] px-4 py-3 text-sm text-[#6a4b16] shadow-[0_16px_45px_rgba(45,52,53,0.04)] ring-1 ring-[#efdfbd]">
+            {dataError}。页面已保留基础操作区，请稍后刷新或切换到全部报价视图。
+          </div>
+        ) : null}
+
         {showingOffers ? (
           offersLoading ? (
             <EmptyState text="正在加载报价" />
@@ -520,6 +563,8 @@ export function PriceExplorer({
           ) : (
             <EmptyState text="没有符合条件的报价" />
           )
+        ) : dataLoading ? (
+          <ProductTableSkeleton viewMode={viewMode} />
         ) : products.length ? (
           <>
             <div
@@ -799,6 +844,70 @@ function EmptyState({ text }: { text: string }) {
       <p className="font-serif text-2xl font-semibold text-[#202829]">{text}</p>
       <p className="mt-3 text-sm text-[#5a6061]">放宽筛选条件，或者提交新的可采集渠道。</p>
     </div>
+  );
+}
+
+function ProductTableSkeleton({ viewMode }: { viewMode: ViewMode }) {
+  return (
+    <>
+      <div
+        aria-busy="true"
+        className={`grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3 ${
+          viewMode === "table" ? "md:hidden" : ""
+        }`}
+      >
+        {PRODUCT_SKELETON_ROWS.map((row) => (
+          <div
+            key={row}
+            className="min-h-[220px] animate-pulse rounded-lg bg-white p-6 shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15"
+          >
+            <div className="mb-6 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-[#edf0f1]" />
+                <div className="space-y-2">
+                  <div className="h-3 w-28 rounded-full bg-[#edf0f1]" />
+                  <div className="h-2.5 w-16 rounded-full bg-[#edf0f1]" />
+                </div>
+              </div>
+              <div className="h-7 w-16 rounded-full bg-[#edf0f1]" />
+            </div>
+            <div className="h-7 w-2/3 rounded-full bg-[#edf0f1]" />
+            <div className="mt-5 flex gap-2">
+              <div className="h-7 w-20 rounded-full bg-[#edf0f1]" />
+              <div className="h-7 w-20 rounded-full bg-[#edf0f1]" />
+              <div className="h-7 w-16 rounded-full bg-[#edf0f1]" />
+            </div>
+            <div className="mt-8 h-10 rounded-full bg-[#edf0f1]" />
+          </div>
+        ))}
+      </div>
+      {viewMode === "table" ? (
+        <div className="hidden md:block" aria-busy="true">
+          <div className="overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
+            <div className="bg-[#f2f4f4] px-5 py-3 text-[0.68rem] font-semibold text-[#5a6061]">
+              正在同步商品报价
+            </div>
+            <div className="divide-y divide-[#edf0f1]">
+              {PRODUCT_SKELETON_ROWS.map((row) => (
+                <div key={row} className="grid min-h-[74px] grid-cols-[2fr_1fr_1fr_1fr_1fr] items-center gap-5 px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-[#edf0f1]" />
+                    <div className="space-y-2">
+                      <div className="h-3.5 w-52 rounded-full bg-[#edf0f1]" />
+                      <div className="h-3 w-32 rounded-full bg-[#edf0f1]" />
+                    </div>
+                  </div>
+                  <div className="h-3.5 rounded-full bg-[#edf0f1]" />
+                  <div className="h-3.5 rounded-full bg-[#edf0f1]" />
+                  <div className="h-3.5 rounded-full bg-[#edf0f1]" />
+                  <div className="h-9 rounded-full bg-[#edf0f1]" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -1104,6 +1213,17 @@ async function fetchOfferPage(
   if (!response.ok) throw new Error("报价加载失败");
 
   return (await response.json()) as OfferListResponse;
+}
+
+async function fetchExplorerData(signal?: AbortSignal): Promise<ExplorerData> {
+  const response = await fetch("/api/explorer", { signal });
+  if (!response.ok) throw new Error("商品数据加载失败");
+
+  return (await response.json()) as ExplorerData;
+}
+
+function metricValue(value: number, loading: boolean): string {
+  return loading ? "--" : value.toString();
 }
 
 function buildExplorerSearchParams({

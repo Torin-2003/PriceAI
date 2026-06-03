@@ -2,7 +2,6 @@ import { PriceExplorer } from "@/components/PriceExplorer";
 import type { ExplorerInitialState } from "@/components/PriceExplorer";
 import { SubmissionFloater } from "@/components/SubmissionFloater";
 import { platformOptions, productTypeOptions } from "@/lib/catalog";
-import { getExplorerData } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -20,12 +19,11 @@ export default async function Home({
   searchParams?: HomeSearchParams;
 }) {
   const params = await searchParams;
-  const data = await getExplorerData();
   const initialState = parseInitialState(params || {});
 
   return (
     <>
-      <PriceExplorer data={data} initialState={initialState} />
+      <PriceExplorer initialState={initialState} />
       <SubmissionFloater />
     </>
   );
