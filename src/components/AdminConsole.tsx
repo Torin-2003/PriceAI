@@ -96,6 +96,7 @@ const collectorKindOptions: Array<[CollectorKind, string]> = [
   ["beibeiHtml", "贝贝 HTML"],
   ["ikunloveApi", "IkunLove API"],
   ["getgptApi", "GetGPT API"],
+  ["genericHtml", "通用 HTML"],
   ["browser", "本机浏览器"],
   ["unsupported", "暂不支持"],
 ];
@@ -2938,8 +2939,8 @@ function sourceHost(source: Source): string {
 function inferCollectorKindFromSource(source: Source): CollectorKind | null {
   const host = sourceHost(source);
   const text = `${source.id} ${source.name} ${source.entryUrl} ${source.baseUrl || ""}`.toLowerCase();
-  if (["ai666.dnxb.cc", "aisou.pro", "caowo.store", "faka.redeemgpt.com", "feifei.shop", "shopcardai.click", "talkai.cyou", "yh-mo.xyz", "zzshu.com"].includes(host)) return "kami";
-  if (["burstpro-ai.online", "card.kxandyou.com", "kapay.shop", "shop.aitonse.com", "shop.auto-subscribe.com", "ultra.makelove.cloud", "zhang520.store"].includes(host)) return "dujiao";
+  if (["123456787kelie.top", "ai666.dnxb.cc", "ai666.id", "aisou.pro", "caowo.store", "dimosky.com", "douyiner.cn", "faka.redeemgpt.com", "feifei.shop", "fk.ybkjs.top", "gemini91.shop", "gmail1888.com", "hiemail.store", "lynnzee.myweb999.cfd", "nikoers.com", "shopcardai.click", "shop.bmoplus.com", "shop.gpt365.wiki", "shihuiai.cn", "talkai.cyou", "tehuio.com", "web3chirou.com", "yh-mo.xyz", "zhanghao66.com", "zzshu.com"].includes(host)) return "kami";
+  if (["11.id2323.top", "burstpro-ai.online", "card.kxandyou.com", "ccdawang.win", "fk.txspvip.xyz", "gmail91.shop", "kapay.shop", "morimm.com", "shop.aitonse.com", "shop.auto-subscribe.com", "ultra.makelove.cloud", "zhang520.store"].includes(host)) return "dujiao";
   if (host === "pay.qxvx.cn" || host === "pay.ldxp.cn" || host === "ldxp.cn") return "shopApi";
   if (host === "upgrade.xiaoheiwan.com") return "xiaoheiwan";
   if (host === "aifk.opensora.de") return "opensoraHtml";
@@ -2947,6 +2948,8 @@ function inferCollectorKindFromSource(source: Source): CollectorKind | null {
   if (host === "bei-bei.shop") return "beibeiHtml";
   if (host === "ikunlove.best") return "ikunloveApi";
   if (host === "getgpt.pro") return "getgptApi";
+  if (host === "catfk.com") return "shopApi";
+  if (["19cm.tech", "woaimaihao.com", "xingbao-ai.shop", "xxxyan.cc"].includes(host)) return "genericHtml";
   if (text.includes("burstpro")) return "dujiao";
   return null;
 }

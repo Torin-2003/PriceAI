@@ -24,6 +24,7 @@ export type CollectorKind =
   | "beibeiHtml"
   | "ikunloveApi"
   | "getgptApi"
+  | "genericHtml"
   | "browser"
   | "unsupported";
 

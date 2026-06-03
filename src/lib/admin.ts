@@ -778,24 +778,51 @@ const MAX_FETCH_BYTES = 256 * 1024;
 const FETCH_TIMEOUT_MS = 5000;
 const SHOP_API_TIMEOUT_MS = 8000;
 const KAMI_HOSTS = new Set([
+  "123456787kelie.top",
   "ai666.dnxb.cc",
+  "ai666.id",
   "aisou.pro",
   "caowo.store",
+  "dimosky.com",
+  "douyiner.cn",
   "faka.redeemgpt.com",
   "feifei.shop",
+  "fk.ybkjs.top",
+  "gemini91.shop",
+  "gmail1888.com",
+  "hiemail.store",
+  "lynnzee.myweb999.cfd",
+  "nikoers.com",
   "shopcardai.click",
+  "shop.bmoplus.com",
+  "shop.gpt365.wiki",
+  "shihuiai.cn",
   "talkai.cyou",
+  "tehuio.com",
+  "web3chirou.com",
   "yh-mo.xyz",
+  "zhanghao66.com",
   "zzshu.com",
 ]);
 const DUJIAO_HOSTS = new Set([
+  "11.id2323.top",
   "burstpro-ai.online",
   "card.kxandyou.com",
+  "ccdawang.win",
+  "fk.txspvip.xyz",
+  "gmail91.shop",
   "kapay.shop",
+  "morimm.com",
   "shop.aitonse.com",
   "shop.auto-subscribe.com",
   "ultra.makelove.cloud",
   "zhang520.store",
+]);
+const GENERIC_HTML_HOSTS = new Set([
+  "19cm.tech",
+  "woaimaihao.com",
+  "xingbao-ai.shop",
+  "xxxyan.cc",
 ]);
 
 export async function parseSubmissionMetadata(rawUrl: string): Promise<{
@@ -1000,6 +1027,8 @@ function inferCollectorKind(host: string): string {
   if (host === "bei-bei.shop") return "beibeiHtml";
   if (host === "ikunlove.best") return "ikunloveApi";
   if (host === "getgpt.pro") return "getgptApi";
+  if (host === "catfk.com") return "shopApi";
+  if (GENERIC_HTML_HOSTS.has(host)) return "genericHtml";
   if (host.includes("burstpro")) return "dujiao";
   return "browser";
 }
@@ -1195,6 +1224,7 @@ function normalizeCollectorKind(value: unknown): CollectorKind | null {
     normalized === "beibeiHtml" ||
     normalized === "ikunloveApi" ||
     normalized === "getgptApi" ||
+    normalized === "genericHtml" ||
     normalized === "browser" ||
     normalized === "unsupported"
   ) {

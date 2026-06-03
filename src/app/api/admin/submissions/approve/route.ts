@@ -13,6 +13,7 @@ const collectorKindSchema = z.enum([
   "beibeiHtml",
   "ikunloveApi",
   "getgptApi",
+  "genericHtml",
   "browser",
   "unsupported",
 ]);

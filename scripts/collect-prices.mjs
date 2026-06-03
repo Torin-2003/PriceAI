@@ -7,25 +7,53 @@ import { createClient } from "@supabase/supabase-js";
 const env = readEnvFile(".env.local");
 
 const KAMI_HOSTS = new Set([
+  "123456787kelie.top",
   "ai666.dnxb.cc",
+  "ai666.id",
   "aisou.pro",
   "caowo.store",
+  "dimosky.com",
+  "douyiner.cn",
   "faka.redeemgpt.com",
   "feifei.shop",
+  "fk.ybkjs.top",
+  "gemini91.shop",
+  "gmail1888.com",
+  "hiemail.store",
+  "lynnzee.myweb999.cfd",
+  "nikoers.com",
   "shopcardai.click",
+  "shop.bmoplus.com",
+  "shop.gpt365.wiki",
+  "shihuiai.cn",
   "talkai.cyou",
+  "tehuio.com",
+  "web3chirou.com",
   "yh-mo.xyz",
+  "zhanghao66.com",
   "zzshu.com",
 ]);
 
 const DUJIAO_HOSTS = new Set([
+  "11.id2323.top",
   "burstpro-ai.online",
   "card.kxandyou.com",
+  "ccdawang.win",
+  "fk.txspvip.xyz",
+  "gmail91.shop",
   "kapay.shop",
+  "morimm.com",
   "shop.aitonse.com",
   "shop.auto-subscribe.com",
   "ultra.makelove.cloud",
   "zhang520.store",
+]);
+
+const GENERIC_HTML_HOSTS = new Set([
+  "19cm.tech",
+  "woaimaihao.com",
+  "xingbao-ai.shop",
+  "xxxyan.cc",
 ]);
 
 const PRICE_VALUE_PATTERN = String.raw`(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)`;
@@ -213,6 +241,7 @@ async function collectTarget(target) {
   if (target.kind === "beibeiHtml") return collectBeibeiHtml(target);
   if (target.kind === "ikunloveApi") return collectIkunloveApi(target);
   if (target.kind === "getgptApi") return collectGetgptApi(target);
+  if (target.kind === "genericHtml") return collectGenericHtml(target);
 
   throw new Error(`Unsupported collector kind: ${target.kind}`);
 }
@@ -660,6 +689,117 @@ async function collectGetgptApi(target) {
     .filter(Boolean);
 }
 
+async function collectGenericHtml(target) {
+  const html = await fetchText(target.sourceUrl);
+  const text = stripHtml(html)
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+  const matches = [...text.matchAll(new RegExp(String.raw`[¥￥]\s*${PRICE_VALUE_PATTERN}`, "g"))];
+  const offers = [];
+  let previousPriceEnd = 0;
+
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index];
+    const price = numberOrNull(match[0]);
+    if (price === null) continue;
+
+    const segment = text.slice(previousPriceEnd, match.index);
+    const nextPriceIndex = matches[index + 1]?.index ?? Math.min(text.length, match.index + 260);
+    const after = text.slice(match.index + match[0].length, nextPriceIndex);
+    previousPriceEnd = match.index + match[0].length;
+
+    const title = titleFromGenericSegment(segment, price);
+    if (!title || isNonComparableTitle(title)) continue;
+    if (/合计|支付|订单|充值金额|余额|声明|举证|预览/.test(title)) continue;
+
+    const context = `${segment} ${after}`;
+    const stockCount = stockFromGenericContext(context);
+    const soldOut = /缺货|已售罄|售罄|无货/.test(context) || stockCount === 0;
+
+    offers.push(
+      makeOffer(target, {
+        title,
+        price,
+        status: soldOut ? "out_of_stock" : statusFromStock(stockCount),
+        stockCount: soldOut ? 0 : stockCount,
+        url: `${target.sourceUrl.replace(/#.*$/, "")}#offer-${offers.length + 1}`,
+        tags: compact([
+          /自动发货/.test(context) ? "自动发货" : null,
+          /人工/.test(context) ? "人工处理" : null,
+          "页面解析",
+        ]),
+      }),
+    );
+  }
+
+  return dedupeOffers(offers).slice(0, 200);
+}
+
+function titleFromGenericSegment(value, price = null) {
+  let text = cleanText(value)
+    .replace(/(?:库存|销量|已售)\s*\d+/g, " ")
+    .replace(/\d+\s*件现货/g, " ")
+    .replace(/\b(?:价格|售价|自动发货|人工处理)\b\s*$/g, " ")
+    .replace(/价格\s*$/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const markers = [
+    "立即下单 查看详情",
+    "查看并购买",
+    "shopping_bag",
+    "自动发货",
+    "人工处理",
+    "全部商品",
+    "商品列表",
+  ];
+  let markerIndex = -1;
+  let markerLength = 0;
+  for (const marker of markers) {
+    const index = text.lastIndexOf(marker);
+    const nextChar = index >= 0 ? text.slice(index + marker.length, index + marker.length + 1) : "";
+    if ((marker === "自动发货" || marker === "人工处理") && /[】\]]/.test(nextChar)) continue;
+    if ((marker === "自动发货" || marker === "人工处理") && !text.slice(index + marker.length).trim()) continue;
+    if (index >= markerIndex) {
+      markerIndex = index;
+      markerLength = marker.length;
+    }
+  }
+  if (markerIndex >= 0) text = text.slice(markerIndex + markerLength);
+
+  text = text
+    .split(/\s+/)
+    .filter((token) => token && numberOrNull(token) !== price)
+    .join(" ");
+
+  text = text
+    .replace(/^(?:热门|推荐|设计向|全部|进入分类)\s+/g, "")
+    .replace(/^(?:AP|C|G|X|IN|TE)\s+/g, "")
+    .replace(/^(ChatGPT|GPT|Claude|Grok|Gemini|OpenAI)\s+\1/gi, "$1")
+    .replace(/(?:充值到自己账号|成品号|卡密发货|推荐|热销|价格)\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const productNameMatch = text.match(
+    /((?:ChatGPT|GPT|Claude|Grok|Gemini|OpenAI|Google|Gmail|Outlook|Telegram|Pixel|Apple ID|GV|API)[^，。,；;]{0,80})/i,
+  );
+  if (productNameMatch) text = productNameMatch[1].trim();
+
+  if (text.length > 96) {
+    const parts = text.split(/\s{2,}|[。；;，,]/).map((part) => part.trim()).filter(Boolean);
+    text = parts.at(-1) || text.slice(-96);
+  }
+
+  return text.slice(0, 140).trim();
+}
+
+function stockFromGenericContext(value) {
+  const text = cleanText(value);
+  const stockMatch = text.match(/库存\s*(\d+)/) || text.match(/(\d+)\s*件现货/);
+  return stockMatch ? numberOrNull(stockMatch[1]) : null;
+}
+
 async function discoverShopTokens(target) {
   const tokens = new Set();
   const entryToken = shopTokenFromUrl(target.sourceUrl);
@@ -912,6 +1052,8 @@ function inferCollectorKind(host, text = "") {
   if (host === "bei-bei.shop") return "beibeiHtml";
   if (host === "ikunlove.best") return "ikunloveApi";
   if (host === "getgpt.pro") return "getgptApi";
+  if (host === "catfk.com") return "shopApi";
+  if (GENERIC_HTML_HOSTS.has(host)) return "genericHtml";
   if (text.includes("burstpro")) return "dujiao";
   return null;
 }
@@ -929,6 +1071,7 @@ function normalizeCollectorKind(value) {
     "beibeiHtml",
     "ikunloveApi",
     "getgptApi",
+    "genericHtml",
     "browser",
     "unsupported",
   ].includes(text)

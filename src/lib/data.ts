@@ -482,6 +482,7 @@ function normalizeCollectorKind(value: unknown): Source["collectorKind"] {
     value === "beibeiHtml" ||
     value === "ikunloveApi" ||
     value === "getgptApi" ||
+    value === "genericHtml" ||
     value === "browser" ||
     value === "unsupported"
   ) {
