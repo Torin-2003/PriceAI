@@ -60,4 +60,4 @@ jobs:
           NODE
           )
 
-          npm run collect:prices -- --all --post --endpoint "$BASE_URL"
+          npm run collect:prices -- --all --post --endpoint "$BASE_URL" --exclude-family liandong-shop

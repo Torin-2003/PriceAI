@@ -257,7 +257,7 @@ if (isCli()) {
 
   if (args.list) {
     const targets = await loadTargets();
-    printTargetList(targets);
+    printTargetList(hasTargetFilters(args) ? selectTargets(targets, { ...args, all: true }) : targets);
     process.exit(0);
   }
 
@@ -1150,19 +1150,53 @@ function stableId(...parts) {
 function selectTargets(targets, options) {
   const selected = options.source || options.id || options.name;
   const runnable = (target) => target.kind;
-  if (!selected && !options.all) return targets.filter(runnable);
-  if (options.all) return targets.filter(runnable);
+  const applyExclusions = (items) => items.filter((target) => !shouldExcludeTarget(target, options));
+  if (!selected && !options.all) return applyExclusions(targets.filter(runnable));
+  if (options.all) return applyExclusions(targets.filter(runnable));
 
   const query = String(selected).toLowerCase();
-  const exact = targets.filter((target) => runnable(target) && String(target.sourceId).toLowerCase() === query);
+  const exact = applyExclusions(targets.filter((target) => runnable(target) && String(target.sourceId).toLowerCase() === query));
   if (exact.length) return exact;
 
-  return targets.filter((target) =>
-    runnable(target) &&
-    [target.sourceId, target.sourceName, target.sourceUrl, target.kind, target.configuredKind]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(query)),
+  return applyExclusions(
+    targets.filter((target) =>
+      runnable(target) &&
+      [target.sourceId, target.sourceName, target.sourceUrl, target.kind, target.configuredKind]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query)),
+    ),
   );
+}
+
+function hasTargetFilters(options = {}) {
+  return Boolean(
+    options.source ||
+      options.id ||
+      options.name ||
+      options.excludeFamily ||
+      options["exclude-family"] ||
+      options.excludeFamilies ||
+      options["exclude-families"],
+  );
+}
+
+function shouldExcludeTarget(target, options = {}) {
+  const families = optionList(options.excludeFamily || options["exclude-family"] || options.excludeFamilies || options["exclude-families"]);
+  if (families.includes("liandong-shop") && isLiandongShopTarget(target)) return true;
+  return false;
+}
+
+function isLiandongShopTarget(target) {
+  return target.kind === "shopApi";
+}
+
+function optionList(value) {
+  if (Array.isArray(value)) return value.flatMap(optionList);
+  if (value === true || value === false || value === null || value === undefined) return [];
+  return String(value)
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
 }
 
 function cooldownSkipReason(target, options = {}) {
