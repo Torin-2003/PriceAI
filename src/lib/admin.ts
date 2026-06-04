@@ -15,6 +15,9 @@ import type {
   OfferFeedbackReason,
   OfferFeedbackStatus,
   RawOffer,
+  SiteFeedback,
+  SiteFeedbackStatus,
+  SiteFeedbackType,
   Source,
   SubmissionStatus,
 } from "./types";
@@ -726,6 +729,21 @@ function mapOfferFeedbackRow(row: Record<string, unknown>): OfferFeedback {
     notes: row.notes ? String(row.notes) : null,
     contact: row.contact ? String(row.contact) : null,
     status: String(row.status || "pending") as OfferFeedbackStatus,
+    reviewerNote: row.reviewer_note ? String(row.reviewer_note) : null,
+    submitterIp: row.submitter_ip ? String(row.submitter_ip) : null,
+    createdAt: String(row.created_at || new Date().toISOString()),
+    reviewedAt: row.reviewed_at ? String(row.reviewed_at) : null,
+  };
+}
+
+function mapSiteFeedbackRow(row: Record<string, unknown>): SiteFeedback {
+  return {
+    id: String(row.id),
+    type: String(row.type || "other") as SiteFeedbackType,
+    message: String(row.message || ""),
+    contact: row.contact ? String(row.contact) : null,
+    pageUrl: row.page_url ? String(row.page_url) : null,
+    status: String(row.status || "pending") as SiteFeedbackStatus,
     reviewerNote: row.reviewer_note ? String(row.reviewer_note) : null,
     submitterIp: row.submitter_ip ? String(row.submitter_ip) : null,
     createdAt: String(row.created_at || new Date().toISOString()),
@@ -1456,6 +1474,104 @@ export async function updateOfferFeedbackStatus(input: {
   if (!data) throw new Error("反馈记录不存在。");
 
   return mapOfferFeedbackRow(data);
+}
+
+export async function createSiteFeedback(input: {
+  type: SiteFeedbackType;
+  message: string;
+  contact?: string | null;
+  pageUrl?: string | null;
+  submitterIp?: string | null;
+  rateLimitPerHour?: number;
+}): Promise<{ id: string; status: "pending" }> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) throw new Error("Supabase 尚未配置，无法接受反馈。");
+
+  const ip = input.submitterIp || null;
+  const message = input.message.trim();
+  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  if (!message) throw new Error("请填写反馈内容。");
+
+  let duplicateQuery = supabase
+    .from("site_feedback")
+    .select("id")
+    .eq("type", input.type)
+    .eq("message", message)
+    .gte("created_at", fiveMinAgo)
+    .limit(1);
+  if (ip) duplicateQuery = duplicateQuery.eq("submitter_ip", ip);
+
+  const { data: dupRows } = await duplicateQuery;
+  if (dupRows && dupRows.length) {
+    throw new Error("这条意见刚刚提交过，请稍后再试。");
+  }
+
+  if (ip) {
+    const rateLimitPerHour = input.rateLimitPerHour ?? 8;
+    const { count } = await supabase
+      .from("site_feedback")
+      .select("id", { count: "exact", head: true })
+      .eq("submitter_ip", ip)
+      .gte("created_at", oneHourAgo);
+    if ((count || 0) >= rateLimitPerHour) {
+      throw new Error("反馈过于频繁，请稍后再试。");
+    }
+  }
+
+  const id = stableId("site-feedback", input.type, ip || "", Date.now().toString());
+  const { error } = await supabase.from("site_feedback").insert({
+    id,
+    type: input.type,
+    message,
+    contact: input.contact?.trim() || null,
+    page_url: input.pageUrl || null,
+    status: "pending",
+    submitter_ip: ip,
+  });
+  if (error) throw error;
+
+  return { id, status: "pending" };
+}
+
+export async function listSiteFeedback(status: SiteFeedbackStatus = "pending"): Promise<SiteFeedback[]> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("site_feedback")
+    .select("*")
+    .eq("status", status)
+    .order("created_at", { ascending: false })
+    .limit(300);
+  if (error) throw error;
+  return (data || []).map(mapSiteFeedbackRow);
+}
+
+export async function updateSiteFeedbackStatus(input: {
+  id: string;
+  status: SiteFeedbackStatus;
+  reviewerNote?: string | null;
+}): Promise<SiteFeedback> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) throw new Error("Supabase 尚未配置。");
+
+  const reviewedAt = input.status === "pending" ? null : new Date().toISOString();
+  const { data, error } = await supabase
+    .from("site_feedback")
+    .update({
+      status: input.status,
+      reviewer_note: input.reviewerNote?.trim() || null,
+      reviewed_at: reviewedAt,
+    })
+    .eq("id", input.id)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("反馈记录不存在。");
+
+  return mapSiteFeedbackRow(data);
 }
 
 function buildFallbackSubmissionMeta(url: string, error: unknown): Record<string, unknown> {

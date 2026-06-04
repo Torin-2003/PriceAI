@@ -1,6 +1,6 @@
 import "server-only";
 
-import { ADMIN_MANUAL_HIDE_REASON_PREFIX, listOfferFeedback, listSubmissions } from "./admin";
+import { ADMIN_MANUAL_HIDE_REASON_PREFIX, listOfferFeedback, listSiteFeedback, listSubmissions } from "./admin";
 import { buildProductGroups, canonicalCatalog, resolveOfferProduct } from "./catalog";
 import { isSupabaseConfigured } from "./env";
 import { seedRawOffers, seedSources } from "./sample-data";
@@ -276,12 +276,13 @@ export async function getAdminSummary(): Promise<AdminSummary> {
       crawlRuns: [],
       pendingSubmissions: [],
       pendingOfferFeedback: [],
+      pendingSiteFeedback: [],
       sourceOfferStats: [],
       hiddenRawOffers: [],
     };
   }
 
-  const [{ data, error }, pendingSubmissions, pendingOfferFeedback, sourceOfferStats, hiddenRawOffers] = await Promise.all([
+  const [{ data, error }, pendingSubmissions, pendingOfferFeedback, pendingSiteFeedback, sourceOfferStats, hiddenRawOffers] = await Promise.all([
     supabase
       .from("crawl_runs")
       .select("*")
@@ -289,6 +290,7 @@ export async function getAdminSummary(): Promise<AdminSummary> {
       .limit(30),
     listSubmissions("pending").catch(() => []),
     listOfferFeedback("pending").catch(() => []),
+    listSiteFeedback("pending").catch(() => []),
     listSourceOfferStats().catch(() => []),
     listAdminHiddenRawOfferRows().then((rows) => rows.map(mapRawOffer)).catch(() => []),
   ]);
@@ -299,6 +301,7 @@ export async function getAdminSummary(): Promise<AdminSummary> {
       crawlRuns: [],
       pendingSubmissions,
       pendingOfferFeedback,
+      pendingSiteFeedback,
       sourceOfferStats,
       hiddenRawOffers,
     };
@@ -309,6 +312,7 @@ export async function getAdminSummary(): Promise<AdminSummary> {
     crawlRuns: (data || []).map(mapCrawlRun),
     pendingSubmissions,
     pendingOfferFeedback,
+    pendingSiteFeedback,
     sourceOfferStats,
     hiddenRawOffers,
   };

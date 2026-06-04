@@ -33,7 +33,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppLogo } from "@/components/AppLogo";
 import { BrandIcon } from "@/components/BrandIcon";
-import { FeedbackLink } from "@/components/FeedbackLink";
+import { FeedbackLink, GitHubLink } from "@/components/FeedbackLink";
 import {
   collectOfferFlags,
   isAvailable,
@@ -485,6 +485,7 @@ export function PriceExplorer({
                 <Metric label="缺货" value={metricValue(totalOutOfStock, dataLoading)} icon={<Store size={15} />} />
               </div>
               <FeedbackLink compact />
+              <GitHubLink compact />
             </div>
           </div>
         </header>

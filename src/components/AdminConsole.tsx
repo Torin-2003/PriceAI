@@ -17,6 +17,7 @@ import {
   Inbox,
   KeyRound,
   Loader2,
+  MessageCircle,
   Plus,
   RefreshCcw,
   Search,
@@ -38,6 +39,8 @@ import type {
   OfferFeedbackStatus,
   OfferStatus,
   RawOffer,
+  SiteFeedback,
+  SiteFeedbackStatus,
   Source,
   SourceOfferStats,
 } from "@/lib/types";
@@ -118,6 +121,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [submissions, setSubmissions] = useState<ChannelSubmission[]>(data.pendingSubmissions || []);
   const [offerFeedback, setOfferFeedback] = useState<OfferFeedback[]>(data.pendingOfferFeedback || []);
+  const [siteFeedback, setSiteFeedback] = useState<SiteFeedback[]>(data.pendingSiteFeedback || []);
   const [probeResults, setProbeResults] = useState<Record<string, ProbeResult>>({});
   const [activeTab, setActiveTab] = useState<AdminTab>("review");
   const [searchQuery, setSearchQuery] = useState("");
@@ -234,10 +238,10 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       { label: "标准商品", value: data.products.length, icon: <Database key="d" size={15} /> },
       { label: "报价", value: data.rawOffers.length, icon: <FileInput key="f" size={15} /> },
       { label: "待审核", value: reviewSubmissions.length, icon: <Inbox key="i" size={15} /> },
-      { label: "反馈", value: offerFeedback.length, icon: <Flag key="fb" size={15} /> },
+      { label: "反馈", value: siteFeedback.length + offerFeedback.length, icon: <Flag key="fb" size={15} /> },
       { label: "采集待办", value: collectorTodoSubmissions.length, icon: <TerminalSquare key="t" size={15} /> },
     ],
-    [collectorTodoSubmissions.length, data.products.length, data.rawOffers.length, offerFeedback.length, reviewSubmissions.length, sources.length],
+    [collectorTodoSubmissions.length, data.products.length, data.rawOffers.length, offerFeedback.length, reviewSubmissions.length, siteFeedback.length, sources.length],
   );
   const sourceStatsById = useMemo(
     () => new Map((data.sourceOfferStats || []).map((stats) => [stats.sourceId, stats])),
@@ -284,14 +288,14 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     () => [
       { id: "review", label: "审核", count: reviewSubmissions.length, icon: <Inbox size={15} /> },
       { id: "todo", label: "待办", count: collectorTodoSubmissions.length, icon: <ClipboardList size={15} /> },
-      { id: "feedback", label: "反馈", count: offerFeedback.length, icon: <Flag size={15} /> },
+      { id: "feedback", label: "反馈", count: siteFeedback.length + offerFeedback.length, icon: <Flag size={15} /> },
       { id: "history", label: "历史", count: null, icon: <History size={15} /> },
       { id: "collect", label: "采集", count: failedRunCount || null, icon: <RefreshCcw size={15} /> },
       { id: "sources", label: "渠道", count: sources.length, icon: <Store size={15} /> },
       { id: "manual", label: "维护", count: null, icon: <Plus size={15} /> },
       { id: "logs", label: "日志", count: data.crawlRuns.length, icon: <Clock size={15} /> },
     ],
-    [collectorTodoSubmissions.length, data.crawlRuns.length, failedRunCount, offerFeedback.length, reviewSubmissions.length, sources.length],
+    [collectorTodoSubmissions.length, data.crawlRuns.length, failedRunCount, offerFeedback.length, reviewSubmissions.length, siteFeedback.length, sources.length],
   );
 
   /* ─── Keyboard shortcuts ─── */
@@ -337,6 +341,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       setGlobalMessage({ type: "success", text: "后台已解锁。" });
       void refreshSubmissions(password);
       void refreshOfferFeedback(password);
+      void refreshSiteFeedback(password);
     } else {
       setGlobalMessage({ type: "error", text: result.message || "登录失败。" });
     }
@@ -760,6 +765,20 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     }
   }
 
+  async function refreshSiteFeedback(currentPassword = password) {
+    try {
+      const response = await fetch("/api/admin/site-feedback?status=pending", {
+        headers: { "x-admin-password": currentPassword },
+      });
+      const json = await response.json().catch(() => ({ ok: false }));
+      if (response.ok && json.ok) {
+        setSiteFeedback(json.feedback || []);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   async function updateFeedbackStatus(feedback: OfferFeedback, status: OfferFeedbackStatus, reviewerNote?: string) {
     setLoadingAction(`feedback-${status}-${feedback.id}`);
     const result = await requestWithMethod("/api/admin/feedback", "PATCH", password, {
@@ -774,6 +793,23 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       showRowFeedback(feedback.id, "success", status === "ignored" ? "反馈已忽略。" : "反馈已标记处理。");
     } else {
       showRowFeedback(feedback.id, "error", result.message || "处理反馈失败。");
+    }
+  }
+
+  async function updateSiteFeedbackStatus(feedback: SiteFeedback, status: SiteFeedbackStatus, reviewerNote?: string) {
+    setLoadingAction(`site-feedback-${status}-${feedback.id}`);
+    const result = await requestWithMethod("/api/admin/site-feedback", "PATCH", password, {
+      id: feedback.id,
+      status,
+      reviewerNote: reviewerNote || null,
+    });
+    setLoadingAction(null);
+
+    if (result.ok && result.feedback) {
+      setSiteFeedback((prev) => prev.filter((item) => item.id !== feedback.id));
+      showRowFeedback(feedback.id, "success", status === "ignored" ? "意见已忽略。" : "意见已标记处理。");
+    } else {
+      showRowFeedback(feedback.id, "error", result.message || "处理意见失败。");
     }
   }
 
@@ -1209,7 +1245,10 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                     setFocusedIndex(-1);
                     setExpandedId(null);
                     if (tab.id === "history" && !historySubmissions.length) void loadHistory();
-                    if (tab.id === "feedback") void refreshOfferFeedback();
+                    if (tab.id === "feedback") {
+                      void refreshOfferFeedback();
+                      void refreshSiteFeedback();
+                    }
                   }}
                   className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
                     activeTab === tab.id
@@ -1474,25 +1513,51 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                 <div className="mb-4 flex flex-wrap items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => refreshOfferFeedback()}
+                    onClick={() => {
+                      void refreshSiteFeedback();
+                      void refreshOfferFeedback();
+                    }}
                     className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4]"
                   >
                     <RefreshCcw size={14} />
                     刷新
                   </button>
-                  <span className="text-xs text-[#adb3b4]">{offerFeedback.length} 条待处理反馈</span>
+                  <span className="text-xs text-[#adb3b4]">
+                    {siteFeedback.length} 条站点意见，{offerFeedback.length} 条报价举报
+                  </span>
                 </div>
-                <OfferFeedbackList
-                  feedback={offerFeedback}
-                  offerById={offerById}
-                  productByKey={productByKey}
-                  loadingAction={loadingAction}
-                  rowFeedback={rowFeedback}
-                  onHideOffer={hideOfferFromFeedback}
-                  onHideSource={hideSourceFromFeedback}
-                  onResolve={(item) => updateFeedbackStatus(item, "resolved", "已人工确认处理")}
-                  onIgnore={(item) => updateFeedbackStatus(item, "ignored", "已忽略")}
-                />
+                <div className="space-y-6">
+                  <section>
+                    <div className="mb-3 flex items-center gap-2">
+                      <MessageCircle size={15} className="text-[#5a6061]" />
+                      <h3 className="text-sm font-semibold text-[#202829]">站点意见</h3>
+                    </div>
+                    <SiteFeedbackList
+                      feedback={siteFeedback}
+                      loadingAction={loadingAction}
+                      rowFeedback={rowFeedback}
+                      onResolve={(item) => updateSiteFeedbackStatus(item, "resolved", "已人工确认处理")}
+                      onIgnore={(item) => updateSiteFeedbackStatus(item, "ignored", "已忽略")}
+                    />
+                  </section>
+                  <section>
+                    <div className="mb-3 flex items-center gap-2">
+                      <Flag size={15} className="text-[#5a6061]" />
+                      <h3 className="text-sm font-semibold text-[#202829]">报价举报</h3>
+                    </div>
+                    <OfferFeedbackList
+                      feedback={offerFeedback}
+                      offerById={offerById}
+                      productByKey={productByKey}
+                      loadingAction={loadingAction}
+                      rowFeedback={rowFeedback}
+                      onHideOffer={hideOfferFromFeedback}
+                      onHideSource={hideSourceFromFeedback}
+                      onResolve={(item) => updateFeedbackStatus(item, "resolved", "已人工确认处理")}
+                      onIgnore={(item) => updateFeedbackStatus(item, "ignored", "已忽略")}
+                    />
+                  </section>
+                </div>
               </div>
             )}
 
@@ -2517,6 +2582,100 @@ function OfferFeedbackList({
   );
 }
 
+function SiteFeedbackList({
+  feedback,
+  loadingAction,
+  rowFeedback,
+  onResolve,
+  onIgnore,
+}: {
+  feedback: SiteFeedback[];
+  loadingAction: string | null;
+  rowFeedback: RowFeedback | null;
+  onResolve: (feedback: SiteFeedback) => void;
+  onIgnore: (feedback: SiteFeedback) => void;
+}) {
+  if (!feedback.length) {
+    return (
+      <EmptyState
+        icon={<MessageCircle size={32} className="text-[#adb3b4]" />}
+        title="暂无待处理意见"
+        description="顶部反馈入口提交的功能建议、体验问题和站点意见会出现在这里。"
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {feedback.map((item) => {
+        const resolveLoading = loadingAction === `site-feedback-resolved-${item.id}`;
+        const ignoreLoading = loadingAction === `site-feedback-ignored-${item.id}`;
+        const rowState = rowFeedback?.id === item.id ? rowFeedback : null;
+
+        return (
+          <article key={item.id} className="rounded-lg border border-[#adb3b4]/20 bg-white p-4 shadow-[0_12px_34px_rgba(45,52,53,0.035)]">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${siteFeedbackTypeClass(item.type)}`}>
+                    {siteFeedbackTypeLabel(item.type)}
+                  </span>
+                  <span className="text-xs text-[#adb3b4]">{formatRelativeTime(item.createdAt)}</span>
+                </div>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#2d3435]">
+                  {item.message}
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#5a6061]">
+                  {item.pageUrl ? (
+                    <a
+                      href={item.pageUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex max-w-full items-center gap-1 break-all text-[#47657a] transition-colors hover:text-[#2d3435]"
+                    >
+                      <span className="break-all">{item.pageUrl}</span>
+                      <ExternalLink size={12} className="shrink-0" />
+                    </a>
+                  ) : (
+                    <span>未记录页面</span>
+                  )}
+                  {item.contact ? <span>联系方式：{item.contact}</span> : null}
+                </div>
+                {rowState ? (
+                  <div className={`mt-3 rounded-lg px-3 py-2 text-xs ${rowFeedbackClass(rowState.type)}`}>
+                    {rowState.text}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex shrink-0 flex-wrap gap-2 xl:justify-end">
+                <button
+                  type="button"
+                  disabled={resolveLoading}
+                  onClick={() => onResolve(item)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#2f7a4b]/20 bg-white px-3 text-xs font-medium text-[#2f7a4b] transition-colors hover:bg-[#e8f3ec] disabled:opacity-60"
+                >
+                  {resolveLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                  已处理
+                </button>
+                <button
+                  type="button"
+                  disabled={ignoreLoading}
+                  onClick={() => onIgnore(item)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4] disabled:opacity-60"
+                >
+                  {ignoreLoading ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                  忽略
+                </button>
+              </div>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 function Panel({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
   return (
     <section className="rounded-lg border border-[#adb3b4]/20 bg-white p-5">
@@ -3152,6 +3311,25 @@ function feedbackReasonClass(value: OfferFeedback["reason"]): string {
   if (value === "fraud" || value === "bad_source") return "bg-[#fbe9e7] text-[#9b3328]";
   if (value === "wrong_price" || value === "stock_mismatch" || value === "item_removed") return "bg-[#fff7e8] text-[#7a541b]";
   if (value === "wrong_category") return "bg-[#eef3f8] text-[#47657a]";
+  return "bg-[#f2f4f4] text-[#5a6061]";
+}
+
+function siteFeedbackTypeLabel(value: SiteFeedback["type"]): string {
+  const labels: Record<SiteFeedback["type"], string> = {
+    feature: "功能建议",
+    data: "数据问题",
+    ux: "页面体验",
+    channel: "新渠道建议",
+    bug: "Bug / 报错",
+    other: "其他",
+  };
+  return labels[value] || "其他";
+}
+
+function siteFeedbackTypeClass(value: SiteFeedback["type"]): string {
+  if (value === "bug" || value === "data") return "bg-[#fff7e8] text-[#7a541b]";
+  if (value === "feature" || value === "channel") return "bg-[#e8f3ec] text-[#2f7a4b]";
+  if (value === "ux") return "bg-[#eef3f8] text-[#47657a]";
   return "bg-[#f2f4f4] text-[#5a6061]";
 }
 

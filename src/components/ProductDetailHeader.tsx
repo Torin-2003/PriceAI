@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppLogo } from "@/components/AppLogo";
-import { FeedbackLink } from "@/components/FeedbackLink";
+import { FeedbackLink, GitHubLink } from "@/components/FeedbackLink";
 
 export function ProductDetailHeader() {
   const [returnHref, setReturnHref] = useState("/");
@@ -25,6 +25,9 @@ export function ProductDetailHeader() {
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <div className="hidden sm:block">
             <FeedbackLink compact />
+          </div>
+          <div className="hidden sm:block">
+            <GitHubLink compact />
           </div>
           <Link href={returnHref} aria-label="PriceAI 首页" className="shrink-0">
             <AppLogo compact />
