@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getAdminPasswordFromRequest, rejectSubmission } from "@/lib/admin";
+import { clearAdminDataCache } from "@/lib/data";
 import { requireAdminPassword } from "@/lib/env";
 
 const schema = z.object({
@@ -12,6 +13,7 @@ export async function POST(request: Request) {
     requireAdminPassword(getAdminPasswordFromRequest(request));
     const payload = schema.parse(await request.json());
     const submission = await rejectSubmission(payload.id, payload.reviewerNote ?? null);
+    clearAdminDataCache();
     return Response.json({ ok: true, submission });
   } catch (error) {
     const message = error instanceof Error ? error.message : "操作失败。";

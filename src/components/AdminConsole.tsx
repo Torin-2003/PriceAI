@@ -126,7 +126,8 @@ const OFFER_EMERGENCY_PAGE_SIZE = 50;
 export function AdminConsole({ data }: { data: AdminSummary }) {
   const router = useRouter();
   const [password, setPassword] = useState("");
-  const [authed, setAuthed] = useState(false);
+  const [optimisticAuthed, setOptimisticAuthed] = useState(false);
+  const authed = data.isAuthenticated || optimisticAuthed;
   const [globalMessage, setGlobalMessage] = useState<Message | null>(null);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [submissions, setSubmissions] = useState<ChannelSubmission[]>(data.pendingSubmissions || []);
@@ -222,17 +223,6 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
   }, [filteredReview, probeResults, sourceById]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const stored = window.sessionStorage.getItem("ai-price-hub-admin");
-      if (stored) {
-        setPassword(stored);
-        setAuthed(true);
-      }
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
     if (rowFeedback) {
       const timer = window.setTimeout(() => setRowFeedback(null), 4000);
       return () => window.clearTimeout(timer);
@@ -247,12 +237,12 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     () => [
       { label: "渠道源", value: sources.length, icon: <Store key="s" size={15} /> },
       { label: "标准商品", value: data.products.length, icon: <Database key="d" size={15} /> },
-      { label: "报价", value: data.rawOffers.length, icon: <FileInput key="f" size={15} /> },
+      { label: "报价", value: data.rawOfferTotal, icon: <FileInput key="f" size={15} /> },
       { label: "待审核", value: reviewSubmissions.length, icon: <Inbox key="i" size={15} /> },
       { label: "反馈", value: siteFeedback.length + offerFeedback.length, icon: <Flag key="fb" size={15} /> },
       { label: "采集待办", value: collectorTodoSubmissions.length, icon: <TerminalSquare key="t" size={15} /> },
     ],
-    [collectorTodoSubmissions.length, data.products.length, data.rawOffers.length, offerFeedback.length, reviewSubmissions.length, siteFeedback.length, sources.length],
+    [collectorTodoSubmissions.length, data.products.length, data.rawOfferTotal, offerFeedback.length, reviewSubmissions.length, siteFeedback.length, sources.length],
   );
   const sourceStatsById = useMemo(
     () => new Map((data.sourceOfferStats || []).map((stats) => [stats.sourceId, stats])),
@@ -278,6 +268,12 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     () => filterAdminOffers(data.hiddenRawOffers || [], offerSearchQuery),
     [data.hiddenRawOffers, offerSearchQuery],
   );
+  const visibleOfferTotalCount = offerSearchQuery.trim()
+    ? matchedVisibleOffers.length
+    : data.rawOfferTotal;
+  const hiddenOfferTotalCount = offerSearchQuery.trim()
+    ? matchedHiddenOffers.length
+    : data.hiddenRawOfferTotal;
   const filteredVisibleOffers = useMemo(
     () => matchedVisibleOffers.slice(0, visibleOfferLimit),
     [matchedVisibleOffers, visibleOfferLimit],
@@ -351,12 +347,9 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     const result = await request("/api/admin/login", password, { password });
     setLoadingAction(null);
     if (result.ok) {
-      window.sessionStorage.setItem("ai-price-hub-admin", password);
-      setAuthed(true);
+      setOptimisticAuthed(true);
       setGlobalMessage({ type: "success", text: "后台已解锁。" });
-      void refreshSubmissions(password);
-      void refreshOfferFeedback(password);
-      void refreshSiteFeedback(password);
+      router.refresh();
     } else {
       setGlobalMessage({ type: "error", text: result.message || "登录失败。" });
     }
@@ -1258,7 +1251,11 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
               使用 `.env.local` 里的 `ADMIN_PASSWORD`。未配置时，本地默认密码为 `ai-price-hub-local`。
             </p>
             <form onSubmit={login} className="mt-4 flex gap-2">
+              <label htmlFor="admin-password" className="sr-only">
+                后台密码
+              </label>
               <input
+                id="admin-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 type="password"
@@ -1940,7 +1937,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                         title="当前可见报价"
                         emptyText="没有匹配的可见报价。"
                         offers={filteredVisibleOffers}
-                        totalCount={matchedVisibleOffers.length}
+                        totalCount={visibleOfferTotalCount}
                         loadingAction={loadingAction}
                         actionLabel="下架"
                         actionTone="danger"
@@ -1952,7 +1949,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                         title="手动下架报价"
                         emptyText="没有匹配的手动下架报价。"
                         offers={filteredHiddenOffers}
-                        totalCount={matchedHiddenOffers.length}
+                        totalCount={hiddenOfferTotalCount}
                         loadingAction={loadingAction}
                         actionLabel="恢复"
                         actionTone="success"

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getAdminPasswordFromRequest, reparseSubmission } from "@/lib/admin";
+import { clearAdminDataCache } from "@/lib/data";
 import { requireAdminPassword } from "@/lib/env";
 
 const schema = z.object({
@@ -11,6 +12,7 @@ export async function POST(request: Request) {
     requireAdminPassword(getAdminPasswordFromRequest(request));
     const payload = schema.parse(await request.json());
     const submission = await reparseSubmission(payload.id);
+    clearAdminDataCache();
     return Response.json({ ok: true, submission });
   } catch (error) {
     const message = error instanceof Error ? error.message : "重新解析失败。";

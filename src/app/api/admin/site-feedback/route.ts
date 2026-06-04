@@ -3,6 +3,7 @@ import {
   listSiteFeedback,
   updateSiteFeedbackStatus,
 } from "@/lib/admin";
+import { clearAdminDataCache } from "@/lib/data";
 import { requireAdminPassword } from "@/lib/env";
 import { z } from "zod";
 
@@ -34,6 +35,7 @@ export async function PATCH(request: Request) {
     requireAdminPassword(getAdminPasswordFromRequest(request));
     const payload = patchSchema.parse(await request.json());
     const feedback = await updateSiteFeedbackStatus(payload);
+    clearAdminDataCache();
     return Response.json({ ok: true, feedback });
   } catch (error) {
     return Response.json(

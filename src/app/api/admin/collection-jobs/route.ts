@@ -1,4 +1,5 @@
 import { getAdminPasswordFromRequest } from "@/lib/admin";
+import { clearAdminDataCache } from "@/lib/data";
 import { requireAdminPassword } from "@/lib/env";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { stableId } from "@/lib/utils";
@@ -65,6 +66,8 @@ export async function POST(request: Request) {
       .select("*");
 
     if (error) throw error;
+
+    clearAdminDataCache();
 
     return Response.json({
       ok: true,

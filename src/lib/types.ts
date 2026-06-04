@@ -119,6 +119,9 @@ export type DashboardData = {
 };
 
 export type AdminSummary = DashboardData & {
+  isAuthenticated: boolean;
+  rawOfferTotal: number;
+  hiddenRawOfferTotal: number;
   crawlRuns: CrawlRun[];
   collectionJobs: CollectionJob[];
   pendingSubmissions: ChannelSubmission[];

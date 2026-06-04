@@ -38,7 +38,8 @@ export function SubmissionFloater() {
     if (typeof window === "undefined") return;
     if (new URLSearchParams(window.location.search).get("submit") !== "channel") return;
 
-    setOpen(true);
+    const timer = window.setTimeout(() => setOpen(true), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {

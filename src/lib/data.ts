@@ -13,6 +13,7 @@ import type {
   DashboardData,
   ExplorerData,
   ExplorerProductSummary,
+  ProductGroup,
   RawOffer,
   Source,
   SourceOfferStats,
@@ -23,6 +24,9 @@ const SUPABASE_PAGE_SIZE = 1000;
 const PUBLIC_DATA_CACHE_TTL_MS = 30_000;
 const EXPLORER_DATA_CACHE_TTL_MS = 30_000;
 const PRODUCT_OFFERS_CACHE_TTL_MS = 30_000;
+const DASHBOARD_DATA_CACHE_TTL_MS = 30_000;
+const ADMIN_DATA_CACHE_TTL_MS = 30_000;
+const ADMIN_OFFER_SAMPLE_LIMIT = 80;
 const RAW_OFFER_PUBLIC_SELECT = [
   "id",
   "source_id",
@@ -62,6 +66,10 @@ let publicOfferDataCache: { expiresAt: number; value: PublicOfferData } | null =
 let publicOfferDataPromise: Promise<PublicOfferData> | null = null;
 let explorerDataCache: { expiresAt: number; value: ExplorerData } | null = null;
 let explorerDataPromise: Promise<ExplorerData> | null = null;
+let dashboardDataCache: { expiresAt: number; value: DashboardData } | null = null;
+let dashboardDataPromise: Promise<DashboardData> | null = null;
+let adminSummaryCache: { expiresAt: number; value: AdminSummary } | null = null;
+let adminSummaryPromise: Promise<AdminSummary> | null = null;
 const productOffersCache = new Map<string, { expiresAt: number; value: Awaited<ReturnType<typeof loadPublicProductOffers>> }>();
 
 type OfferListFilters = {
@@ -86,11 +94,38 @@ export function clearPublicDataCache(): void {
   publicOfferDataPromise = null;
   explorerDataCache = null;
   explorerDataPromise = null;
+  dashboardDataCache = null;
+  dashboardDataPromise = null;
+  clearAdminDataCache();
   productOffersCache.clear();
 }
 
+export function clearAdminDataCache(): void {
+  adminSummaryCache = null;
+  adminSummaryPromise = null;
+}
+
 export async function getDashboardData(): Promise<DashboardData> {
-  return readDashboardData();
+  const now = Date.now();
+  if (dashboardDataCache && dashboardDataCache.expiresAt > now) {
+    return dashboardDataCache.value;
+  }
+
+  if (dashboardDataPromise) return dashboardDataPromise;
+
+  dashboardDataPromise = readDashboardData()
+    .then((value) => {
+      dashboardDataCache = {
+        expiresAt: Date.now() + DASHBOARD_DATA_CACHE_TTL_MS,
+        value,
+      };
+      return value;
+    })
+    .finally(() => {
+      dashboardDataPromise = null;
+    });
+
+  return dashboardDataPromise;
 }
 
 async function readDashboardData(): Promise<DashboardData> {
@@ -267,13 +302,73 @@ async function buildExplorerData(): Promise<ExplorerData> {
   };
 }
 
-export async function getAdminSummary(): Promise<AdminSummary> {
-  const dashboard = await getDashboardData();
+export function getEmptyAdminSummary(isAuthenticated = false): AdminSummary {
+  return {
+    generatedAt: new Date().toISOString(),
+    configured: isSupabaseConfigured(),
+    products: [],
+    sources: [],
+    rawOffers: [],
+    rawOfferTotal: 0,
+    hiddenRawOfferTotal: 0,
+    isAuthenticated,
+    crawlRuns: [],
+    collectionJobs: [],
+    pendingSubmissions: [],
+    pendingOfferFeedback: [],
+    pendingSiteFeedback: [],
+    sourceOfferStats: [],
+    hiddenRawOffers: [],
+  };
+}
+
+export async function getAdminSummary(options: { isAuthenticated?: boolean } = {}): Promise<AdminSummary> {
+  const now = Date.now();
+  if (adminSummaryCache && adminSummaryCache.expiresAt > now) {
+    return {
+      ...adminSummaryCache.value,
+      isAuthenticated: Boolean(options.isAuthenticated),
+    };
+  }
+
+  if (adminSummaryPromise) {
+    const value = await adminSummaryPromise;
+    return {
+      ...value,
+      isAuthenticated: Boolean(options.isAuthenticated),
+    };
+  }
+
+  adminSummaryPromise = readAdminSummary()
+    .then((value) => {
+      adminSummaryCache = {
+        expiresAt: Date.now() + ADMIN_DATA_CACHE_TTL_MS,
+        value,
+      };
+      return value;
+    })
+    .finally(() => {
+      adminSummaryPromise = null;
+    });
+
+  const value = await adminSummaryPromise;
+  return {
+    ...value,
+    isAuthenticated: Boolean(options.isAuthenticated),
+  };
+}
+
+async function readAdminSummary(): Promise<AdminSummary> {
   const supabase = getSupabaseServerClient();
 
   if (!supabase) {
+    const dashboard = await getDashboardData();
+    const adminDashboard = toAdminDashboardData(dashboard, dashboard.rawOffers.length);
     return {
-      ...dashboard,
+      ...adminDashboard,
+      rawOfferTotal: dashboard.rawOffers.length,
+      hiddenRawOfferTotal: 0,
+      isAuthenticated: false,
       crawlRuns: [],
       collectionJobs: [],
       pendingSubmissions: [],
@@ -285,14 +380,20 @@ export async function getAdminSummary(): Promise<AdminSummary> {
   }
 
   const [
+    sourcesResult,
+    productsResult,
+    visibleOfferData,
     { data, error },
     collectionJobs,
     pendingSubmissions,
     pendingOfferFeedback,
     pendingSiteFeedback,
     sourceOfferStats,
-    hiddenRawOffers,
+    hiddenOfferData,
   ] = await Promise.all([
+    supabase.from("sources").select("*").order("name"),
+    supabase.from("canonical_products").select("*").eq("is_active", true),
+    listAdminVisibleRawOffers().catch(() => ({ rows: [], total: 0 })),
     supabase
       .from("crawl_runs")
       .select("*")
@@ -303,31 +404,83 @@ export async function getAdminSummary(): Promise<AdminSummary> {
     listOfferFeedback("pending").catch(() => []),
     listSiteFeedback("pending").catch(() => []),
     listSourceOfferStats().catch(() => []),
-    listAdminHiddenRawOfferRows().then((rows) => rows.map(mapRawOffer)).catch(() => []),
+    listAdminHiddenRawOffers().catch(() => ({ rows: [], total: 0 })),
   ]);
+
+  const sources = sourcesResult.error ? [] : (sourcesResult.data || []).map(mapSource);
+  const canonicalProducts = productsResult.error
+    ? canonicalCatalog
+    : (productsResult.data || []).map(mapCanonicalProduct);
+  const products = (canonicalProducts.length ? canonicalProducts : canonicalCatalog)
+    .map(makeEmptyProductGroup);
+  const baseDashboard: DashboardData = {
+    generatedAt: new Date().toISOString(),
+    configured: isSupabaseConfigured(),
+    products,
+    sources,
+    rawOffers: visibleOfferData.rows,
+  };
 
   if (error) {
     return {
-      ...dashboard,
+      ...baseDashboard,
+      rawOfferTotal: visibleOfferData.total,
+      hiddenRawOfferTotal: hiddenOfferData.total,
+      isAuthenticated: false,
       crawlRuns: [],
       collectionJobs,
       pendingSubmissions,
       pendingOfferFeedback,
       pendingSiteFeedback,
       sourceOfferStats,
-      hiddenRawOffers,
+      hiddenRawOffers: hiddenOfferData.rows,
     };
   }
 
   return {
-    ...dashboard,
+    ...baseDashboard,
+    rawOfferTotal: visibleOfferData.total,
+    hiddenRawOfferTotal: hiddenOfferData.total,
+    isAuthenticated: false,
     crawlRuns: (data || []).map(mapCrawlRun),
     collectionJobs,
     pendingSubmissions,
     pendingOfferFeedback,
     pendingSiteFeedback,
     sourceOfferStats,
-    hiddenRawOffers,
+    hiddenRawOffers: hiddenOfferData.rows,
+  };
+}
+
+function toAdminDashboardData(dashboard: DashboardData, rawOfferTotal: number): DashboardData {
+  return {
+    ...dashboard,
+    products: dashboard.products.map(stripProductOffersForAdmin),
+    rawOffers: dashboard.rawOffers.slice(0, Math.min(rawOfferTotal, ADMIN_OFFER_SAMPLE_LIMIT)),
+  };
+}
+
+function stripProductOffersForAdmin(product: ProductGroup): ProductGroup {
+  return {
+    ...product,
+    offers: [],
+    lowestOffer: null,
+  };
+}
+
+function makeEmptyProductGroup(product: CanonicalProduct): ProductGroup {
+  return {
+    ...product,
+    offers: [],
+    offerCount: 0,
+    inStockCount: 0,
+    outOfStockCount: 0,
+    lowestPrice: null,
+    lowestPriceLabel: "暂无价格",
+    lowestPriceTone: "muted",
+    lowestOffer: null,
+    latestSeenAt: null,
+    anomalyFlags: [],
   };
 }
 
@@ -397,28 +550,58 @@ async function listSourceOfferStats(): Promise<SourceOfferStats[]> {
   return Array.from(map.values());
 }
 
-async function listAdminHiddenRawOfferRows(): Promise<Record<string, unknown>[]> {
+async function listAdminVisibleRawOffers(): Promise<{ rows: RawOffer[]; total: number }> {
   const supabase = getSupabaseServerClient();
-  if (!supabase) return [];
+  if (!supabase) return { rows: [], total: 0 };
 
-  const rows: Record<string, unknown>[] = [];
-  for (let from = 0; ; from += SUPABASE_PAGE_SIZE) {
-    const to = from + SUPABASE_PAGE_SIZE - 1;
-    const { data, error } = await supabase
+  const [rowsResult, countResult] = await Promise.all([
+    supabase
       .from("raw_offers")
-      .select("*")
+      .select(RAW_OFFER_PUBLIC_SELECT)
+      .eq("hidden", false)
+      .order("captured_at", { ascending: false })
+      .limit(ADMIN_OFFER_SAMPLE_LIMIT),
+    supabase
+      .from("raw_offers")
+      .select("id", { count: "exact", head: true })
+      .eq("hidden", false),
+  ]);
+
+  if (rowsResult.error) throw rowsResult.error;
+  if (countResult.error) throw countResult.error;
+
+  return {
+    rows: ((rowsResult.data || []) as unknown as Record<string, unknown>[]).map(mapRawOffer),
+    total: countResult.count || rowsResult.data?.length || 0,
+  };
+}
+
+async function listAdminHiddenRawOffers(): Promise<{ rows: RawOffer[]; total: number }> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return { rows: [], total: 0 };
+
+  const [rowsResult, countResult] = await Promise.all([
+    supabase
+      .from("raw_offers")
+      .select(RAW_OFFER_PUBLIC_SELECT)
       .eq("hidden", true)
       .ilike("failure_reason", `${ADMIN_MANUAL_HIDE_REASON_PREFIX}%`)
       .order("updated_at", { ascending: false })
-      .range(from, to);
+      .limit(ADMIN_OFFER_SAMPLE_LIMIT),
+    supabase
+      .from("raw_offers")
+      .select("id", { count: "exact", head: true })
+      .eq("hidden", true)
+      .ilike("failure_reason", `${ADMIN_MANUAL_HIDE_REASON_PREFIX}%`),
+  ]);
 
-    if (error) throw error;
+  if (rowsResult.error) throw rowsResult.error;
+  if (countResult.error) throw countResult.error;
 
-    rows.push(...(data || []));
-    if (!data || data.length < SUPABASE_PAGE_SIZE) break;
-  }
-
-  return rows;
+  return {
+    rows: ((rowsResult.data || []) as unknown as Record<string, unknown>[]).map(mapRawOffer),
+    total: countResult.count || rowsResult.data?.length || 0,
+  };
 }
 
 export async function getProductGroup(id: string) {

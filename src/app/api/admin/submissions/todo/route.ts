@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getAdminPasswordFromRequest, markSubmissionCollectorTodo } from "@/lib/admin";
+import { clearAdminDataCache } from "@/lib/data";
 import { requireAdminPassword } from "@/lib/env";
 
 const schema = z.object({
@@ -12,6 +13,7 @@ export async function POST(request: Request) {
     requireAdminPassword(getAdminPasswordFromRequest(request));
     const payload = schema.parse(await request.json());
     const submission = await markSubmissionCollectorTodo(payload.id, payload.note ?? null);
+    clearAdminDataCache();
     return Response.json({ ok: true, submission });
   } catch (error) {
     const message = error instanceof Error ? error.message : "加入待办失败。";

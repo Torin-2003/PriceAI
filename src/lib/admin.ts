@@ -4,6 +4,7 @@ import { promises as dns } from "node:dns";
 import net from "node:net";
 
 import { canonicalCatalog, classifyOffer } from "./catalog";
+import { ADMIN_SESSION_COOKIE, getAdminPassword, verifyAdminSessionToken } from "./env";
 import { freshnessFields } from "./freshness";
 import { getSupabaseServerClient } from "./supabase";
 import type {
@@ -53,6 +54,14 @@ export function getAdminPasswordFromRequest(request: Request): string | null {
 
   const authorization = request.headers.get("authorization");
   if (authorization?.startsWith("Bearer ")) return authorization.slice("Bearer ".length);
+
+  const cookie = request.headers
+    .get("cookie")
+    ?.split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${ADMIN_SESSION_COOKIE}=`))
+    ?.slice(ADMIN_SESSION_COOKIE.length + 1);
+  if (cookie && verifyAdminSessionToken(decodeURIComponent(cookie))) return getAdminPassword();
 
   return null;
 }
