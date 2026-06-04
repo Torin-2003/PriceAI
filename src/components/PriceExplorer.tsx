@@ -27,10 +27,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppLogo } from "@/components/AppLogo";
 import { BrandIcon } from "@/components/BrandIcon";
-import { FeedbackLink, GitHubLink } from "@/components/FeedbackLink";
 import { OfferActions, OfferFeedbackDialog } from "@/components/ProductOffersPanel";
+import { SiteHeader } from "@/components/SiteHeader";
 import {
   collectOfferFlags,
   comparePlatformOrder,
@@ -509,29 +508,14 @@ export function PriceExplorer({
   return (
     <div className="min-h-screen bg-[#f9f9f9] text-[#2d3435]">
       <div className="sticky top-0 z-40 bg-[#f9f9f9]/95 shadow-[0_10px_24px_rgba(45,52,53,0.035)] backdrop-blur-xl">
-        <header>
-          <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-5 px-5 py-4 sm:px-8">
-            <Link href="/" aria-label="PriceAI 首页" className="shrink-0">
-              <AppLogo />
-            </Link>
-            <div className="flex items-center gap-3">
-              <div className="hidden items-center gap-3 lg:flex">
-                <Metric label="标准商品" value={metricValue(explorerData.products.length, dataLoading)} icon={<PackageCheck size={15} />} />
-                <Metric label="报价" value={metricValue(explorerData.offerTotal, dataLoading)} icon={<Database size={15} />} />
-                <Metric label="有货" value={metricValue(totalAvailable, dataLoading)} icon={<CheckCircle2 size={15} />} />
-                <Metric label="缺货" value={metricValue(totalOutOfStock, dataLoading)} icon={<Store size={15} />} />
-              </div>
-              <Link
-                href="/about"
-                className="hidden h-10 shrink-0 items-center rounded-full bg-white px-3.5 text-sm font-semibold text-[#2d3435] shadow-[0_10px_30px_rgba(45,52,53,0.06)] ring-1 ring-[#adb3b4]/25 transition hover:-translate-y-0.5 hover:bg-[#f5f7f7] hover:text-[#202829] sm:inline-flex"
-              >
-                关于
-              </Link>
-              <FeedbackLink compact />
-              <GitHubLink compact />
-            </div>
-          </div>
-        </header>
+        <SiteHeader
+          metrics={[
+            { label: "标准商品", value: metricValue(explorerData.products.length, dataLoading), icon: <PackageCheck size={15} /> },
+            { label: "报价", value: metricValue(explorerData.offerTotal, dataLoading), icon: <Database size={15} /> },
+            { label: "有货", value: metricValue(totalAvailable, dataLoading), icon: <CheckCircle2 size={15} /> },
+            { label: "缺货", value: metricValue(totalOutOfStock, dataLoading), icon: <Store size={15} /> },
+          ]}
+        />
 
         <section className="hidden border-y border-[#dfe4e5] px-5 py-2 sm:px-8 md:block">
           <div className="mx-auto max-w-[1500px]">
@@ -1370,18 +1354,6 @@ function ViewToggleButton({
       {icon}
       {label}
     </button>
-  );
-}
-
-function Metric({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
-  return (
-    <div className="rounded-lg bg-[#f2f4f4] px-4 py-2.5">
-      <div className="flex items-center gap-2 text-[0.68rem] font-medium uppercase tracking-[0.14em] text-[#5a6061]">
-        {icon}
-        {label}
-      </div>
-      <p className="mt-1 text-lg font-bold text-[#202829]">{value}</p>
-    </div>
   );
 }
 
