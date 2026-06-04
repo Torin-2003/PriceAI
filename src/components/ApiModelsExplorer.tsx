@@ -185,7 +185,7 @@ export function ApiModelsExplorer() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1180px] w-full border-collapse text-left text-sm">
+          <table className="min-w-[1520px] w-full border-collapse text-left text-sm">
             <thead className="bg-[#f2f4f4] text-[0.68rem] font-semibold text-[#5a6061]">
               <tr>
                 <TableHead>模型</TableHead>
@@ -193,10 +193,13 @@ export function ApiModelsExplorer() {
                 <TableHead>类型</TableHead>
                 <TableHead>输入价</TableHead>
                 <TableHead>输出价</TableHead>
-                <TableHead>免费/套餐</TableHead>
+                <TableHead>缓存价/说明</TableHead>
+                <TableHead>免费/套餐额度</TableHead>
                 <TableHead>限制</TableHead>
-                <TableHead>兼容</TableHead>
+                <TableHead>兼容性</TableHead>
+                <TableHead>适合工具</TableHead>
                 <TableHead>来源</TableHead>
+                <TableHead>更新时间</TableHead>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#edf0f1]">
@@ -255,10 +258,14 @@ function ApiOfferRow({ offer, currency }: { offer: ApiModelOffer; currency: ApiC
       </td>
       <td className="px-5 py-4">
         <PriceText value={formatApiPrice(offer.inputPrice, currency)} />
-        {offer.cachePrice ? <p className="mt-1 max-w-[180px] text-xs leading-5 text-[#5a6061]">缓存：{formatApiPrice(offer.cachePrice, currency)}</p> : null}
       </td>
       <td className="px-5 py-4">
         <PriceText value={formatApiPrice(offer.outputPrice, currency)} />
+      </td>
+      <td className="px-5 py-4">
+        <p className="max-w-[190px] text-sm font-semibold leading-6 text-[#202829]">
+          {offer.cachePrice ? formatApiPrice(offer.cachePrice, currency) : "待确认"}
+        </p>
       </td>
       <td className="px-5 py-4">
         <p className="max-w-[230px] text-sm leading-6 text-[#2d3435]">{offer.freeOrPlan}</p>
@@ -275,7 +282,9 @@ function ApiOfferRow({ offer, currency }: { offer: ApiModelOffer; currency: ApiC
             </span>
           ))}
         </div>
-        <p className="mt-2 max-w-[230px] text-xs leading-5 text-[#5a6061]">{offer.suitableTools.join("、")}</p>
+      </td>
+      <td className="px-5 py-4">
+        <p className="max-w-[190px] text-sm leading-6 text-[#5a6061]">{offer.suitableTools.join("、")}</p>
       </td>
       <td className="px-5 py-4">
         <a
@@ -287,8 +296,8 @@ function ApiOfferRow({ offer, currency }: { offer: ApiModelOffer; currency: ApiC
           {offer.sourceLabel}
           <ExternalLink size={13} />
         </a>
-        <p className="mt-2 text-xs text-[#5a6061]">{offer.updatedAt}</p>
       </td>
+      <td className="px-5 py-4 text-xs font-medium text-[#5a6061]">{offer.updatedAt}</td>
     </tr>
   );
 }
