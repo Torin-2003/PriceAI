@@ -10,7 +10,6 @@ import {
   Code2,
   CreditCard,
   Database,
-  ExternalLink,
   Filter,
   GraduationCap,
   LayoutGrid,
@@ -31,6 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppLogo } from "@/components/AppLogo";
 import { BrandIcon } from "@/components/BrandIcon";
 import { FeedbackLink, GitHubLink } from "@/components/FeedbackLink";
+import { OfferActions, OfferFeedbackDialog } from "@/components/ProductOffersPanel";
 import {
   collectOfferFlags,
   comparePlatformOrder,
@@ -153,6 +153,7 @@ export function PriceExplorer({
   const [offersLoading, setOffersLoading] = useState(false);
   const [offersPaging, setOffersPaging] = useState(false);
   const [offersError, setOffersError] = useState<string | null>(null);
+  const [feedbackRow, setFeedbackRow] = useState<PlatformOfferRow | null>(null);
   const offerLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const prefetchedDetailHrefsRef = useRef<Set<string>>(new Set());
   const isDesktopViewport = useMediaQuery("(min-width: 768px)");
@@ -795,7 +796,7 @@ export function PriceExplorer({
             <EmptyState text={offersError} />
           ) : platformOffers.length ? (
             <>
-              <PlatformOfferTable rows={platformOffers} />
+              <PlatformOfferTable rows={platformOffers} onFeedback={setFeedbackRow} />
               {hasMoreOffers ? (
                 <div ref={offerLoadMoreRef} className="mt-4 flex justify-center">
                   <button
@@ -807,6 +808,15 @@ export function PriceExplorer({
                     {offersPaging ? "正在加载更多报价..." : `继续加载报价 (${platformOffers.length}/${offerResponse?.total ?? 0})`}
                   </button>
                 </div>
+              ) : null}
+              {feedbackRow ? (
+                <OfferFeedbackDialog
+                  productId={feedbackRow.product.id}
+                  productSlug={feedbackRow.product.slug}
+                  productName={feedbackRow.product.displayName}
+                  offer={feedbackRow.offer}
+                  onClose={() => setFeedbackRow(null)}
+                />
               ) : null}
             </>
           ) : (
@@ -957,7 +967,13 @@ function ProductTable({
   );
 }
 
-function PlatformOfferTable({ rows }: { rows: PlatformOfferRow[] }) {
+function PlatformOfferTable({
+  rows,
+  onFeedback,
+}: {
+  rows: PlatformOfferRow[];
+  onFeedback: (row: PlatformOfferRow) => void;
+}) {
   return (
     <>
       <div className="hidden overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15 md:block">
@@ -1014,7 +1030,12 @@ function PlatformOfferTable({ rows }: { rows: PlatformOfferRow[] }) {
                       <RelativeTime value={offerTimestamp(offer)} />
                     </td>
                     <td className="px-5 py-4">
-                      <OfferAction offer={offer} available={available} />
+                      <OfferActions
+                        offer={offer}
+                        available={available}
+                        onFeedback={(selectedOffer) => onFeedback({ offer: selectedOffer, product })}
+                        compact
+                      />
                     </td>
                   </tr>
                 );
@@ -1025,14 +1046,27 @@ function PlatformOfferTable({ rows }: { rows: PlatformOfferRow[] }) {
       </div>
       <div className="grid gap-3 md:hidden">
         {rows.map(({ offer, product }) => (
-          <PlatformOfferCard key={offer.id} offer={offer} product={product} />
+          <PlatformOfferCard
+            key={offer.id}
+            offer={offer}
+            product={product}
+            onFeedback={(selectedOffer) => onFeedback({ offer: selectedOffer, product })}
+          />
         ))}
       </div>
     </>
   );
 }
 
-function PlatformOfferCard({ offer, product }: { offer: RawOffer; product: CanonicalProduct }) {
+function PlatformOfferCard({
+  offer,
+  product,
+  onFeedback,
+}: {
+  offer: RawOffer;
+  product: CanonicalProduct;
+  onFeedback: (offer: RawOffer) => void;
+}) {
   const available = isAvailable(offer);
 
   return (
@@ -1057,7 +1091,7 @@ function PlatformOfferCard({ offer, product }: { offer: RawOffer; product: Canon
             <RelativeTime value={offerTimestamp(offer)} />
           </p>
         </div>
-        <OfferAction offer={offer} available={available} />
+        <OfferActions offer={offer} available={available} onFeedback={onFeedback} />
       </div>
     </article>
   );
@@ -1072,23 +1106,6 @@ function OfferStatusBadge({ available }: { available: boolean }) {
     >
       {available ? "有货" : "缺货"}
     </span>
-  );
-}
-
-function OfferAction({ offer, available }: { offer: RawOffer; available: boolean }) {
-  return (
-    <a
-      href={offer.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={() => trackOfferClick(offer, available)}
-      className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-semibold transition hover:opacity-90 ${
-        available ? "bg-[#2d3435] text-[#f8f8f8]" : "bg-[#ead8d5] text-[#8f2f24]"
-      }`}
-    >
-      {available ? "前往购买" : "查看"}
-      <ExternalLink size={14} />
-    </a>
   );
 }
 
@@ -1741,13 +1758,6 @@ function trackProductDetailOpen(product: Pick<CanonicalProduct, "id" | "platform
     product_id: product.id,
     platform: product.platform,
     product_type: product.productType,
-  });
-}
-
-function trackOfferClick(offer: RawOffer, available: boolean) {
-  trackAnalyticsEvent("purchase_link_click", {
-    source_id: offer.sourceId || "unknown",
-    available,
   });
 }
 

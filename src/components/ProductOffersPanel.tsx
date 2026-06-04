@@ -363,7 +363,7 @@ function OfferLink({
   );
 }
 
-function OfferActions({
+export function OfferActions({
   offer,
   available,
   onFeedback,
@@ -393,7 +393,7 @@ function OfferActions({
   );
 }
 
-function OfferFeedbackDialog({
+export function OfferFeedbackDialog({
   productId,
   productSlug,
   productName,
