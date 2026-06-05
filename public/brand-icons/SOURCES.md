@@ -9,7 +9,7 @@ These assets are cached locally for stable rendering and performance. They are s
 | `kimi.png` | `https://www.kimi.com/favicon.ico` | Converted from official favicon to PNG. |
 | `glm.png` | `https://open.bigmodel.cn/img/icons/apple-touch-icon-152x152.png` | Official BigModel/Open Platform apple touch icon. |
 | `minimax.png` | `https://www.minimax.io/favicon.ico` | Converted from official favicon to PNG. |
+| `alibabacloud.svg` | `https://commons.wikimedia.org/wiki/File:AlibabaCloudLogo.svg` | Alibaba Cloud logo sourced from Wikimedia Commons, where the source is listed as Alibaba Cloud and author as Alibaba Group. Cropped to the cloud mark for compact provider rows. |
 | `opencode.png` | `https://opencode.ai/favicon.ico` | Converted from official favicon to PNG. |
 | `openrouter.png` | `https://openrouter.ai/favicon.ico` | Converted from official favicon to PNG. |
 | `nvidia.png` | `https://www.nvidia.com/favicon.ico` | Converted from official favicon to PNG. |
-| `qwen.png` | `https://qwenlm.github.io/favicon.png` | Also used as the temporary Alibaba Model Studio Coding Plan icon until an official Model Studio icon is reviewed. |

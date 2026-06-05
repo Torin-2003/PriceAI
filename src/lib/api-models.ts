@@ -417,7 +417,7 @@ export const apiProviders: ApiProvider[] = [
     billingMode: "订阅套餐",
     url: "https://www.alibabacloud.com/product/modelstudio",
     pricingUrl: "https://www.alibabacloud.com/help/en/model-studio/coding-plan",
-    logoUrl: "/brand-icons/qwen.png",
+    logoUrl: "/brand-icons/alibabacloud.svg",
     description: "阿里云 Model Studio 面向编码工具的月订阅套餐，覆盖 Qwen、Kimi、GLM、MiniMax 等模型。",
     limitSummary: "6,000 req/5h · 45,000 req/week · 90,000 req/month。",
     limitations: "仅用于编码工具；官方明确不适合自动化脚本、自定义后端或非交互批处理 API。",
