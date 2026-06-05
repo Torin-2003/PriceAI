@@ -2,33 +2,25 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { Info } from "lucide-react";
 import { AppLogo } from "@/components/AppLogo";
 import { FeedbackLink, GitHubLink } from "@/components/FeedbackLink";
-
-type HeaderMetric = {
-  label: string;
-  value: string;
-  icon?: ReactNode;
-};
 
 const navItems = [
   { href: "/", label: "订阅比价", match: (pathname: string) => pathname === "/" || pathname.startsWith("/products") },
   { href: "/official-prices", label: "官方地区价", match: (pathname: string) => pathname.startsWith("/official-prices") },
   { href: "/api-models", label: "API 模型", match: (pathname: string) => pathname.startsWith("/api-models") },
-  { href: "/about", label: "关于", match: (pathname: string) => pathname.startsWith("/about") },
 ];
 
 export function SiteHeader({
-  metrics = [],
   maxWidthClassName = "max-w-[1500px]",
   logoCompact = false,
 }: {
-  metrics?: HeaderMetric[];
   maxWidthClassName?: string;
   logoCompact?: boolean;
 }) {
   const pathname = usePathname();
+  const aboutActive = pathname.startsWith("/about");
 
   return (
     <header>
@@ -59,13 +51,18 @@ export function SiteHeader({
         </nav>
 
         <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-3">
-          {metrics.length ? (
-            <div className="hidden items-center gap-3 xl:flex">
-              {metrics.map((metric) => (
-                <HeaderMetric key={metric.label} label={metric.label} value={metric.value} icon={metric.icon} />
-              ))}
-            </div>
-          ) : null}
+          <Link
+            href="/about"
+            className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-sm font-semibold shadow-[0_10px_30px_rgba(45,52,53,0.06)] ring-1 ring-[#adb3b4]/25 transition hover:-translate-y-0.5 ${
+              aboutActive
+                ? "bg-[#2d3435] text-[#f8f8f8]"
+                : "bg-white text-[#2d3435] hover:bg-[#f5f7f7] hover:text-[#202829]"
+            }`}
+            aria-current={aboutActive ? "page" : undefined}
+          >
+            <Info size={16} />
+            <span className="hidden sm:inline">关于</span>
+          </Link>
           <FeedbackLink compact />
           <GitHubLink compact />
         </div>
@@ -94,15 +91,5 @@ export function SiteHeader({
         </nav>
       </div>
     </header>
-  );
-}
-
-function HeaderMetric({ label, value, icon }: HeaderMetric) {
-  return (
-    <div className="inline-flex h-10 items-center gap-2 rounded-full bg-white px-3.5 text-sm font-semibold text-[#2d3435] shadow-[0_10px_30px_rgba(45,52,53,0.04)] ring-1 ring-[#adb3b4]/15">
-      {icon ? <span className="text-[#5a6061]">{icon}</span> : null}
-      <span className="text-[#5a6061]">{label}</span>
-      <span className="text-[#202829]">{value}</span>
-    </div>
   );
 }

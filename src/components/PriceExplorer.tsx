@@ -508,14 +508,7 @@ export function PriceExplorer({
   return (
     <div className="min-h-screen bg-[#f9f9f9] text-[#2d3435]">
       <div className="sticky top-0 z-40 bg-[#f9f9f9]/95 shadow-[0_10px_24px_rgba(45,52,53,0.035)] backdrop-blur-xl">
-        <SiteHeader
-          metrics={[
-            { label: "标准商品", value: metricValue(explorerData.products.length, dataLoading), icon: <PackageCheck size={15} /> },
-            { label: "报价", value: metricValue(explorerData.offerTotal, dataLoading), icon: <Database size={15} /> },
-            { label: "有货", value: metricValue(totalAvailable, dataLoading), icon: <CheckCircle2 size={15} /> },
-            { label: "缺货", value: metricValue(totalOutOfStock, dataLoading), icon: <Store size={15} /> },
-          ]}
-        />
+        <SiteHeader />
 
         <section className="hidden border-y border-[#dfe4e5] px-5 py-2 sm:px-8 md:block">
           <div className="mx-auto max-w-[1500px]">
@@ -542,27 +535,37 @@ export function PriceExplorer({
         ) : null}
 
         <div className="mb-6 space-y-4 md:mb-9 md:space-y-5">
-          <div>
-            <h1 className="font-serif text-2xl font-semibold tracking-normal text-[#202829] md:text-4xl">
-              {title}
-            </h1>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.72rem] font-medium text-[#5a6061] md:mt-4 md:gap-3">
-              <span>
-                最近更新：{dataLoading ? "正在同步" : <RelativeTime value={explorerData.generatedAt} />}
-              </span>
-              <span className="h-1 w-1 rounded-full bg-[#adb3b4]" />
-              <span>{dataLoading && !showingOffers ? "正在加载" : resultCount} {showingOffers ? "条报价" : "个商品"}</span>
-              <span className="hidden h-1 w-1 rounded-full bg-[#adb3b4] md:inline-block" />
-              <span className="hidden md:inline">主价格优先取有货最低价，缺货会明显标注</span>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+            <div className="min-w-0">
+              <h1 className="font-serif text-2xl font-semibold tracking-normal text-[#202829] md:text-4xl">
+                {title}
+              </h1>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.72rem] font-medium text-[#5a6061] md:mt-4 md:gap-3">
+                <span>
+                  最近更新：{dataLoading ? "正在同步" : <RelativeTime value={explorerData.generatedAt} />}
+                </span>
+                <span className="h-1 w-1 rounded-full bg-[#adb3b4]" />
+                <span>{dataLoading && !showingOffers ? "正在加载" : resultCount} {showingOffers ? "条报价" : "个商品"}</span>
+                <span className="hidden h-1 w-1 rounded-full bg-[#adb3b4] md:inline-block" />
+                <span className="hidden md:inline">主价格优先取有货最低价，缺货会明显标注</span>
+              </div>
+              <button
+                type="button"
+                onClick={openSubmission}
+                className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[#2d3435] px-4 text-sm font-semibold text-[#f8f8f8] shadow-[0_14px_40px_rgba(45,52,53,0.16)] md:hidden"
+              >
+                <Plus size={16} />
+                提交渠道
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={openSubmission}
-              className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[#2d3435] px-4 text-sm font-semibold text-[#f8f8f8] shadow-[0_14px_40px_rgba(45,52,53,0.16)] md:hidden"
-            >
-              <Plus size={16} />
-              提交渠道
-            </button>
+
+            <ExplorerMetrics
+              loading={dataLoading}
+              products={explorerData.products.length}
+              offers={explorerData.offerTotal}
+              available={totalAvailable}
+              outOfStock={totalOutOfStock}
+            />
           </div>
 
           <div className="space-y-3 md:hidden">
@@ -1098,6 +1101,44 @@ function EmptyState({ text }: { text: string }) {
     <div className="rounded-lg bg-white px-6 py-16 text-center shadow-[0_20px_60px_rgba(45,52,53,0.05)] ring-1 ring-[#adb3b4]/15">
       <p className="font-serif text-2xl font-semibold text-[#202829]">{text}</p>
       <p className="mt-3 text-sm text-[#5a6061]">放宽筛选条件，或者提交新的可采集渠道。</p>
+    </div>
+  );
+}
+
+function ExplorerMetrics({
+  loading,
+  products,
+  offers,
+  available,
+  outOfStock,
+}: {
+  loading: boolean;
+  products: number;
+  offers: number;
+  available: number;
+  outOfStock: number;
+}) {
+  const metrics = [
+    { label: "标准商品", value: metricValue(products, loading), icon: <PackageCheck size={15} /> },
+    { label: "报价", value: metricValue(offers, loading), icon: <Database size={15} /> },
+    { label: "有货", value: metricValue(available, loading), icon: <CheckCircle2 size={15} /> },
+    { label: "缺货", value: metricValue(outOfStock, loading), icon: <Store size={15} /> },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap xl:max-w-[560px] xl:justify-end">
+      {metrics.map((metric) => (
+        <div
+          key={metric.label}
+          className="inline-flex h-10 min-w-0 items-center justify-between gap-2 rounded-full bg-white px-3 text-sm font-semibold text-[#2d3435] shadow-[0_10px_30px_rgba(45,52,53,0.04)] ring-1 ring-[#adb3b4]/15 sm:justify-start sm:px-3.5"
+        >
+          <span className="flex min-w-0 items-center gap-1.5 text-[#5a6061]">
+            <span className="shrink-0">{metric.icon}</span>
+            <span className="truncate">{metric.label}</span>
+          </span>
+          <span className="shrink-0 tabular-nums text-[#202829]">{metric.value}</span>
+        </div>
+      ))}
     </div>
   );
 }
