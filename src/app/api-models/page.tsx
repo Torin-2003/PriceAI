@@ -4,7 +4,7 @@ import { getApiModelDataset } from "@/lib/api-models-db";
 
 export const metadata: Metadata = {
   title: "API 模型雷达",
-  description: "整理 DeepSeek、Qwen、Kimi、MiniMax、OpenRouter、NVIDIA NIM、OpenCode Go 等公开 API 模型渠道、免费限制和来源链接。",
+  description: "整理 DeepSeek、Qwen、Kimi、MiniMax、MiMo、StepFun、OpenRouter、NVIDIA NIM、OpenCode Go 等公开 API 模型渠道、免费限制和来源链接。",
   alternates: {
     canonical: "/api-models",
   },

@@ -473,6 +473,44 @@ export const apiModels: ApiModel[] = [
     suitableTools: ["OpenCode", "Claude Code", "Cursor", "Open WebUI"],
     updatedAt: apiModelUpdatedAt,
   },
+  {
+    id: "mimo-v2-5-pro",
+    displayName: "MiMo V2.5 Pro",
+    family: "MiMo",
+    modelId: "mimo-v2.5-pro",
+    description: "Xiaomi MiMo V2.5 系列旗舰基座模型，官方介绍为 1T 总参数、42B 激活与 1M 上下文，适合复杂 Agent、编码和长上下文任务。",
+    contextWindow: "1M",
+    sourceUrl: "https://mimo.mi.com/",
+    sourceLabel: "Xiaomi MiMo Home",
+    capabilities: ["agent", "coding", "long-context", "multimodal"],
+    suitableTools: ["OpenCode", "Codex", "Cursor", "Claude Code", "Open WebUI"],
+    updatedAt: apiModelUpdatedAt,
+  },
+  {
+    id: "mimo-v2-5",
+    displayName: "MiMo V2.5",
+    family: "MiMo",
+    modelId: "mimo-v2.5",
+    description: "Xiaomi MiMo V2.5 系列均衡基座模型，官方强调全模态感知、Agent 能力和 1M 上下文，适合成本与能力平衡的中文模型调用。",
+    contextWindow: "1M",
+    sourceUrl: "https://mimo.mi.com/",
+    sourceLabel: "Xiaomi MiMo Home",
+    capabilities: ["agent", "coding", "long-context", "multimodal"],
+    suitableTools: ["OpenCode", "Codex", "Cursor", "Claude Code", "Open WebUI"],
+    updatedAt: apiModelUpdatedAt,
+  },
+  {
+    id: "step-3-7-flash",
+    displayName: "Step 3.7 Flash",
+    family: "StepFun",
+    modelId: "step-3.7-flash",
+    description: "阶跃星辰面向真实 Agent、Coding 和多模态工作流的高效率 Flash 模型，适合作为国产模型 API 的新增候选基准。",
+    sourceUrl: "https://platform.stepfun.com/docs/zh/guides/models/step-3.7-flash",
+    sourceLabel: "StepFun 模型文档",
+    capabilities: ["agent", "coding", "multimodal", "tool-calls"],
+    suitableTools: ["Codex", "Cursor", "OpenCode", "Open WebUI"],
+    updatedAt: apiModelUpdatedAt,
+  },
 ];
 
 export const apiProviders: ApiProvider[] = [
@@ -588,6 +626,34 @@ export const apiProviders: ApiProvider[] = [
     sourceLabel: "NVIDIA NIM",
     updatedAt: apiModelUpdatedAt,
   },
+  {
+    id: "xiaomi-mimo",
+    name: "Xiaomi MiMo API",
+    type: "official",
+    billingMode: "按量计费",
+    url: "https://platform.xiaomimimo.com/",
+    pricingUrl: "https://mimo.mi.com/",
+    logoUrl: "/brand-icons/mimo.png",
+    description: "小米 MiMo 官方开放平台，首版收录 MiMo V2.5 Pro 与 MiMo V2.5，并以官方 Token Plan / API 入口作为价格来源。",
+    limitSummary: "未公开固定 RPM/TPM，以 MiMo 控制台和 Token Plan 规则为准。",
+    limitations: "当前官方页面为动态展示，首版先保留官方来源和套餐口径，后续再解析结构化单价。",
+    sourceLabel: "Xiaomi MiMo Home",
+    updatedAt: apiModelUpdatedAt,
+  },
+  {
+    id: "stepfun-official",
+    name: "StepFun 开放平台",
+    type: "official",
+    billingMode: "按量计费",
+    url: "https://platform.stepfun.com/",
+    pricingUrl: "https://platform.stepfun.com/docs/zh/guides/pricing/details",
+    logoUrl: "/brand-icons/stepfun.png",
+    description: "阶跃星辰官方开放平台，首版收录 Step 3.7 Flash，并以官方模型文档和定价限速页作为来源。",
+    limitSummary: "RPM/TPM 与模型价格以阶跃星辰官方定价与限速页为准。",
+    limitations: "Step 3.7 Flash 为新模型，结构化价格待采集器进一步解析，前台先展示官方来源。",
+    sourceLabel: "StepFun 定价与限速",
+    updatedAt: apiModelUpdatedAt,
+  },
 ];
 
 export const apiPlans: ApiPlan[] = [
@@ -699,6 +765,24 @@ export const apiPlans: ApiPlan[] = [
     sourceLabel: "NVIDIA NIM",
     updatedAt: apiModelUpdatedAt,
   },
+  {
+    id: "xiaomi-mimo-token-plan",
+    providerId: "xiaomi-mimo",
+    providerName: "Xiaomi MiMo API",
+    name: "Xiaomi MiMo Token Plan",
+    type: "subscription",
+    priceLabel: "见官方 Token Plan",
+    url: "https://mimo.mi.com/",
+    quotaSummary: "官方首页标注 Token Plan 支持包月/包年订阅，覆盖 MiMo V2.5 系列。",
+    resetSummary: "额度和续订规则以 MiMo 官方 Token Plan 页面为准。",
+    limitSummary: "未公开固定 RPM/TPM，以 MiMo 控制台和 Token Plan 规则为准。",
+    limitations: "首版不硬填不可校验价格，等待后续结构化解析。",
+    modelIds: ["mimo-v2-5-pro", "mimo-v2-5"],
+    compatibility: ["OpenAI-compatible", "Coding Agent", "中文模型", "多模态"],
+    suitableTools: ["OpenCode", "Codex", "Cursor", "Claude Code", "Open WebUI"],
+    sourceLabel: "Xiaomi MiMo Home",
+    updatedAt: apiModelUpdatedAt,
+  },
 ];
 
 export const apiModelOffers: ApiModelOffer[] = [
@@ -775,6 +859,36 @@ export const apiModelOffers: ApiModelOffer[] = [
     freeOrPlan: "官方 Pay as You Go，Legacy Models 中仍有价格。",
     limitations: "适合低成本任务，但作为旧模型需要关注后续下线和能力差异。",
     compatibility: ["Anthropic-compatible", "OpenAI-compatible", "Coding Agent", "中文模型"],
+  }),
+  offer("xiaomi-mimo-v25-pro", "mimo-v2-5-pro", "xiaomi-mimo", {
+    routeModelId: "mimo-v2.5-pro",
+    inputPrice: textPrice("见 MiMo 官方 Token Plan / API 定价"),
+    outputPrice: textPrice("见 MiMo 官方 Token Plan / API 定价"),
+    cacheReadPrice: textPrice("按官方 Token Plan / API 规则"),
+    freeOrPlan: "官方 API / Token Plan，包月和包年规则以 MiMo 官方页面为准。",
+    limitations: "官方价格页为动态展示，首版先保留官方来源，不硬填未解析数值。",
+    compatibility: ["OpenAI-compatible", "Coding Agent", "中文模型", "多模态"],
+    pricingUrl: "https://mimo.mi.com/",
+  }),
+  offer("xiaomi-mimo-v25", "mimo-v2-5", "xiaomi-mimo", {
+    routeModelId: "mimo-v2.5",
+    inputPrice: textPrice("见 MiMo 官方 Token Plan / API 定价"),
+    outputPrice: textPrice("见 MiMo 官方 Token Plan / API 定价"),
+    cacheReadPrice: textPrice("按官方 Token Plan / API 规则"),
+    freeOrPlan: "官方 API / Token Plan，包月和包年规则以 MiMo 官方页面为准。",
+    limitations: "官方价格页为动态展示，首版先保留官方来源，不硬填未解析数值。",
+    compatibility: ["OpenAI-compatible", "Coding Agent", "中文模型", "多模态"],
+    pricingUrl: "https://mimo.mi.com/",
+  }),
+  offer("stepfun-step37-flash", "step-3-7-flash", "stepfun-official", {
+    routeModelId: "step-3.7-flash",
+    inputPrice: textPrice("见 StepFun 官方定价页"),
+    outputPrice: textPrice("见 StepFun 官方定价页"),
+    cacheReadPrice: textPrice("按官方模型支持情况"),
+    freeOrPlan: "官方按量计费，API Key 和限速以 StepFun 开放平台为准。",
+    limitations: "新模型价格和 RPM/TPM 需要以后续采集器解析官方定价页为准。",
+    compatibility: ["OpenAI-compatible", "Coding Agent", "中文模型", "多模态"],
+    pricingUrl: "https://platform.stepfun.com/docs/zh/guides/pricing/details",
   }),
   ...opencodeGoOffers(),
   ...alibabaCodingPlanOffers(),
@@ -1263,7 +1377,7 @@ function uniqueById<T extends { id: string }>(values: T[]) {
   });
 }
 
-const familyOrder = ["DeepSeek", "Qwen", "Kimi", "GLM", "MiniMax"];
+const familyOrder = ["DeepSeek", "Qwen", "Kimi", "GLM", "MiniMax", "MiMo", "StepFun"];
 
 const modelOrder = [
   "deepseek-v4-flash",
@@ -1280,6 +1394,9 @@ const modelOrder = [
   "minimax-m3",
   "minimax-m2-7",
   "minimax-m2-5",
+  "mimo-v2-5-pro",
+  "mimo-v2-5",
+  "step-3-7-flash",
 ];
 
 const apiModelFamilySlugByName: Record<string, string> = {
@@ -1288,6 +1405,8 @@ const apiModelFamilySlugByName: Record<string, string> = {
   Kimi: "kimi",
   GLM: "glm",
   MiniMax: "minimax",
+  MiMo: "mimo",
+  StepFun: "stepfun",
 };
 
 function compareFamilyLabel(a: string, b: string) {

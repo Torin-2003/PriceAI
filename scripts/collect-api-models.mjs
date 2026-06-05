@@ -23,6 +23,8 @@ const collectorKindByProviderId = {
   "nvidia-nim": "nvidia_nim",
   "opencode-go": "opencode_go",
   openrouter: "openrouter",
+  "stepfun-official": "stepfun_pricing",
+  "xiaomi-mimo": "xiaomi_mimo_pricing",
   "zhipu-bigmodel": "bigmodel_pricing",
 };
 

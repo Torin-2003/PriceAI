@@ -7,6 +7,8 @@ const iconByFamily: Record<string, string> = {
   Kimi: "/brand-icons/kimi.png",
   GLM: "/brand-icons/glm.png",
   MiniMax: "/brand-icons/minimax.png",
+  MiMo: "/brand-icons/mimo.png",
+  StepFun: "/brand-icons/stepfun.png",
 };
 
 export function ApiModelIcon({
