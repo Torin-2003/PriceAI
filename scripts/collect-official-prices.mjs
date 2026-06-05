@@ -152,6 +152,24 @@ export async function collectOfficialPrices(options = {}) {
         runItems.push(runItem(app, region, "success", appRules.length, rawItems.length, Date.now() - startedAt));
       } catch (error) {
         const failureReason = errorMessage(error);
+        if (httpStatus(error) === 404) {
+          for (const rule of appRules) {
+            rows.push(
+              buildMissingRow({
+                app,
+                rule,
+                region,
+                sourceUrl,
+                fetchedAt,
+                failureReason: "App Store returned HTTP 404 for this app and region.",
+              }),
+            );
+          }
+          runItems.push(runItem(app, region, "missing", 0, 0, Date.now() - startedAt, failureReason));
+          await delay(FETCH_DELAY_MS);
+          continue;
+        }
+
         const failure = buildFailure({
           app,
           region,
@@ -656,7 +674,10 @@ async function fetchText(url, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status} for ${url}`);
+      const error = new Error(`HTTP ${response.status} for ${url}`);
+      error.status = response.status;
+      error.url = url;
+      throw error;
     }
 
     return await response.text();
@@ -1046,4 +1067,12 @@ function isCli() {
 function errorMessage(error) {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+function httpStatus(error) {
+  if (error && typeof error === "object" && "status" in error) {
+    const status = Number(error.status);
+    return Number.isFinite(status) ? status : null;
+  }
+  return null;
 }
