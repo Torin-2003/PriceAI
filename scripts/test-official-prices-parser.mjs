@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { extractInAppPurchasePairs } from "./collect-official-prices.mjs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { extractInAppPurchasePairs, loadFallbackFxSnapshot } from "./collect-official-prices.mjs";
 
 const html = `
   <div class="text-pair svelte-1gyt6l2"><span>ChatGPT Plus</span> <span>₺499,99</span></div>
@@ -23,5 +26,38 @@ assert.deepEqual(
 );
 assert.ok(pairs.every((item) => item.sourceUrl === "https://apps.apple.com/tr/app/chatgpt/id6448311069"));
 assert.ok(pairs.every((item) => item.rawSnippetHash.length === 16));
+
+const tempDir = await mkdtemp(path.join(os.tmpdir(), "priceai-official-fx-"));
+const latestPath = path.join(tempDir, "latest.json");
+
+try {
+  await writeFile(
+    latestPath,
+    JSON.stringify({
+      generatedAt: "2026-06-05T07:54:53.617Z",
+      fx: {
+        baseCurrency: "USD",
+        source: "Frankfurter",
+        date: "2026-06-04",
+        rates: {
+          USD: 1,
+          CNY: 6.7739,
+          TRY: 45.974,
+          PHP: 61.587,
+        },
+      },
+    }),
+    "utf8",
+  );
+
+  const fallback = loadFallbackFxSnapshot(["CNY", "TRY", "PHP"], latestPath);
+  assert.equal(fallback?.source, "Frankfurter local snapshot");
+  assert.equal(fallback?.date, "2026-06-04");
+  assert.equal(fallback?.rates.CNY, 6.7739);
+  assert.equal(fallback?.fallbackGeneratedAt, "2026-06-05T07:54:53.617Z");
+  assert.equal(loadFallbackFxSnapshot(["CNY", "HKD"], latestPath), null);
+} finally {
+  await rm(tempDir, { recursive: true, force: true });
+}
 
 console.log("official price parser test passed");

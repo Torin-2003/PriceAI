@@ -176,6 +176,9 @@ export async function collectOfficialPrices(options = {}) {
       evidenceSource: "app_store_html",
       fxSource: fx.source,
       fxSourceUrl: fx.sourceUrl,
+      fxFallback: Boolean(fx.fallback),
+      fxFallbackReason: fx.fallbackReason || null,
+      fxFallbackGeneratedAt: fx.fallbackGeneratedAt || null,
     },
     scope: {
       apps: apps.map((app) => app.slug),
@@ -590,16 +593,53 @@ function selectRegions(regions, options) {
 async function fetchFxSnapshot(regions) {
   const currencies = Array.from(new Set(["CNY", ...regions.map((region) => region.currencyCode).filter((code) => code !== "USD")]));
   const sourceUrl = `https://api.frankfurter.dev/v1/latest?base=USD&symbols=${encodeURIComponent(currencies.join(","))}`;
-  const data = JSON.parse(await fetchText(sourceUrl));
-  const rates = { USD: 1, ...data.rates };
+  try {
+    const data = JSON.parse(await fetchText(sourceUrl));
+    const rates = { USD: 1, ...data.rates };
 
-  return {
-    baseCurrency: data.base || "USD",
-    date: data.date,
-    source: "Frankfurter",
-    sourceUrl,
-    rates,
-  };
+    return {
+      baseCurrency: data.base || "USD",
+      date: data.date,
+      source: "Frankfurter",
+      sourceUrl,
+      rates,
+    };
+  } catch (error) {
+    const fallback = loadFallbackFxSnapshot(currencies);
+    if (!fallback) throw error;
+
+    return {
+      ...fallback,
+      sourceUrl,
+      fallback: true,
+      fallbackReason: errorMessage(error),
+    };
+  }
+}
+
+export function loadFallbackFxSnapshot(currencies, latestPath = defaultOutPath) {
+  if (!existsSync(latestPath)) return null;
+
+  try {
+    const latest = JSON.parse(readFileSync(latestPath, "utf8"));
+    const fx = latest.fx || latest.fxSummary;
+    const rates = fx?.rates || {};
+    const missing = currencies.filter((currency) => currency !== "USD" && !Number.isFinite(Number(rates[currency])));
+    if (!fx?.date || missing.length) return null;
+
+    return {
+      baseCurrency: fx.baseCurrency || "USD",
+      date: fx.date,
+      source: `${fx.source || "Frankfurter"} local snapshot`,
+      rates: {
+        USD: 1,
+        ...Object.fromEntries(Object.entries(rates).map(([currency, rate]) => [currency, Number(rate)])),
+      },
+      fallbackGeneratedAt: latest.generatedAt || null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function fetchText(url, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
@@ -994,6 +1034,9 @@ function printSummary(result) {
       `failures=${result.run.failureCount}`,
     ].join(" "),
   );
+  if (result.source.fxFallback) {
+    console.log(`FX fallback used: ${result.fx.date} from ${result.source.fxFallbackGeneratedAt || "local snapshot"} (${result.source.fxFallbackReason})`);
+  }
 }
 
 function isCli() {
