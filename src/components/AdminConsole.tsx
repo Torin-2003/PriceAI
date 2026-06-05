@@ -75,6 +75,7 @@ type ApiModelAdminData = AdminSummary["apiModels"];
 type ApiModelAdminProvider = ApiModelAdminData["providers"][number];
 type ApiModelAdminOffer = ApiModelAdminData["offers"][number];
 type ApiModelAdminPlan = ApiModelAdminData["plans"][number];
+type ApiProviderCandidate = ApiModelAdminData["providerCandidates"][number];
 type ApiProviderSubmission = ApiModelAdminData["providerSubmissions"][number];
 
 type ProbeOffer = {
@@ -3806,7 +3807,7 @@ function OfficialPricesAdminPanel({
         <Panel title="地区管理" icon={<Store size={17} />}>
           <OfficialConfigList
             emptyText="暂无官方地区配置。"
-            items={data.regions.slice(0, 18)}
+            items={data.regions}
             getKey={(region) => region.id}
             renderTitle={(region) => `${region.countryLabel} · ${region.countryCode}`}
             renderMeta={(region) => `${region.storefrontCode} · ${region.currencyCode}`}
@@ -4045,10 +4046,11 @@ function ApiModelsAdminPanel({
           </div>
         ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
           <OfficialMetric label="数据源" value={data.source === "supabase" ? "Supabase" : "静态样本"} />
           <OfficialMetric label="标准模型" value={String(data.models.length)} />
           <OfficialMetric label="来源渠道" value={String(data.providers.length)} tone={inactiveProviderCount ? "warn" : "default"} />
+          <OfficialMetric label="候选池" value={String(data.providerCandidates.length)} tone={data.providerCandidates.length ? "warn" : "default"} />
           <OfficialMetric label="套餐" value={String(data.plans.length)} />
           <OfficialMetric label="报价" value={String(data.offers.length)} tone={inactiveOfferCount ? "warn" : "default"} />
           <OfficialMetric label="渠道提交" value={String(data.providerSubmissions.length)} tone={todoApiSubmissions.length ? "warn" : "default"} />
@@ -4255,6 +4257,105 @@ function ApiModelsAdminPanel({
             待审核 {pendingApiSubmissions.length} 条，采集器待办 {todoApiSubmissions.length} 条。未匹配到已有 API 来源的提交不会自动通过，避免产生空渠道。
           </p>
         ) : null}
+      </Panel>
+
+      <Panel title="API 候选渠道池" icon={<ClipboardList size={17} />}>
+        {data.providerCandidates.length ? (
+          <div className="overflow-x-auto rounded-lg border border-[#adb3b4]/20">
+            <table className="min-w-[1180px] w-full divide-y divide-[#adb3b4]/15 text-left text-sm">
+              <thead className="bg-[#f2f4f4] text-xs font-semibold text-[#5a6061]">
+                <tr>
+                  <th className="px-4 py-3">候选渠道</th>
+                  <th className="px-4 py-3">类型 / 计费</th>
+                  <th className="px-4 py-3">状态</th>
+                  <th className="px-4 py-3">收录理由</th>
+                  <th className="px-4 py-3">下一步</th>
+                  <th className="px-4 py-3">更新时间</th>
+                  <th className="px-4 py-3">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#adb3b4]/15 bg-white">
+                {data.providerCandidates.map((candidate) => (
+                  <tr key={candidate.id} className="align-top">
+                    <td className="max-w-[280px] px-4 py-3">
+                      <div className="font-medium text-[#2d3435]">{candidate.name}</div>
+                      <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                        <a
+                          href={candidate.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[#47657a] transition-colors hover:text-[#2d3435]"
+                        >
+                          官网
+                          <ExternalLink size={12} />
+                        </a>
+                        {candidate.pricingUrl ? (
+                          <a
+                            href={candidate.pricingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[#47657a] transition-colors hover:text-[#2d3435]"
+                          >
+                            价格页
+                            <ExternalLink size={12} />
+                          </a>
+                        ) : null}
+                      </div>
+                      {candidate.notes ? <p className="mt-2 text-xs leading-5 text-[#adb3b4]">{candidate.notes}</p> : null}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        <Badge>{apiProviderTypeLabel(candidate.type)}</Badge>
+                        <Badge tone="info">{candidate.billingMode}</Badge>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col items-start gap-1.5">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${apiProviderCandidateStatusClass(candidate.status)}`}>
+                          {apiProviderCandidateStatusLabel(candidate.status)}
+                        </span>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${apiProviderCandidateEvidenceClass(candidate.evidenceStatus)}`}>
+                          {apiProviderCandidateEvidenceLabel(candidate.evidenceStatus)}
+                        </span>
+                        <span className="rounded-full bg-[#f2f4f4] px-2 py-0.5 text-xs font-medium text-[#5a6061]">
+                          {apiProviderCandidatePriorityLabel(candidate.priority)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="max-w-[280px] px-4 py-3 text-sm leading-6 text-[#5a6061]">
+                      {candidate.reason}
+                    </td>
+                    <td className="max-w-[300px] px-4 py-3 text-sm leading-6 text-[#5a6061]">
+                      {candidate.nextStep}
+                    </td>
+                    <td className="px-4 py-3 text-[#5a6061]">{formatRelativeTime(candidate.updatedAt)}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(buildApiProviderCandidateContext(candidate));
+                        }}
+                        className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4]"
+                      >
+                        <Copy size={13} />
+                        复制上下文
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState
+            icon={<ClipboardList size={32} className="text-[#adb3b4]" />}
+            title="暂无 API 候选渠道"
+            description="待核验的官方 API、公开套餐和云厂商线索会先沉淀在这里，不直接进入前台报价。"
+          />
+        )}
+        <p className="mt-3 text-xs leading-5 text-[#adb3b4]">
+          候选池只服务后台审核和采集器扩展。没有核验价格、模型覆盖和限制前，不会作为正式 API 模型报价展示给用户。
+        </p>
       </Panel>
 
       <Panel title="API 来源渠道" icon={<Store size={17} />}>
@@ -5062,8 +5163,45 @@ function apiModelProbeSummaryText(result: ApiModelProbeResult): string {
   return `${parts.join("，")}。${probeText.join("，")}。`;
 }
 
-function apiProviderTypeLabel(value: ApiModelAdminProvider["type"] | ApiModelAdminOffer["providerType"] | ApiModelAdminPlan["type"]): string {
+function apiProviderTypeLabel(value: ApiModelAdminProvider["type"] | ApiModelAdminOffer["providerType"] | ApiModelAdminPlan["type"] | ApiProviderCandidate["type"]): string {
   return apiProviderTypeLabels[value] || value;
+}
+
+function apiProviderCandidateStatusLabel(value: ApiProviderCandidate["status"]): string {
+  if (value === "collector_todo") return "采集待办";
+  if (value === "supported") return "已支持";
+  if (value === "blocked") return "暂不支持";
+  if (value === "needs_review") return "待复核";
+  return "候选";
+}
+
+function apiProviderCandidateStatusClass(value: ApiProviderCandidate["status"]): string {
+  if (value === "supported") return "bg-[#e8f3ec] text-[#2f7a4b]";
+  if (value === "collector_todo") return "bg-[#fff7e8] text-[#7a541b]";
+  if (value === "blocked") return "bg-[#fbe9e7] text-[#9b3328]";
+  if (value === "needs_review") return "bg-[#eef3f8] text-[#47657a]";
+  return "bg-[#f2f4f4] text-[#5a6061]";
+}
+
+function apiProviderCandidateEvidenceLabel(value: ApiProviderCandidate["evidenceStatus"]): string {
+  if (value === "verified_url") return "入口已确认";
+  if (value === "needs_pricing_parse") return "待解析价格";
+  if (value === "needs_official_source") return "待找官方来源";
+  if (value === "not_supported") return "证据不足";
+  return value;
+}
+
+function apiProviderCandidateEvidenceClass(value: ApiProviderCandidate["evidenceStatus"]): string {
+  if (value === "verified_url") return "bg-[#e8f3ec] text-[#2f7a4b]";
+  if (value === "needs_pricing_parse") return "bg-[#fff7e8] text-[#7a541b]";
+  if (value === "needs_official_source") return "bg-[#eef3f8] text-[#47657a]";
+  return "bg-[#fbe9e7] text-[#9b3328]";
+}
+
+function apiProviderCandidatePriorityLabel(value: ApiProviderCandidate["priority"]): string {
+  if (value === "high") return "高优先级";
+  if (value === "medium") return "中优先级";
+  return "低优先级";
 }
 
 function apiSubmissionParseStatusLabel(value: ApiProviderSubmission["parseStatus"]): string {
@@ -5530,6 +5668,28 @@ function buildApiProviderSubmissionContext(submission: ApiProviderSubmission): s
     "- 收录边界：只收官方 API、公开文档可验证套餐、模型路由或免费测试入口；不收灰色中转。",
     "- 期望输出字段：provider, models, offers, plans, limits, pricingUrl, sourceLabel, updatedAt",
     "- 验证方式：npm run import:api-models -- --dry-run --post",
+  ].join("\n");
+}
+
+function buildApiProviderCandidateContext(candidate: ApiProviderCandidate): string {
+  return [
+    "请为 PriceAI API 模型模块核验候选渠道并补齐数据：",
+    `- 候选 ID：${candidate.id}`,
+    `- 候选名称：${candidate.name}`,
+    `- 类型：${apiProviderTypeLabels[candidate.type]}`,
+    `- 计费方式：${candidate.billingMode}`,
+    `- 官网入口：${candidate.url}`,
+    `- 价格页：${candidate.pricingUrl || "待确认"}`,
+    `- 当前状态：${apiProviderCandidateStatusLabel(candidate.status)}`,
+    `- 证据状态：${apiProviderCandidateEvidenceLabel(candidate.evidenceStatus)}`,
+    `- 优先级：${apiProviderCandidatePriorityLabel(candidate.priority)}`,
+    `- 来源说明：${candidate.sourceLabel}`,
+    `- 收录理由：${candidate.reason}`,
+    `- 下一步：${candidate.nextStep}`,
+    `- 备注：${candidate.notes || "无"}`,
+    "- 收录边界：只收官方 API、公开文档可验证套餐、模型路由或免费测试入口；不收灰色中转。",
+    "- 期望输出字段：provider, models, offers, plans, limits, pricingUrl, sourceLabel, updatedAt",
+    "- 验证方式：npm run import:api-models -- --dry-run --post && npm run test:api-models",
   ].join("\n");
 }
 

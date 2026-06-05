@@ -81,20 +81,12 @@ export function OfficialPricesExplorer({ dataset }: { dataset: OfficialPricesDat
       </div>
 
       <main className="mx-auto max-w-[1500px] px-5 py-6 sm:px-8 md:py-10 lg:py-12">
-        <section className="-mx-5 mb-5 border-y border-[#dfe4e5] px-5 py-2 md:hidden">
-          <CategoryTabStrip
-            items={platformTabs}
-            value={platform}
-            onChange={(value) => setPlatform(value as PlatformFilter)}
-          />
-        </section>
-
       <div className="mb-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
         <div className="min-w-0">
           <h1 className="font-serif text-2xl font-semibold tracking-normal text-[#202829] md:text-4xl">
             {title}
           </h1>
-          <p className="mt-3 max-w-[74ch] text-sm leading-7 text-[#5a6061]">
+          <p className="mt-3 hidden max-w-[74ch] text-sm leading-7 text-[#5a6061] md:block">
             基于 Apple App Store 公开页面整理官方内购价格，外层先看每个标准套餐的最低地区价，点进详情再看所有地区报价。人民币为按公开汇率估算，实际支付价格、税费和汇率以官方页面与支付时显示为准。
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-2 text-[0.72rem] font-medium text-[#5a6061]">
@@ -115,7 +107,47 @@ export function OfficialPricesExplorer({ dataset }: { dataset: OfficialPricesDat
         </div>
       </div>
 
-      <section className="mb-6 space-y-4">
+      <section className="mb-6 space-y-3 md:hidden">
+        <label className="flex h-11 min-w-0 items-center gap-2 rounded-full bg-white px-4 shadow-[0_16px_45px_rgba(45,52,53,0.05)] ring-1 ring-[#adb3b4]/15">
+          <Search size={16} className="shrink-0 text-[#5a6061]" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={scopeMode === "products" ? "搜索套餐、平台、最低地区" : "搜索套餐、地区或币种"}
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[#9aa2a3]"
+          />
+        </label>
+        <div className="-mx-5 overflow-x-auto px-5">
+          <CategoryTabStrip
+            className="w-max pb-1"
+            items={platformTabs}
+            value={platform}
+            onChange={(value) => setPlatform(value as PlatformFilter)}
+          />
+        </div>
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
+          <div className="inline-flex h-11 min-w-0 items-center rounded-full bg-[#e4e9ea] p-1">
+            <ViewToggleButton
+              active={scopeMode === "products"}
+              icon={<PackageCheck size={16} />}
+              label="标准"
+              onClick={() => setScopeMode("products")}
+            />
+            <ViewToggleButton
+              active={scopeMode === "offers"}
+              icon={<Database size={16} />}
+              label="报价"
+              onClick={() => setScopeMode("offers")}
+            />
+          </div>
+          <div className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-full bg-[#e4e9ea] px-3 text-sm font-semibold text-[#2d3435]">
+            <ArrowUpDown size={16} className="shrink-0" />
+            <span className="truncate">{scopeMode === "products" ? "最低价" : "人民币低价"}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="mb-6 hidden space-y-4 md:block">
         <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
           <label className="flex h-11 min-w-0 items-center gap-2 rounded-full bg-white px-4 shadow-[0_16px_45px_rgba(45,52,53,0.05)] ring-1 ring-[#adb3b4]/15 md:w-[380px]">
             <Search size={16} className="shrink-0 text-[#5a6061]" />
@@ -330,9 +362,9 @@ function ViewToggleButton({
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-lg bg-white px-4 py-3 shadow-[0_12px_35px_rgba(45,52,53,0.035)] ring-1 ring-[#adb3b4]/15">
-      <p className="truncate text-[0.68rem] font-medium uppercase tracking-[0.14em] text-[#5a6061]">{label}</p>
-      <p className="mt-1 truncate text-xl font-bold text-[#202829]">{value}</p>
+    <div className="inline-flex h-10 min-w-0 items-center justify-between gap-2 rounded-full bg-white px-3 text-sm font-semibold text-[#2d3435] shadow-[0_10px_30px_rgba(45,52,53,0.04)] ring-1 ring-[#adb3b4]/15 md:block md:h-auto md:rounded-lg md:px-4 md:py-3">
+      <p className="truncate text-xs font-medium text-[#5a6061] md:text-[0.68rem] md:uppercase md:tracking-[0.14em]">{label}</p>
+      <p className="shrink-0 truncate text-sm font-bold tabular-nums text-[#202829] md:mt-1 md:text-xl">{value}</p>
     </div>
   );
 }

@@ -356,6 +356,31 @@ export type ApiModelCollectRun = {
   finishedAt: string | null;
 };
 
+export type ApiProviderCandidateStatus =
+  | "candidate"
+  | "needs_review"
+  | "collector_todo"
+  | "supported"
+  | "blocked";
+
+export type ApiProviderCandidate = {
+  id: string;
+  name: string;
+  type: ApiProviderType;
+  billingMode: ApiBillingMode;
+  url: string;
+  pricingUrl: string | null;
+  logoUrl: string | null;
+  status: ApiProviderCandidateStatus;
+  priority: "high" | "medium" | "low";
+  evidenceStatus: "verified_url" | "needs_pricing_parse" | "needs_official_source" | "not_supported";
+  sourceLabel: string;
+  reason: string;
+  nextStep: string;
+  notes: string;
+  updatedAt: string;
+};
+
 export type ApiProviderSubmissionStatus = "pending" | "approved" | "collector_todo" | "rejected";
 
 export type ApiProviderSubmissionParseStatus =
@@ -396,6 +421,7 @@ export type ApiModelAdminData = {
   plans: ApiModelAdminPlan[];
   offers: ApiModelAdminOffer[];
   collectRuns: ApiModelCollectRun[];
+  providerCandidates: ApiProviderCandidate[];
   providerSubmissions: ApiProviderSubmission[];
 };
 

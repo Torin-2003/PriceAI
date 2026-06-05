@@ -14,6 +14,7 @@ import {
   type OfficialPricesDataset,
 } from "@/lib/official-prices";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import officialRegionConfig from "../../config/official-prices/regions.json";
 import type {
   OfficialSubscriptionAdminApp,
   OfficialSubscriptionAdminData,
@@ -26,6 +27,14 @@ import type {
 } from "@/lib/types";
 
 type DbRow = Record<string, unknown>;
+type OfficialRegionConfigRow = {
+  countryCode: string;
+  countryLabel: string;
+  storefrontCode: string;
+  currencyCode: string;
+  enabled?: boolean;
+  priority?: number;
+};
 
 const OFFICIAL_PRICE_CACHE_TTL_MS = 30_000;
 
@@ -422,20 +431,7 @@ function buildStaticOfficialAdminData({
     enabled: true,
     sortOrder: (index + 1) * 10,
   }));
-  const regionByCode = new Map<string, OfficialSubscriptionAdminRegion>();
-
-  for (const row of staticOfficialPricesDataset.rows) {
-    if (regionByCode.has(row.countryCode)) continue;
-    regionByCode.set(row.countryCode, {
-      id: row.countryCode,
-      countryCode: row.countryCode,
-      storefrontCode: row.countryCode.toLowerCase(),
-      countryLabel: row.countryLabel,
-      currencyCode: row.currencyCode,
-      enabled: true,
-      priority: regionByCode.size * 10 + 10,
-    });
-  }
+  const regions = staticOfficialAdminRegions();
 
   const currentPrices: OfficialSubscriptionAdminPrice[] = staticOfficialPricesDataset.rows.map((row, index) => {
     const app = appBySlug.get(row.appSlug);
@@ -472,11 +468,43 @@ function buildStaticOfficialAdminData({
     message,
     apps,
     plans,
-    regions: Array.from(regionByCode.values()),
+    regions,
     currentPrices,
     collectRuns: [],
     unmatchedItems: [],
   };
+}
+
+function staticOfficialAdminRegions(): OfficialSubscriptionAdminRegion[] {
+  const configuredRegions = (officialRegionConfig as OfficialRegionConfigRow[])
+    .filter((region) => region.enabled !== false)
+    .sort((a, b) => (a.priority || 0) - (b.priority || 0))
+    .map((region, index): OfficialSubscriptionAdminRegion => ({
+      id: region.countryCode,
+      countryCode: region.countryCode,
+      storefrontCode: region.storefrontCode,
+      countryLabel: region.countryLabel,
+      currencyCode: region.currencyCode,
+      enabled: true,
+      priority: region.priority || (index + 1) * 10,
+    }));
+
+  if (configuredRegions.length) return configuredRegions;
+
+  const regionByCode = new Map<string, OfficialSubscriptionAdminRegion>();
+  for (const row of staticOfficialPricesDataset.rows) {
+    if (regionByCode.has(row.countryCode)) continue;
+    regionByCode.set(row.countryCode, {
+      id: row.countryCode,
+      countryCode: row.countryCode,
+      storefrontCode: row.countryCode.toLowerCase(),
+      countryLabel: row.countryLabel,
+      currencyCode: row.currencyCode,
+      enabled: true,
+      priority: regionByCode.size * 10 + 10,
+    });
+  }
+  return Array.from(regionByCode.values());
 }
 
 function mapOfficialAdminApp(row: DbRow): OfficialSubscriptionAdminApp {

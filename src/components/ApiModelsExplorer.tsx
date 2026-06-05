@@ -180,21 +180,13 @@ export function ApiModelsExplorer({ dataset }: { dataset: ApiModelDataset }) {
       </div>
 
       <main className="mx-auto max-w-[1500px] px-5 py-6 sm:px-8 md:py-10 lg:py-12">
-        <section className="-mx-5 mb-5 border-y border-[#dfe4e5] px-5 py-2 md:hidden">
-          <CategoryTabStrip
-            items={familyTabs}
-            value={family}
-            onChange={(value) => setFamily(value)}
-          />
-        </section>
-
       <div className="mb-6 space-y-4 md:mb-8 md:space-y-5">
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
           <div className="min-w-0">
             <h1 className="font-serif text-2xl font-semibold tracking-normal text-[#202829] md:text-4xl">
               {buildTitle(family, scopeMode, familyOptions)}
             </h1>
-            <p className="mt-3 max-w-[75ch] text-sm leading-7 text-[#5a6061]">
+            <p className="mt-3 hidden max-w-[75ch] text-sm leading-7 text-[#5a6061] md:block">
               按具体模型和正规公开渠道重新组织 API 信息。你可以先查某个模型有哪些官方 API、套餐或免费入口，也可以反过来查某个渠道或套餐覆盖哪些模型。
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-2 text-[0.72rem] font-medium text-[#5a6061]">
@@ -214,7 +206,101 @@ export function ApiModelsExplorer({ dataset }: { dataset: ApiModelDataset }) {
           </div>
         </div>
 
-        <div className="space-y-3 rounded-lg bg-[#f2f4f4] p-3 shadow-[0_18px_50px_rgba(45,52,53,0.04)] ring-1 ring-[#adb3b4]/10">
+        <div className="space-y-3 md:hidden">
+          <label className="flex h-11 min-w-0 items-center gap-2 rounded-full bg-white px-4 shadow-[0_16px_45px_rgba(45,52,53,0.05)] ring-1 ring-[#adb3b4]/15">
+            <Search size={16} className="shrink-0 text-[#5a6061]" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={searchPlaceholder(scopeMode)}
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[#9aa2a3]"
+            />
+          </label>
+          <div className="-mx-5 overflow-x-auto px-5">
+            <CategoryTabStrip
+              className="w-max pb-1"
+              items={familyTabs}
+              value={family}
+              onChange={(value) => setFamily(value)}
+            />
+          </div>
+          <div className="-mx-5 overflow-x-auto px-5">
+            <div className="flex w-max items-center gap-2 pb-1">
+              <div className="inline-flex h-11 shrink-0 items-center rounded-full bg-[#e4e9ea] p-1">
+                <ViewToggleButton
+                  active={scopeMode === "models"}
+                  icon={<PackageCheck size={16} />}
+                  label="标准"
+                  onClick={() => setScopeMode("models")}
+                />
+                <ViewToggleButton
+                  active={scopeMode === "offers"}
+                  icon={<Database size={16} />}
+                  label="报价"
+                  onClick={() => setScopeMode("offers")}
+                />
+                <ViewToggleButton
+                  active={scopeMode === "providers"}
+                  icon={<Layers3 size={16} />}
+                  label="渠道"
+                  onClick={() => setScopeMode("providers")}
+                />
+              </div>
+              <div className="inline-flex h-11 shrink-0 items-center rounded-full bg-[#e4e9ea] p-1">
+                {(["CNY", "USD"] as ApiCurrency[]).map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setCurrency(item)}
+                    className={`h-9 rounded-full px-3 text-sm font-semibold transition ${
+                      currency === item ? "bg-white text-[#202829] shadow-[0_8px_24px_rgba(45,52,53,0.08)]" : "text-[#5a6061] hover:text-[#202829]"
+                    }`}
+                  >
+                    {item === "CNY" ? "人民币" : "美元"}
+                  </button>
+                ))}
+              </div>
+              <div className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full bg-[#e4e9ea] px-3 text-sm font-semibold text-[#2d3435]">
+                <ArrowUpDown size={16} />
+                {scopeMode === "models" ? "模型优先" : scopeMode === "offers" ? "价格优先" : "渠道优先"}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSubmitOpen(true);
+                  setSubmitMessage(null);
+                }}
+                className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-[#2d3435] px-3.5 text-sm font-semibold text-[#f8f8f8] transition hover:bg-[#1f2526]"
+              >
+                <Send size={16} />
+                提交
+              </button>
+            </div>
+          </div>
+          {scopeMode !== "models" ? (
+            <div className="-mx-5 overflow-x-auto px-5">
+              <div className="flex w-max gap-2 pb-1">
+                {typeFilters.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setTypeFilter(item)}
+                    aria-label={`类型筛选：${typeFilterLabels[item]}`}
+                    className={`inline-flex h-10 shrink-0 items-center rounded-full px-3.5 text-xs font-semibold transition ${
+                      typeFilter === item
+                        ? "bg-[#2d3435] text-[#f8f8f8] shadow-[0_10px_30px_rgba(45,52,53,0.10)]"
+                        : "bg-white text-[#5a6061] ring-1 ring-[#adb3b4]/15 hover:bg-[#f7f9f9] hover:text-[#202829]"
+                    }`}
+                  >
+                    {typeFilterLabels[item]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="hidden space-y-3 rounded-lg bg-[#f2f4f4] p-3 shadow-[0_18px_50px_rgba(45,52,53,0.04)] ring-1 ring-[#adb3b4]/10 md:block">
           <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
             <label className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full bg-white px-4 shadow-[0_16px_45px_rgba(45,52,53,0.05)] ring-1 ring-[#adb3b4]/15 md:min-w-[300px] md:max-w-[430px]">
               <Search size={16} className="shrink-0 text-[#5a6061]" />
@@ -715,9 +801,9 @@ function ViewToggleButton({
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-lg bg-white px-3 py-3 shadow-[0_12px_35px_rgba(45,52,53,0.035)] ring-1 ring-[#adb3b4]/15">
-      <p className="truncate text-[0.68rem] font-medium uppercase tracking-[0.14em] text-[#5a6061]">{label}</p>
-      <p className="mt-1 truncate text-xl font-bold text-[#202829]">{value}</p>
+    <div className="inline-flex h-10 min-w-0 items-center justify-between gap-2 rounded-full bg-white px-3 text-sm font-semibold text-[#2d3435] shadow-[0_10px_30px_rgba(45,52,53,0.04)] ring-1 ring-[#adb3b4]/15 md:block md:h-auto md:rounded-lg md:px-3 md:py-3">
+      <p className="truncate text-xs font-medium text-[#5a6061] md:text-[0.68rem] md:uppercase md:tracking-[0.14em]">{label}</p>
+      <p className="shrink-0 truncate text-sm font-bold tabular-nums text-[#202829] md:mt-1 md:text-xl">{value}</p>
     </div>
   );
 }

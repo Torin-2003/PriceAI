@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  apiProviderCandidates,
   staticApiModelDataset,
   type ApiBillingMode,
   type ApiModel,
@@ -19,6 +20,7 @@ import type {
   ApiModelAdminPlan,
   ApiModelAdminProvider,
   ApiModelCollectRun,
+  ApiProviderCandidate as ApiProviderAdminCandidate,
   ApiProviderSubmission,
   ApiProviderSubmissionParseStatus,
   ApiProviderSubmissionStatus,
@@ -27,7 +29,7 @@ import { stableId } from "@/lib/utils";
 
 type DbRow = Record<string, unknown>;
 
-type ApiProviderCandidate = {
+type ApiProviderMatchCandidate = {
   id: string;
   name: string;
   type: ApiProviderType;
@@ -286,6 +288,7 @@ export async function getApiModelAdminData(): Promise<ApiModelAdminData> {
       plans,
       offers,
       collectRuns,
+      providerCandidates: buildApiProviderCandidates(),
       providerSubmissions,
     };
   } catch (error) {
@@ -511,6 +514,7 @@ function buildStaticApiModelAdminData({
     plans,
     offers,
     collectRuns: [],
+    providerCandidates: buildApiProviderCandidates(),
     providerSubmissions: [],
   };
 }
@@ -646,7 +650,7 @@ export async function updateApiProviderSubmissionReview(input: {
   return mapApiProviderSubmission(data as DbRow);
 }
 
-async function readProviderCandidatesForSubmission(): Promise<ApiProviderCandidate[]> {
+async function readProviderCandidatesForSubmission(): Promise<ApiProviderMatchCandidate[]> {
   const supabase = getSupabaseServerClient();
   if (supabase) {
     try {
@@ -658,7 +662,7 @@ async function readProviderCandidatesForSubmission(): Promise<ApiProviderCandida
       const rows = dbRows(data);
       if (rows.length) {
         return rows
-          .map((row): ApiProviderCandidate | null => {
+          .map((row): ApiProviderMatchCandidate | null => {
             const type = providerType(row.type);
             const url = nullableString(row.official_url);
             if (!type || !url) return null;
@@ -671,7 +675,7 @@ async function readProviderCandidatesForSubmission(): Promise<ApiProviderCandida
               persisted: true,
             };
           })
-          .filter((provider): provider is ApiProviderCandidate => Boolean(provider));
+          .filter((provider): provider is ApiProviderMatchCandidate => Boolean(provider));
       }
     } catch (error) {
       console.warn("Falling back to static API provider candidates:", error);
@@ -690,7 +694,7 @@ async function readProviderCandidatesForSubmission(): Promise<ApiProviderCandida
 
 function parseApiProviderSubmission(
   url: string,
-  providers: ApiProviderCandidate[],
+  providers: ApiProviderMatchCandidate[],
   submittedName: string | null,
 ): {
   providerId: string | null;
@@ -749,7 +753,7 @@ function normalizeSubmissionUrl(value: string): string {
   }
 }
 
-function providerHosts(provider: ApiProviderCandidate): string[] {
+function providerHosts(provider: ApiProviderMatchCandidate): string[] {
   return [provider.url, provider.pricingUrl]
     .map((value) => hostFromUrl(value))
     .filter((host): host is string => Boolean(host));
@@ -805,6 +809,26 @@ function mapApiProviderSubmission(row: DbRow): ApiProviderSubmission {
     createdAt: timestampValue(row.created_at),
     updatedAt: timestampValue(row.updated_at),
   };
+}
+
+function buildApiProviderCandidates(): ApiProviderAdminCandidate[] {
+  return apiProviderCandidates.map((candidate) => ({
+    id: candidate.id,
+    name: candidate.name,
+    type: candidate.type,
+    billingMode: candidate.billingMode,
+    url: candidate.url,
+    pricingUrl: candidate.pricingUrl,
+    logoUrl: candidate.logoUrl,
+    status: candidate.status,
+    priority: candidate.priority,
+    evidenceStatus: candidate.evidenceStatus,
+    sourceLabel: candidate.sourceLabel,
+    reason: candidate.reason,
+    nextStep: candidate.nextStep,
+    notes: candidate.notes,
+    updatedAt: candidate.updatedAt,
+  }));
 }
 
 function mapApiModel(row: DbRow, familyNameById: Map<string, string>): ApiModel | null {
