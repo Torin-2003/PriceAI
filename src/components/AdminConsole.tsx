@@ -600,6 +600,29 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     }
   }
 
+  async function enqueueApiModelCollection() {
+    setLoadingAction("api-models-enqueue");
+    setGlobalMessage({ type: "info", text: "正在创建 API 模型采集任务..." });
+
+    try {
+      const result = await request("/api/admin/collection-jobs", password, {
+        jobType: "api_models",
+        priority: 25,
+        maxAttempts: 2,
+      });
+      if (result.ok) {
+        setGlobalMessage({ type: "success", text: "已创建 API 模型采集任务，等待 worker 领取。" });
+        router.refresh();
+      } else {
+        setGlobalMessage({ type: "error", text: result.message || "创建 API 模型任务失败。" });
+      }
+    } catch (error) {
+      setGlobalMessage({ type: "error", text: error instanceof Error ? error.message : "网络错误。" });
+    } finally {
+      setLoadingAction(null);
+    }
+  }
+
   const copyOfficialCollectorCommand = () => {
     const command = "npm run collect:official -- --all --dry-run --post";
     void navigator.clipboard.writeText(command);
@@ -610,6 +633,12 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     const command = "npm run import:api-models -- --dry-run --post";
     void navigator.clipboard.writeText(command);
     setGlobalMessage({ type: "success", text: "已复制 API 模型 dry-run 导入命令。" });
+  };
+
+  const copyApiModelCollectorCommand = () => {
+    const command = "npm run collect:api-models -- --all --dry-run";
+    void navigator.clipboard.writeText(command);
+    setGlobalMessage({ type: "success", text: "已复制 API 模型采集 dry-run 命令。" });
   };
 
   async function toggleOfficialAppEnabled(app: OfficialAdminApp, enabled: boolean) {
@@ -2146,6 +2175,8 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                   data={apiModels}
                   loadingAction={loadingAction}
                   onCopyImportCommand={copyApiModelImportCommand}
+                  onCopyCollectorCommand={copyApiModelCollectorCommand}
+                  onEnqueueCollection={enqueueApiModelCollection}
                   onToggleProviderEnabled={toggleApiProviderEnabled}
                   onToggleOfferStatus={toggleApiOfferStatus}
                   onReviewProviderSubmission={reviewApiProviderSubmission}
@@ -3929,6 +3960,8 @@ function ApiModelsAdminPanel({
   data,
   loadingAction,
   onCopyImportCommand,
+  onCopyCollectorCommand,
+  onEnqueueCollection,
   onToggleProviderEnabled,
   onToggleOfferStatus,
   onReviewProviderSubmission,
@@ -3936,6 +3969,8 @@ function ApiModelsAdminPanel({
   data: ApiModelAdminData;
   loadingAction: string | null;
   onCopyImportCommand: () => void;
+  onCopyCollectorCommand: () => void;
+  onEnqueueCollection: () => void;
   onToggleProviderEnabled: (provider: ApiModelAdminProvider, enabled: boolean) => void;
   onToggleOfferStatus: (offer: ApiModelAdminOffer, status: ApiModelAdminOffer["status"]) => void;
   onReviewProviderSubmission: (submission: ApiProviderSubmission, reviewStatus: ApiProviderSubmission["reviewStatus"]) => void;
@@ -3971,12 +4006,21 @@ function ApiModelsAdminPanel({
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-medium text-[#2d3435]">静态数据导入</p>
+            <p className="text-sm font-medium text-[#2d3435]">导入、采集与队列</p>
             <p className="mt-1 text-sm leading-6 text-[#5a6061]">
-              当前阶段先用公开文档整理的静态数据写入独立 api_* 表；确认 dry-run 后再手动决定是否写库。
+              先用公开文档整理的静态数据写入独立 api_* 表；采集任务会探测公开来源并写入 api_collection_runs 日志，确认后再扩展到自动更新报价。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onEnqueueCollection}
+              disabled={loadingAction === "api-models-enqueue"}
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2f7a4b] px-4 text-sm font-medium text-white transition-colors hover:bg-[#256a3d] disabled:opacity-60"
+            >
+              {loadingAction === "api-models-enqueue" ? <Loader2 size={15} className="animate-spin" /> : <ClipboardList size={15} />}
+              加入采集队列
+            </button>
             <Link
               href="/api-models"
               className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2d3435] px-4 text-sm font-medium text-white transition-colors hover:bg-[#202829]"
@@ -3986,11 +4030,19 @@ function ApiModelsAdminPanel({
             </Link>
             <button
               type="button"
+              onClick={onCopyCollectorCommand}
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-4 text-sm font-medium text-[#2d3435] transition-colors hover:bg-[#f2f4f4]"
+            >
+              <Copy size={15} />
+              复制采集 dry-run
+            </button>
+            <button
+              type="button"
               onClick={onCopyImportCommand}
               className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-4 text-sm font-medium text-[#2d3435] transition-colors hover:bg-[#f2f4f4]"
             >
               <Copy size={15} />
-              复制 dry-run 命令
+              复制导入 dry-run
             </button>
           </div>
         </div>
@@ -5097,12 +5149,14 @@ function collectionJobStatusLabel(value: CollectionJob["status"]): string {
 function collectionJobName(job: CollectionJob): string {
   if (job.jobType === "all") return "全部渠道";
   if (job.jobType === "official_prices") return job.sourceName || "官方地区价";
+  if (job.jobType === "api_models") return job.sourceName || "API 模型";
   return job.sourceName || job.sourceId || "未知渠道";
 }
 
 function collectionJobTypeLabel(value: CollectionJob["jobType"]): string {
   if (value === "all") return "全量";
   if (value === "official_prices") return "官方价";
+  if (value === "api_models") return "API 模型";
   return "单渠道";
 }
 

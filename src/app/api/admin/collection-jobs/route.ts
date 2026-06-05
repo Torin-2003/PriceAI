@@ -6,7 +6,7 @@ import { stableId } from "@/lib/utils";
 import { z } from "zod";
 
 const schema = z.object({
-  jobType: z.enum(["all", "source", "official_prices"]).default("source"),
+  jobType: z.enum(["all", "source", "official_prices", "api_models"]).default("source"),
   sourceIds: z.array(z.string().min(1)).optional(),
   priority: z.number().int().min(0).max(100).default(10),
   maxAttempts: z.number().int().min(1).max(5).default(1),
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     const payload = schema.parse(await request.json());
     const now = new Date().toISOString();
 
-    const sourceIds = payload.jobType === "all" || payload.jobType === "official_prices"
+    const sourceIds = payload.jobType === "all" || payload.jobType === "official_prices" || payload.jobType === "api_models"
       ? [null]
       : Array.from(new Set(payload.sourceIds || [])).filter(Boolean);
 
@@ -82,8 +82,9 @@ export async function POST(request: Request) {
   }
 }
 
-function collectionJobFallbackName(jobType: "all" | "source" | "official_prices", sourceId: string | null): string | null {
+function collectionJobFallbackName(jobType: "all" | "source" | "official_prices" | "api_models", sourceId: string | null): string | null {
   if (jobType === "all") return "全部渠道";
   if (jobType === "official_prices") return "官方地区价";
+  if (jobType === "api_models") return "API 模型";
   return sourceId;
 }

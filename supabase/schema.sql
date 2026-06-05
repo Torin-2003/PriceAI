@@ -145,7 +145,7 @@ create table if not exists crawl_runs (
 
 create table if not exists collection_jobs (
   id text primary key,
-  job_type text not null check (job_type in ('all', 'source', 'official_prices')),
+  job_type text not null check (job_type in ('all', 'source', 'official_prices', 'api_models')),
   source_id text references sources(id) on delete set null,
   source_name text,
   status text not null default 'pending' check (status in ('pending', 'running', 'success', 'failed', 'cancelled')),
