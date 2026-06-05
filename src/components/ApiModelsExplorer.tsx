@@ -4,18 +4,15 @@ import {
   ArrowUpDown,
   ChevronRight,
   Database,
-  ExternalLink,
   Info,
   Layers3,
   PackageCheck,
   Search,
-  SlidersHorizontal,
-  Terminal,
 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
+import { ApiModelIcon } from "@/components/ApiModelIcon";
 import {
-  apiCompatibilityOptions,
   apiModelFxSummary,
   apiModelOffers,
   apiModelUpdatedAt,
@@ -24,11 +21,9 @@ import {
   formatApiPrice,
   formatPlanPrice,
   getApiModelFamilyOptions,
-  getApiModelOffers,
   getApiModelSummaries,
   getApiProviderSummaries,
   type ApiCurrency,
-  type ApiModelOfferWithRelations,
   type ApiModelScope,
   type ApiModelSummary,
   type ApiProviderSummary,
@@ -37,7 +32,6 @@ import {
 
 const typeFilters = ["all", "official", "subscription", "router", "free"] as const;
 type TypeFilter = (typeof typeFilters)[number];
-type CompatibilityFilter = (typeof apiCompatibilityOptions)[number];
 type ScopeMode = "models" | "providers";
 type FamilyFilter = "all" | string;
 
@@ -54,7 +48,6 @@ export function ApiModelsExplorer() {
   const [scopeMode, setScopeMode] = useState<ScopeMode>("models");
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
-  const [compatibilityFilter, setCompatibilityFilter] = useState<CompatibilityFilter>("全部");
   const [currency, setCurrency] = useState<ApiCurrency>("CNY");
 
   const normalizedQuery = query.trim().toLowerCase();
@@ -62,28 +55,19 @@ export function ApiModelsExplorer() {
     () =>
       getApiModelSummaries(family)
         .filter((summary) => matchesModelSummary(summary, normalizedQuery))
-        .filter((summary) => matchesModelSummaryType(summary, typeFilter))
-        .filter((summary) => matchesModelSummaryCompatibility(summary, compatibilityFilter)),
-    [compatibilityFilter, family, normalizedQuery, typeFilter],
+        .filter((summary) => matchesModelSummaryType(summary, typeFilter)),
+    [family, normalizedQuery, typeFilter],
   );
   const providerSummaries = useMemo(
     () =>
       getApiProviderSummaries(family)
         .filter((summary) => matchesProviderSummary(summary, normalizedQuery))
-        .filter((summary) => typeFilter === "all" || summary.provider.type === typeFilter)
-        .filter((summary) => compatibilityFilter === "全部" || summary.compatibility.includes(compatibilityFilter)),
-    [compatibilityFilter, family, normalizedQuery, typeFilter],
-  );
-  const offerRows = useMemo(
-    () =>
-      getApiModelOffers(family)
-        .filter((offer) => matchesOffer(offer, normalizedQuery))
-        .filter((offer) => typeFilter === "all" || offer.provider.type === typeFilter)
-        .filter((offer) => compatibilityFilter === "全部" || offer.compatibility.includes(compatibilityFilter)),
-    [compatibilityFilter, family, normalizedQuery, typeFilter],
+        .filter((summary) => typeFilter === "all" || summary.provider.type === typeFilter),
+    [family, normalizedQuery, typeFilter],
   );
 
-  const freeCount = apiModelOffers.filter((offer) => offer.providerId === "nvidia-nim" || offer.compatibility.includes("免费/测试")).length;
+  const freeProviderIds = new Set(apiProviders.filter((provider) => provider.type === "free").map((provider) => provider.id));
+  const freeCount = apiModelOffers.filter((offer) => freeProviderIds.has(offer.providerId)).length;
   const resultCount = scopeMode === "models" ? modelSummaries.length : providerSummaries.length;
 
   return (
@@ -130,7 +114,7 @@ export function ApiModelsExplorer() {
             <FilterPill
               key={option.id}
               active={family === option.id}
-              icon={<Terminal size={17} />}
+              icon={<ApiModelIcon family={option.label} className="h-5 w-5" />}
               label={option.label}
               onClick={() => setFamily(option.id)}
             />
@@ -199,24 +183,6 @@ export function ApiModelsExplorer() {
           ))}
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {apiCompatibilityOptions.map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setCompatibilityFilter(item)}
-              aria-label={`兼容性筛选：${item}`}
-              className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold transition ${
-                compatibilityFilter === item
-                  ? "bg-[#dde4e5] text-[#202829]"
-                  : "bg-white text-[#5a6061] ring-1 ring-[#adb3b4]/15 hover:bg-[#f7f9f9] hover:text-[#202829]"
-              }`}
-            >
-              <SlidersHorizontal size={13} />
-              {item}
-            </button>
-          ))}
-        </div>
       </section>
 
       {scopeMode === "models" ? (
@@ -230,19 +196,6 @@ export function ApiModelsExplorer() {
       ) : (
         <EmptyState text="没有符合条件的渠道或套餐" />
       )}
-
-      {scopeMode === "models" && offerRows.length ? (
-        <section className="mt-8">
-          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 className="font-serif text-2xl font-semibold tracking-normal text-[#202829]">全部渠道明细</h2>
-              <p className="mt-1 text-sm text-[#5a6061]">用于横向核对模型、渠道、价格、套餐说明和来源链接。</p>
-            </div>
-            <span className="text-xs font-medium text-[#5a6061]">{offerRows.length} 条报价明细</span>
-          </div>
-          <ApiOfferTable rows={offerRows} currency={currency} />
-        </section>
-      ) : null}
 
       <section className="mt-6 rounded-lg bg-[#fff7e8] p-5 text-sm leading-7 text-[#7a541b] ring-1 ring-[#efdfbd]">
         <p className="font-semibold text-[#7a541b]">套餐折算提示</p>
@@ -262,15 +215,14 @@ function ApiModelSummaryTable({ summaries, currency }: { summaries: ApiModelSumm
   return (
     <section className="overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
       <div className="overflow-x-auto">
-        <table className="min-w-[1260px] w-full border-collapse text-left text-sm">
+        <table className="min-w-[1120px] w-full border-collapse text-left text-sm">
           <thead className="bg-[#f2f4f4] text-[0.68rem] font-semibold text-[#5a6061]">
             <tr>
               <TableHead>标准模型</TableHead>
               <TableHead>官方/参考入口</TableHead>
               <TableHead>渠道覆盖</TableHead>
-              <TableHead>套餐</TableHead>
-              <TableHead>兼容性</TableHead>
-              <TableHead>适合工具</TableHead>
+              <TableHead>价格/套餐</TableHead>
+              <TableHead>限制</TableHead>
               <TableHead>最近更新</TableHead>
               <TableHead>操作</TableHead>
             </tr>
@@ -284,8 +236,8 @@ function ApiModelSummaryTable({ summaries, currency }: { summaries: ApiModelSumm
                 <tr key={summary.id} className="transition hover:bg-[#f7f9f9]">
                   <td className="max-w-[330px] px-5 py-4">
                     <Link href={href} className="group flex min-w-0 items-center gap-3">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f2f4f4] text-[#5a6061]">
-                        <Terminal size={18} />
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f2f4f4] ring-1 ring-[#adb3b4]/15">
+                        <ApiModelIcon family={summary.family} className="h-7 w-7" />
                       </span>
                       <span className="min-w-0">
                         <span className="block truncate font-semibold text-[#202829] group-hover:text-[#2f7a4b]">{summary.displayName}</span>
@@ -307,13 +259,16 @@ function ApiModelSummaryTable({ summaries, currency }: { summaries: ApiModelSumm
                       <CountBadge tone="neutral">渠道 {summary.providerCount}</CountBadge>
                       <CountBadge tone="good">官方 {summary.officialCount}</CountBadge>
                       <CountBadge tone="warn">免费 {summary.freeCount}</CountBadge>
+                      <CountBadge tone="neutral">套餐 {summary.planCount}</CountBadge>
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-[#2d3435]">{summary.planCount}</td>
-                  <td className="max-w-[260px] px-5 py-4">
-                    <InlineChips values={summary.compatibility} />
+                  <td className="max-w-[240px] px-5 py-4">
+                    <p className="font-semibold leading-6 text-[#202829]">
+                      {primaryOffer ? formatApiPrice(primaryOffer.inputPrice, currency) : "暂无价格"}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-[#5a6061]">{primaryOffer?.freeOrPlan ?? "保留来源，等待补充报价"}</p>
                   </td>
-                  <td className="max-w-[240px] px-5 py-4 text-sm leading-6 text-[#5a6061]">{summary.suitableTools.join("、")}</td>
+                  <td className="max-w-[270px] px-5 py-4 text-sm leading-6 text-[#5a6061]">{primaryOffer?.limitSummary ?? "未公开固定 RPM/TPM，以官方控制台为准。"}</td>
                   <td className="px-5 py-4 text-[#5a6061]">{summary.latestUpdatedAt}</td>
                   <td className="px-5 py-4">
                     <Link
@@ -338,14 +293,13 @@ function ApiProviderSummaryTable({ summaries, currency }: { summaries: ApiProvid
   return (
     <section className="overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
       <div className="overflow-x-auto">
-        <table className="min-w-[1260px] w-full border-collapse text-left text-sm">
+        <table className="min-w-[1120px] w-full border-collapse text-left text-sm">
           <thead className="bg-[#f2f4f4] text-[0.68rem] font-semibold text-[#5a6061]">
             <tr>
               <TableHead>渠道/套餐</TableHead>
               <TableHead>类型</TableHead>
               <TableHead>模型覆盖</TableHead>
               <TableHead>套餐/额度</TableHead>
-              <TableHead>兼容性</TableHead>
               <TableHead>限制</TableHead>
               <TableHead>最近更新</TableHead>
               <TableHead>操作</TableHead>
@@ -386,10 +340,7 @@ function ApiProviderSummaryTable({ summaries, currency }: { summaries: ApiProvid
                       <p className="text-sm leading-6 text-[#5a6061]">{provider.billingMode}</p>
                     )}
                   </td>
-                  <td className="max-w-[260px] px-5 py-4">
-                    <InlineChips values={summary.compatibility} />
-                  </td>
-                  <td className="max-w-[270px] px-5 py-4 text-sm leading-6 text-[#5a6061]">{provider.limitations}</td>
+                  <td className="max-w-[270px] px-5 py-4 text-sm leading-6 text-[#5a6061]">{summary.primaryPlan?.limitSummary ?? provider.limitSummary}</td>
                   <td className="px-5 py-4 text-[#5a6061]">{summary.latestUpdatedAt}</td>
                   <td className="px-5 py-4">
                     <Link
@@ -407,99 +358,6 @@ function ApiProviderSummaryTable({ summaries, currency }: { summaries: ApiProvid
         </table>
       </div>
     </section>
-  );
-}
-
-function ApiOfferTable({ rows, currency }: { rows: ApiModelOfferWithRelations[]; currency: ApiCurrency }) {
-  return (
-    <section className="overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
-      <div className="overflow-x-auto">
-        <table className="min-w-[1640px] w-full border-collapse text-left text-sm">
-          <thead className="bg-[#f2f4f4] text-[0.68rem] font-semibold text-[#5a6061]">
-            <tr>
-              <TableHead>模型</TableHead>
-              <TableHead>渠道</TableHead>
-              <TableHead>类型</TableHead>
-              <TableHead>输入价</TableHead>
-              <TableHead>输出价</TableHead>
-              <TableHead>缓存读/写</TableHead>
-              <TableHead>免费/套餐额度</TableHead>
-              <TableHead>限制</TableHead>
-              <TableHead>兼容性</TableHead>
-              <TableHead>来源</TableHead>
-              <TableHead>更新时间</TableHead>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#edf0f1]">
-            {rows.map((offer) => (
-              <ApiOfferRow key={offer.id} offer={offer} currency={currency} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-function ApiOfferRow({ offer, currency }: { offer: ApiModelOfferWithRelations; currency: ApiCurrency }) {
-  const sourceHref = offer.pricingUrl ?? offer.provider.pricingUrl ?? offer.provider.url;
-
-  return (
-    <tr className="align-top transition hover:bg-[#f7f9f9]">
-      <td className="px-5 py-4">
-        <Link href={`/api-models/${offer.modelId}`} className="block max-w-[230px] font-semibold leading-6 text-[#202829] hover:text-[#2f7a4b]">
-          {offer.model.displayName}
-        </Link>
-        <p className="mt-1 text-xs font-medium text-[#5a6061]">{offer.routeModelId ?? offer.model.modelId}</p>
-      </td>
-      <td className="px-5 py-4">
-        <Link
-          href={`/api-models/providers/${offer.providerId}`}
-          className="inline-flex max-w-[210px] items-center gap-1.5 font-semibold leading-6 text-[#202829] transition hover:text-[#2f7a4b]"
-        >
-          {offer.provider.name}
-          <ChevronRight size={13} className="shrink-0" />
-        </Link>
-        <p className="mt-1 text-xs text-[#5a6061]">{offer.billingMode}</p>
-      </td>
-      <td className="px-5 py-4">
-        <TypeChip type={offer.provider.type} />
-      </td>
-      <td className="px-5 py-4">
-        <PriceText value={formatApiPrice(offer.inputPrice, currency)} />
-      </td>
-      <td className="px-5 py-4">
-        <PriceText value={formatApiPrice(offer.outputPrice, currency)} />
-      </td>
-      <td className="px-5 py-4">
-        <p className="max-w-[210px] text-sm font-semibold leading-6 text-[#202829]">
-          {offer.cacheReadPrice ? formatApiPrice(offer.cacheReadPrice, currency) : "待确认"}
-        </p>
-        {offer.cacheWritePrice ? <p className="mt-1 max-w-[210px] text-xs leading-5 text-[#5a6061]">写入：{formatApiPrice(offer.cacheWritePrice, currency)}</p> : null}
-      </td>
-      <td className="px-5 py-4">
-        <p className="max-w-[250px] text-sm leading-6 text-[#2d3435]">{offer.freeOrPlan}</p>
-        {offer.notes ? <p className="mt-1 max-w-[250px] text-xs leading-5 text-[#5a6061]">{offer.notes}</p> : null}
-      </td>
-      <td className="px-5 py-4">
-        <p className="max-w-[270px] text-sm leading-6 text-[#5a6061]">{offer.limitations}</p>
-      </td>
-      <td className="px-5 py-4">
-        <InlineChips values={offer.compatibility} maxWidthClassName="max-w-[250px]" />
-      </td>
-      <td className="px-5 py-4">
-        <a
-          href={sourceHref}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full bg-[#e4e9ea] px-3 text-xs font-semibold text-[#2d3435] transition hover:bg-[#dde4e5]"
-        >
-          {offer.sourceLabel}
-          <ExternalLink size={13} />
-        </a>
-      </td>
-      <td className="px-5 py-4 text-xs font-medium text-[#5a6061]">{offer.updatedAt}</td>
-    </tr>
   );
 }
 
@@ -592,24 +450,6 @@ function CountBadge({ children, tone }: { children: ReactNode; tone: "good" | "w
   return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${className}`}>{children}</span>;
 }
 
-function InlineChips({ values, maxWidthClassName = "max-w-[260px]" }: { values: string[]; maxWidthClassName?: string }) {
-  if (!values.length) return <span className="text-xs text-[#5a6061]">待确认</span>;
-
-  return (
-    <div className={`flex flex-wrap gap-1.5 ${maxWidthClassName}`}>
-      {values.map((item) => (
-        <span key={item} className="rounded-full bg-[#edf0f1] px-2.5 py-1 text-[0.68rem] font-semibold text-[#5a6061]">
-          {item}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function PriceText({ value }: { value: string }) {
-  return <p className="max-w-[190px] font-semibold leading-6 text-[#202829]">{value}</p>;
-}
-
 function EmptyState({ text }: { text: string }) {
   return (
     <div className="rounded-lg bg-white px-6 py-16 text-center shadow-[0_20px_60px_rgba(45,52,53,0.05)] ring-1 ring-[#adb3b4]/15">
@@ -638,10 +478,9 @@ function matchesModelSummary(summary: ApiModelSummary, query: string) {
     summary.model.description,
     summary.model.contextWindow,
     ...summary.providerNames,
-    ...summary.compatibility,
-    ...summary.suitableTools,
     summary.primaryOffer?.provider.name,
     summary.primaryOffer?.freeOrPlan,
+    summary.primaryOffer?.limitSummary,
   ]
     .filter(Boolean)
     .join(" ")
@@ -660,47 +499,20 @@ function matchesModelSummaryType(summary: ApiModelSummary, typeFilter: TypeFilte
   }[typeFilter] > 0;
 }
 
-function matchesModelSummaryCompatibility(summary: ApiModelSummary, compatibilityFilter: CompatibilityFilter) {
-  if (compatibilityFilter === "全部") return true;
-  return summary.compatibility.includes(compatibilityFilter);
-}
-
 function matchesProviderSummary(summary: ApiProviderSummary, query: string) {
   if (!query) return true;
 
   return [
     summary.provider.name,
     summary.provider.description,
+    summary.provider.limitSummary,
     summary.provider.limitations,
     summary.primaryPlan?.name,
     summary.primaryPlan?.quotaSummary,
+    summary.primaryPlan?.limitSummary,
     summary.primaryPlan?.limitations,
     ...summary.families,
     ...summary.modelNames,
-    ...summary.compatibility,
-    ...summary.suitableTools,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase()
-    .includes(query);
-}
-
-function matchesOffer(offer: ApiModelOfferWithRelations, query: string) {
-  if (!query) return true;
-
-  return [
-    offer.model.displayName,
-    offer.model.modelId,
-    offer.model.family,
-    offer.provider.name,
-    offer.provider.description,
-    offer.routeModelId,
-    offer.billingMode,
-    offer.freeOrPlan,
-    offer.limitations,
-    ...offer.compatibility,
-    ...offer.suitableTools,
   ]
     .filter(Boolean)
     .join(" ")

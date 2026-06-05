@@ -38,6 +38,7 @@ export type ApiProvider = {
   url: string;
   pricingUrl?: string;
   description: string;
+  limitSummary: string;
   limitations: string;
   sourceLabel: string;
   updatedAt: string;
@@ -54,6 +55,7 @@ export type ApiPlan = {
   url: string;
   quotaSummary: string;
   resetSummary: string;
+  limitSummary: string;
   limitations: string;
   modelIds: string[];
   coverageLabel?: string;
@@ -74,6 +76,7 @@ export type ApiModelOffer = {
   cacheReadPrice?: ApiPriceValue;
   cacheWritePrice?: ApiPriceValue;
   freeOrPlan: string;
+  limitSummary: string;
   limitations: string;
   compatibility: string[];
   suitableTools: string[];
@@ -147,19 +150,10 @@ export const apiProviderTypeLabels: Record<ApiProviderType, string> = {
 
 export const apiProviderTypeDescriptions: Record<ApiProviderType, string> = {
   official: "厂商官方或云厂商公开 API，适合做价格基准。",
-  router: "公开模型路由平台，重点看模型覆盖、价格变化和兼容性。",
+  router: "公开模型路由平台，重点看模型覆盖、价格变化和限流口径。",
   free: "免费或测试用途入口，必须同时关注限流、排队和可用性。",
   subscription: "按月订阅的 API 套餐，需要看额度、短周期限制和使用边界。",
 };
-
-export const apiCompatibilityOptions = [
-  "全部",
-  "OpenAI-compatible",
-  "Anthropic-compatible",
-  "免费/测试",
-  "Coding Agent",
-  "中文模型",
-] as const;
 
 export const apiModels: ApiModel[] = [
   {
@@ -349,6 +343,7 @@ export const apiProviders: ApiProvider[] = [
     url: "https://platform.deepseek.com/",
     pricingUrl: "https://api-docs.deepseek.com/quick_start/pricing/",
     description: "DeepSeek 官方 OpenAI/Anthropic 兼容 API，适合作为 DeepSeek V4 的价格基准。",
+    limitSummary: "未公开固定 RPM/TPM，以控制台为准。",
     limitations: "价格可能调整，旧模型名 deepseek-chat 与 deepseek-reasoner 有兼容和下线时间说明。",
     sourceLabel: "DeepSeek API Docs",
     updatedAt: apiModelUpdatedAt,
@@ -361,6 +356,7 @@ export const apiProviders: ApiProvider[] = [
     url: "https://platform.kimi.com/",
     pricingUrl: "https://platform.kimi.com/docs/pricing/chat",
     description: "Moonshot/Kimi 官方开放平台，适合长上下文、多模态和中文 Agent 场景。",
+    limitSummary: "未公开固定 RPM/TPM，以开放平台控制台为准。",
     limitations: "首版展示官方模型页与计费说明，具体价格以 Kimi 开放平台实时表格为准。",
     sourceLabel: "Kimi API Pricing",
     updatedAt: apiModelUpdatedAt,
@@ -373,6 +369,7 @@ export const apiProviders: ApiProvider[] = [
     url: "https://platform.minimax.io/",
     pricingUrl: "https://platform.minimax.io/docs/guides/pricing-paygo",
     description: "MiniMax 官方开放平台，M3/M2.7/M2.5 支持 Anthropic 与 OpenAI 兼容接口。",
+    limitSummary: "未公开固定 RPM/TPM，以控制台为准。",
     limitations: "M3 当前价格含限时折扣和 512K 阈值，M2.7/M2.5 有 standard/highspeed 差异。",
     sourceLabel: "MiniMax Pricing Docs",
     updatedAt: apiModelUpdatedAt,
@@ -385,6 +382,7 @@ export const apiProviders: ApiProvider[] = [
     url: "https://open.bigmodel.cn/",
     pricingUrl: "https://docs.bigmodel.cn/cn/guide/models/text/glm-5",
     description: "智谱官方开放平台。首版先收录 GLM-5 模型文档，价格页仍需后续补齐。",
+    limitSummary: "未公开固定 RPM/TPM，以控制台为准。",
     limitations: "当前只把 GLM-5 作为已确认模型入口展示，不在前台硬填未核准价格。",
     sourceLabel: "智谱开放文档",
     updatedAt: apiModelUpdatedAt,
@@ -397,6 +395,7 @@ export const apiProviders: ApiProvider[] = [
     url: "https://www.alibabacloud.com/product/modelstudio",
     pricingUrl: "https://www.alibabacloud.com/help/en/model-studio/coding-plan",
     description: "阿里云 Model Studio 面向编码工具的月订阅套餐，覆盖 Qwen、Kimi、GLM、MiniMax 等模型。",
+    limitSummary: "6,000 req/5h · 45,000 req/week · 90,000 req/month。",
     limitations: "仅用于编码工具；官方明确不适合自动化脚本、自定义后端或非交互批处理 API。",
     sourceLabel: "Alibaba Coding Plan",
     updatedAt: apiModelUpdatedAt,
@@ -409,6 +408,7 @@ export const apiProviders: ApiProvider[] = [
     url: "https://opencode.ai/",
     pricingUrl: "https://dev.opencode.ai/docs/go/",
     description: "OpenCode 面向开放编码模型的低价订阅套餐，提供多模型 API endpoint。",
+    limitSummary: "$12/5h · $30/week · $60/month 用量窗口。",
     limitations: "请求数取决于模型消耗；有 5 小时、每周、每月额度窗口，不能当作无限 API。",
     sourceLabel: "OpenCode Go Docs",
     updatedAt: apiModelUpdatedAt,
@@ -421,6 +421,7 @@ export const apiProviders: ApiProvider[] = [
     url: "https://openrouter.ai/",
     pricingUrl: "https://openrouter.ai/pricing",
     description: "公开模型路由平台，统一 API key 访问多家模型和 provider，价格随模型页变化。",
+    limitSummary: "免费 50 req/day；充值后免费模型可到 1,000 req/day。",
     limitations: "免费模型有低限流；付费价格、可用 provider 和路由结果可能随时间变化。",
     sourceLabel: "OpenRouter Pricing",
     updatedAt: apiModelUpdatedAt,
@@ -433,6 +434,7 @@ export const apiProviders: ApiProvider[] = [
     url: "https://build.nvidia.com/explore/discover",
     pricingUrl: "https://www.nvidia.com/en-us/ai-data-science/products/nim-microservices/",
     description: "NVIDIA Hosted API 和 NIM 微服务入口，适合开发、测试、原型和自托管评估。",
+    limitSummary: "未公开固定 RPM/TPM，以 API Catalog 为准。",
     limitations: "免费访问主要面向开发测试和原型，模型列表、限速和可用性会变化。",
     sourceLabel: "NVIDIA NIM",
     updatedAt: apiModelUpdatedAt,
@@ -451,6 +453,7 @@ export const apiPlans: ApiPlan[] = [
     url: "https://dev.opencode.ai/docs/go/",
     quotaSummary: "5 小时 $12、每周 $30、每月 $60 的用量窗口。",
     resetSummary: "短周期额度按 OpenCode Go 规则滚动或周期刷新。",
+    limitSummary: "$12/5h · $30/week · $60/month 用量窗口。",
     limitations: "适合 OpenCode/Codex/Cursor 等编码工具。请求数取决于具体模型成本。",
     modelIds: [
       "deepseek-v4-flash",
@@ -482,6 +485,7 @@ export const apiPlans: ApiPlan[] = [
     url: "https://www.alibabacloud.com/help/en/model-studio/coding-plan",
     quotaSummary: "6,000 requests/5 小时、45,000 requests/周、90,000 requests/月。",
     resetSummary: "5 小时额度滑动重置；周额度每周一 UTC+8 重置；月额度按订阅日重置。",
+    limitSummary: "6,000 req/5h · 45,000 req/week · 90,000 req/month。",
     limitations: "只适合编码工具，官方不允许当成自动脚本或应用后端 API 使用。",
     modelIds: ["qwen3-5-plus", "qwen3-coder-plus", "kimi-k2-5", "glm-5", "minimax-m2-5"],
     compatibility: ["OpenAI-compatible", "Anthropic-compatible", "Coding Agent", "中文模型"],
@@ -500,6 +504,7 @@ export const apiPlans: ApiPlan[] = [
     url: "https://platform.minimax.io/docs/guides/pricing-tokenplan",
     quotaSummary: "标准版按 M2.7 请求数计量：1,500、4,500、15,000 requests/5hrs。",
     resetSummary: "按 5 小时窗口限制请求数。",
+    limitSummary: "1,500/4,500/15,000 requests/5hrs。",
     limitations: "Token Plan 主要覆盖 MiniMax 资源，不等于所有模型无限调用。",
     modelIds: ["minimax-m2-7"],
     compatibility: ["OpenAI-compatible", "Anthropic-compatible", "Coding Agent", "中文模型"],
@@ -517,6 +522,7 @@ export const apiPlans: ApiPlan[] = [
     url: "https://openrouter.ai/pricing",
     quotaSummary: "免费用户 50 req/day；购买至少 $10 credits 后免费模型可到 1000 req/day。",
     resetSummary: "免费额度按 OpenRouter 当前限制执行。",
+    limitSummary: "50 req/day；充值后免费模型 1,000 req/day。",
     limitations: "只适合测试和低频使用，热门免费模型会受 provider 限流影响。",
     modelIds: [],
     coverageLabel: "25+ free models，具体模型以 OpenRouter 模型页为准。",
@@ -535,6 +541,7 @@ export const apiPlans: ApiPlan[] = [
     url: "https://www.nvidia.com/en-us/ai-data-science/products/nim-microservices/",
     quotaSummary: "面向开发、测试、原型和 NIM 自托管评估。",
     resetSummary: "限速、模型列表和额度以 NVIDIA API Catalog 为准。",
+    limitSummary: "未公开固定 RPM/TPM，以 API Catalog 为准。",
     limitations: "不应默认作为生产 SLA；生产或私有化需要 NVIDIA AI Enterprise 等方案。",
     modelIds: ["deepseek-v4-flash"],
     coverageLabel: "NIM catalog 动态模型列表。",
@@ -849,7 +856,8 @@ function offer(
   id: string,
   modelId: string,
   providerId: string,
-  values: Omit<ApiModelOffer, "id" | "modelId" | "providerId" | "billingMode" | "suitableTools" | "sourceLabel" | "pricingUrl" | "updatedAt"> & {
+  values: Omit<ApiModelOffer, "id" | "modelId" | "providerId" | "billingMode" | "limitSummary" | "suitableTools" | "sourceLabel" | "pricingUrl" | "updatedAt"> & {
+    limitSummary?: string;
     suitableTools?: string[];
     sourceLabel?: string;
     pricingUrl?: string;
@@ -863,11 +871,12 @@ function offer(
     modelId,
     providerId,
     billingMode: provider?.billingMode ?? "按量计费",
+    ...values,
+    limitSummary: values.limitSummary ?? provider?.limitSummary ?? "未公开固定 RPM/TPM，以官方控制台为准。",
     suitableTools: values.suitableTools ?? apiModels.find((model) => model.id === modelId)?.suitableTools ?? [],
     sourceLabel: values.sourceLabel ?? provider?.sourceLabel ?? "公开来源",
     pricingUrl: values.pricingUrl ?? provider?.pricingUrl ?? provider?.url,
     updatedAt: values.updatedAt ?? apiModelUpdatedAt,
-    ...values,
   };
 }
 

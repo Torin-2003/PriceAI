@@ -142,7 +142,7 @@ export default async function ApiProviderDetailPage({
 
         <section className="mt-5 overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
           <div className="overflow-x-auto">
-            <table className="min-w-[1640px] w-full border-collapse text-left text-sm">
+            <table className="min-w-[1460px] w-full border-collapse text-left text-sm">
               <thead className="bg-[#f2f4f4] text-[0.68rem] font-semibold text-[#5a6061]">
                 <tr>
                   <TableHead>模型</TableHead>
@@ -152,7 +152,6 @@ export default async function ApiProviderDetailPage({
                   <TableHead>缓存读/写</TableHead>
                   <TableHead>免费/套餐额度</TableHead>
                   <TableHead>限制</TableHead>
-                  <TableHead>兼容性</TableHead>
                   <TableHead>来源</TableHead>
                   <TableHead>更新时间</TableHead>
                 </tr>
@@ -187,7 +186,7 @@ function PlanPanel({ plan, currency }: { plan: ApiPlan; currency: ApiCurrency })
       <p className="mt-4 text-sm font-semibold text-[#202829]">{formatPlanPrice(plan, currency)}</p>
       <p className="mt-2 text-sm leading-6 text-[#5a6061]">{plan.quotaSummary}</p>
       <p className="mt-1 text-sm leading-6 text-[#5a6061]">{plan.resetSummary}</p>
-      <p className="mt-3 text-xs leading-5 text-[#7a541b]">{plan.limitations}</p>
+      <p className="mt-3 text-xs leading-5 text-[#7a541b]">{plan.limitSummary}</p>
       {plan.coverageLabel ? <p className="mt-2 text-xs leading-5 text-[#5a6061]">{plan.coverageLabel}</p> : null}
       <a
         href={plan.url}
@@ -233,10 +232,7 @@ function ApiOfferRow({ offer, currency }: { offer: ApiModelOfferWithRelations; c
         {offer.notes ? <p className="mt-1 max-w-[250px] text-xs leading-5 text-[#5a6061]">{offer.notes}</p> : null}
       </td>
       <td className="px-5 py-4">
-        <p className="max-w-[270px] text-sm leading-6 text-[#5a6061]">{offer.limitations}</p>
-      </td>
-      <td className="px-5 py-4">
-        <InlineChips values={offer.compatibility} />
+        <p className="max-w-[270px] text-sm leading-6 text-[#5a6061]">{offer.limitSummary}</p>
       </td>
       <td className="px-5 py-4">
         <a
@@ -283,20 +279,6 @@ function TypeChip({ type }: { type: ApiProviderType }) {
     <span className={`inline-flex h-8 items-center whitespace-nowrap rounded-full px-3 text-xs font-semibold ${classNameByType[type]}`}>
       {apiProviderTypeLabels[type]}
     </span>
-  );
-}
-
-function InlineChips({ values }: { values: string[] }) {
-  if (!values.length) return <span className="text-xs text-[#5a6061]">待确认</span>;
-
-  return (
-    <div className="flex max-w-[250px] flex-wrap gap-1.5">
-      {values.map((item) => (
-        <span key={item} className="rounded-full bg-[#edf0f1] px-2.5 py-1 text-[0.68rem] font-semibold text-[#5a6061]">
-          {item}
-        </span>
-      ))}
-    </div>
   );
 }
 
