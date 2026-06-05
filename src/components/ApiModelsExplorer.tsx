@@ -4,7 +4,6 @@ import {
   ArrowUpDown,
   ChevronRight,
   Database,
-  Info,
   Layers3,
   Loader2,
   PackageCheck,
@@ -14,7 +13,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { ApiModelIcon } from "@/components/ApiModelIcon";
 import {
   apiProviderTypeLabels,
@@ -93,6 +92,19 @@ export function ApiModelsExplorer({ dataset }: { dataset: ApiModelDataset }) {
         ? offerRows.length
         : providerSummaries.length;
 
+  useEffect(() => {
+    if (!submitOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !submitLoading) {
+        setSubmitOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [submitLoading, submitOpen]);
+
   async function handleApiProviderSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const urls = parseSubmittedUrls(submitUrls);
@@ -125,6 +137,7 @@ export function ApiModelsExplorer({ dataset }: { dataset: ApiModelDataset }) {
         if (!summary.failed) {
           setSubmitUrls("");
           setSubmitName("");
+          setSubmitContact("");
           setSubmitNotes("");
         }
       } else {
@@ -138,119 +151,9 @@ export function ApiModelsExplorer({ dataset }: { dataset: ApiModelDataset }) {
   }
 
   return (
-    <main className="mx-auto max-w-[1500px] px-5 py-6 sm:px-8 md:py-10 lg:py-12">
-      <div className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-start">
-        <div className="min-w-0">
-          <h1 className="font-serif text-2xl font-semibold tracking-normal text-[#202829] md:text-4xl">
-            {buildTitle(family, scopeMode, familyOptions)}
-          </h1>
-          <p className="mt-3 max-w-[75ch] text-sm leading-7 text-[#5a6061]">
-            按具体模型和正规公开渠道重新组织 API 信息。你可以先查某个模型有哪些官方 API、套餐或免费入口，也可以反过来查某个渠道或套餐覆盖哪些模型。
-          </p>
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-[0.72rem] font-medium text-[#5a6061]">
-            <span>{dataset.source === "supabase" ? "数据库同步" : "人工维护样本"}：{formatDatasetDate(dataset.generatedAt)}</span>
-            <span className="h-1 w-1 rounded-full bg-[#adb3b4]" />
-            <span>当前显示：{resultCount} {scopeCountLabel(scopeMode)}</span>
-            <span className="hidden h-1 w-1 rounded-full bg-[#adb3b4] md:inline-block" />
-            <span className="hidden md:inline">汇率日期：{dataset.fxSummary.date}</span>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <div className="grid grid-cols-4 gap-2">
-            <Metric label="标准模型" value={`${allModelCount}`} />
-            <Metric label="渠道报价" value={`${dataset.offers.length}`} />
-            <Metric label="来源渠道" value={`${dataset.providers.length}`} />
-            <Metric label="免费" value={`${freeCount}`} />
-          </div>
-          <div className="rounded-lg bg-[#eef3f8] p-4 text-sm leading-6 text-[#47657a] ring-1 ring-[#cfdae4]">
-            <div className="flex items-start gap-2">
-              <Info size={17} className="mt-0.5 shrink-0" />
-              <p>
-                P0 只收官方或公开文档可验证渠道，不收灰色中转。套餐会展示额度、窗口期和限制，不把月费粗暴折成一个“最低价”。
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setSubmitOpen((value) => !value)}
-            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#2d3435] px-4 text-sm font-semibold text-[#f8f8f8] transition hover:bg-[#202829]"
-          >
-            {submitOpen ? <X size={16} /> : <Send size={16} />}
-            {submitOpen ? "收起提交入口" : "提交 API 渠道"}
-          </button>
-        </div>
-      </div>
-
-      {submitOpen ? (
-        <section className="mb-6 rounded-lg bg-white p-4 shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
-          <form onSubmit={handleApiProviderSubmit} className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <label className="block">
-              <span className="mb-1 block text-xs font-semibold text-[#5a6061]">API 渠道链接</span>
-              <textarea
-                value={submitUrls}
-                onChange={(event) => setSubmitUrls(event.target.value)}
-                rows={4}
-                required
-                placeholder={"每行一个链接，优先提交官方文档、价格页、公开套餐页，例如：\nhttps://openrouter.ai/models\nhttps://api-docs.deepseek.com/quick_start/pricing/"}
-                className="w-full resize-y rounded-lg border border-[#adb3b4]/30 bg-[#fbfcfc] px-3 py-2 text-sm leading-6 text-[#202829] outline-none transition focus:border-[#2d3435]"
-              />
-            </label>
-            <div className="space-y-3">
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-[#5a6061]">渠道名（可选）</span>
-                <input
-                  value={submitName}
-                  onChange={(event) => setSubmitName(event.target.value)}
-                  placeholder="例如 OpenCode Go"
-                  className="h-10 w-full rounded-lg border border-[#adb3b4]/30 bg-[#fbfcfc] px-3 text-sm outline-none transition focus:border-[#2d3435]"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-[#5a6061]">联系方式（可选）</span>
-                <input
-                  value={submitContact}
-                  onChange={(event) => setSubmitContact(event.target.value)}
-                  placeholder="邮箱 / GitHub / Telegram"
-                  className="h-10 w-full rounded-lg border border-[#adb3b4]/30 bg-[#fbfcfc] px-3 text-sm outline-none transition focus:border-[#2d3435]"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-[#5a6061]">备注（可选）</span>
-                <input
-                  value={submitNotes}
-                  onChange={(event) => setSubmitNotes(event.target.value)}
-                  placeholder="模型覆盖、免费额度或套餐说明"
-                  className="h-10 w-full rounded-lg border border-[#adb3b4]/30 bg-[#fbfcfc] px-3 text-sm outline-none transition focus:border-[#2d3435]"
-                />
-              </label>
-              <button
-                type="submit"
-                disabled={submitLoading}
-                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#2f7a4b] px-4 text-sm font-semibold text-white transition hover:bg-[#256a3d] disabled:opacity-60"
-              >
-                {submitLoading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                提交给管理员审核
-              </button>
-            </div>
-          </form>
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs leading-5 text-[#5a6061]">
-            <span>暂不收录灰色中转 API。</span>
-            <span className="hidden h-1 w-1 rounded-full bg-[#adb3b4] sm:inline-block" />
-            <span>管理员会在后台看到解析结果并决定通过、加入采集器待办或拒绝。</span>
-          </div>
-          {submitMessage ? (
-            <p className={`mt-3 rounded-lg px-3 py-2 text-sm ${
-              submitMessage.type === "success" ? "bg-[#e8f3ec] text-[#2f7a4b]" : "bg-[#fbe9e7] text-[#9b3328]"
-            }`}>
-              {submitMessage.text}
-            </p>
-          ) : null}
-        </section>
-      ) : null}
-
-      <section className="mb-6 space-y-4">
-        <div className="flex gap-2 overflow-x-auto pb-1">
+    <main className="mx-auto max-w-[1500px] px-5 py-6 sm:px-8 md:py-8 lg:py-10">
+      <section className="mb-5 border-y border-[#dfe4e5] py-2 md:-mt-2">
+        <div className="flex gap-2 overflow-x-auto py-1">
           <FilterPill active={family === "all"} icon={<Layers3 size={17} />} label="全部" onClick={() => setFamily("all")} />
           {familyOptions.map((option) => (
             <FilterPill
@@ -262,8 +165,35 @@ export function ApiModelsExplorer({ dataset }: { dataset: ApiModelDataset }) {
             />
           ))}
         </div>
+      </section>
 
-        <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="mb-6 space-y-4 md:mb-8 md:space-y-5">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+          <div className="min-w-0">
+            <h1 className="font-serif text-2xl font-semibold tracking-normal text-[#202829] md:text-4xl">
+              {buildTitle(family, scopeMode, familyOptions)}
+            </h1>
+            <p className="mt-3 max-w-[75ch] text-sm leading-7 text-[#5a6061]">
+              按具体模型和正规公开渠道重新组织 API 信息。你可以先查某个模型有哪些官方 API、套餐或免费入口，也可以反过来查某个渠道或套餐覆盖哪些模型。
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-[0.72rem] font-medium text-[#5a6061]">
+              <span>{dataset.source === "supabase" ? "数据库同步" : "人工维护样本"}：{formatDatasetDate(dataset.generatedAt)}</span>
+              <span className="h-1 w-1 rounded-full bg-[#adb3b4]" />
+              <span>当前显示：{resultCount} {scopeCountLabel(scopeMode)}</span>
+              <span className="hidden h-1 w-1 rounded-full bg-[#adb3b4] md:inline-block" />
+              <span className="hidden md:inline">汇率日期：{dataset.fxSummary.date}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-2 xl:w-[420px]">
+            <Metric label="标准模型" value={`${allModelCount}`} />
+            <Metric label="渠道报价" value={`${dataset.offers.length}`} />
+            <Metric label="来源渠道" value={`${dataset.providers.length}`} />
+            <Metric label="免费" value={`${freeCount}`} />
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 rounded-lg bg-[#f2f4f4] p-3 shadow-[0_18px_50px_rgba(45,52,53,0.04)] ring-1 ring-[#adb3b4]/10 md:flex-row md:flex-wrap md:items-center">
           <div className="inline-flex h-11 shrink-0 items-center rounded-full bg-[#e4e9ea] p-1">
             <ViewToggleButton
               active={scopeMode === "models"}
@@ -284,10 +214,8 @@ export function ApiModelsExplorer({ dataset }: { dataset: ApiModelDataset }) {
               onClick={() => setScopeMode("providers")}
             />
           </div>
-        </div>
 
-        <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
-          <label className="flex h-11 min-w-0 items-center gap-2 rounded-full bg-white px-4 shadow-[0_16px_45px_rgba(45,52,53,0.05)] ring-1 ring-[#adb3b4]/15 md:w-[430px]">
+          <label className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full bg-white px-4 shadow-[0_16px_45px_rgba(45,52,53,0.05)] ring-1 ring-[#adb3b4]/15 md:min-w-[300px] md:max-w-[430px]">
             <Search size={16} className="shrink-0 text-[#5a6061]" />
             <input
               value={query}
@@ -296,6 +224,27 @@ export function ApiModelsExplorer({ dataset }: { dataset: ApiModelDataset }) {
               className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[#9aa2a3]"
             />
           </label>
+
+          {scopeMode !== "models" ? (
+            <div className="flex min-w-0 gap-2 overflow-x-auto md:max-w-[420px]">
+              {typeFilters.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setTypeFilter(item)}
+                  aria-label={`类型筛选：${typeFilterLabels[item]}`}
+                  className={`inline-flex h-9 shrink-0 items-center rounded-full px-3.5 text-xs font-semibold transition ${
+                    typeFilter === item
+                      ? "bg-[#2d3435] text-[#f8f8f8] shadow-[0_10px_30px_rgba(45,52,53,0.10)]"
+                      : "bg-white text-[#5a6061] ring-1 ring-[#adb3b4]/15 hover:bg-[#f7f9f9] hover:text-[#202829]"
+                  }`}
+                >
+                  {typeFilterLabels[item]}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           <div className="inline-flex h-11 shrink-0 items-center rounded-full bg-[#e4e9ea] p-1">
             {(["CNY", "USD"] as ApiCurrency[]).map((item) => (
               <button
@@ -314,29 +263,131 @@ export function ApiModelsExplorer({ dataset }: { dataset: ApiModelDataset }) {
             <ArrowUpDown size={17} />
             {scopeMode === "models" ? "模型家族优先" : scopeMode === "offers" ? "模型与价格优先" : "官方/套餐优先"}
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSubmitOpen(true);
+              setSubmitMessage(null);
+            }}
+            className="inline-flex h-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[#2d3435] px-5 text-sm font-semibold text-[#f8f8f8] transition hover:bg-[#1f2526]"
+          >
+            <Send size={16} />
+            提交 API 渠道
+          </button>
         </div>
+      </div>
 
-        {scopeMode !== "models" ? (
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {typeFilters.map((item) => (
+      {submitOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#202829]/35 px-4 py-6 backdrop-blur-sm"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !submitLoading) {
+              setSubmitOpen(false);
+            }
+          }}
+        >
+          <section
+            aria-modal="true"
+            role="dialog"
+            aria-labelledby="api-submit-title"
+            className="max-h-[min(760px,calc(100vh-48px))] w-full max-w-[560px] overflow-y-auto rounded-lg bg-[#fbfcfc] p-5 shadow-[0_30px_80px_rgba(45,52,53,0.18)] ring-1 ring-[#adb3b4]/20 md:p-6"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="api-submit-title" className="text-lg font-bold text-[#202829]">提交 API 渠道</h2>
+                <p className="mt-1 text-sm leading-6 text-[#5a6061]">
+                  每行一个链接，优先提交官方文档、价格页或公开套餐页。
+                </p>
+              </div>
               <button
-                key={item}
                 type="button"
-                onClick={() => setTypeFilter(item)}
-                aria-label={`类型筛选：${typeFilterLabels[item]}`}
-                className={`inline-flex h-9 shrink-0 items-center rounded-full px-3.5 text-xs font-semibold transition ${
-                  typeFilter === item
-                    ? "bg-[#2d3435] text-[#f8f8f8] shadow-[0_10px_30px_rgba(45,52,53,0.10)]"
-                    : "bg-white text-[#5a6061] ring-1 ring-[#adb3b4]/15 hover:bg-[#f7f9f9] hover:text-[#202829]"
-                }`}
+                onClick={() => setSubmitOpen(false)}
+                disabled={submitLoading}
+                aria-label="关闭提交弹窗"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e4e9ea] text-[#5a6061] transition hover:bg-[#dde4e5] hover:text-[#202829] disabled:opacity-50"
               >
-                {typeFilterLabels[item]}
+                <X size={17} />
               </button>
-            ))}
-          </div>
-        ) : null}
+            </div>
 
-      </section>
+            <form onSubmit={handleApiProviderSubmit} className="mt-5 space-y-4">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-[#5a6061]">API 渠道链接</span>
+                <textarea
+                  value={submitUrls}
+                  onChange={(event) => setSubmitUrls(event.target.value)}
+                  rows={5}
+                  required
+                  placeholder={"https://openrouter.ai/models\nhttps://api-docs.deepseek.com/quick_start/pricing/"}
+                  className="w-full resize-y rounded-lg border border-[#adb3b4]/30 bg-white px-3 py-2 text-sm leading-6 text-[#202829] outline-none transition placeholder:text-[#9aa2a3] focus:border-[#2d3435]"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-[#5a6061]">渠道名（可选）</span>
+                <input
+                  value={submitName}
+                  onChange={(event) => setSubmitName(event.target.value)}
+                  placeholder="例如 OpenCode Go"
+                  className="h-11 w-full rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-sm outline-none transition placeholder:text-[#9aa2a3] focus:border-[#2d3435]"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-[#5a6061]">联系方式（可选）</span>
+                <input
+                  value={submitContact}
+                  onChange={(event) => setSubmitContact(event.target.value)}
+                  placeholder="邮箱 / GitHub / Telegram"
+                  className="h-11 w-full rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-sm outline-none transition placeholder:text-[#9aa2a3] focus:border-[#2d3435]"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-[#5a6061]">备注（可选）</span>
+                <textarea
+                  value={submitNotes}
+                  onChange={(event) => setSubmitNotes(event.target.value)}
+                  rows={3}
+                  placeholder="模型覆盖、免费额度或套餐说明"
+                  className="w-full resize-y rounded-lg border border-[#adb3b4]/30 bg-white px-3 py-2 text-sm leading-6 text-[#202829] outline-none transition placeholder:text-[#9aa2a3] focus:border-[#2d3435]"
+                />
+              </label>
+
+              <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSubmitOpen(false)}
+                  disabled={submitLoading}
+                  className="inline-flex h-10 items-center justify-center rounded-full bg-[#e4e9ea] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#dde4e5] disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitLoading}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[#2f7a4b] px-5 text-sm font-semibold text-[#f8f8f8] transition hover:bg-[#256a3d] disabled:opacity-60"
+                >
+                  {submitLoading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  提交给管理员审核
+                </button>
+              </div>
+            </form>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs leading-5 text-[#5a6061]">
+              <span>暂不收录灰色中转 API。</span>
+              <span className="hidden h-1 w-1 rounded-full bg-[#adb3b4] sm:inline-block" />
+              <span>管理员会在后台看到解析结果并决定是否收录。</span>
+            </div>
+            {submitMessage ? (
+              <p className={`mt-3 rounded-lg px-3 py-2 text-sm ${
+                submitMessage.type === "success" ? "bg-[#e8f3ec] text-[#2f7a4b]" : "bg-[#fbe9e7] text-[#9b3328]"
+              }`}>
+                {submitMessage.text}
+              </p>
+            ) : null}
+          </section>
+        </div>
+      ) : null}
 
       {scopeMode === "models" ? (
         modelSummaries.length ? (
