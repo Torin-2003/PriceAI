@@ -7,17 +7,21 @@ import { AppLogo } from "@/components/AppLogo";
 import { FeedbackLink, GitHubLink } from "@/components/FeedbackLink";
 
 const navItems = [
-  { href: "/", label: "卡网渠道", match: (pathname: string) => pathname === "/" || pathname.startsWith("/products") },
-  { href: "/official-prices", label: "官方订阅", match: (pathname: string) => pathname.startsWith("/official-prices") },
-  { href: "/api-models", label: "模型 API", match: (pathname: string) => pathname.startsWith("/api-models") },
+  { key: "channels", href: "/", label: "卡网渠道", match: (pathname: string) => pathname === "/" || pathname.startsWith("/products") },
+  { key: "official", href: "/official-prices", label: "官方订阅", match: (pathname: string) => pathname.startsWith("/official-prices") },
+  { key: "api", href: "/api-models", label: "模型 API", match: (pathname: string) => pathname.startsWith("/api-models") },
 ];
+
+type SiteHeaderSection = (typeof navItems)[number]["key"];
 
 export function SiteHeader({
   maxWidthClassName = "max-w-[1500px]",
   logoCompact = false,
+  activeSection,
 }: {
   maxWidthClassName?: string;
   logoCompact?: boolean;
+  activeSection?: SiteHeaderSection;
 }) {
   const pathname = usePathname();
   const aboutActive = pathname.startsWith("/about");
@@ -31,7 +35,7 @@ export function SiteHeader({
 
         <nav className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center rounded-full bg-[#e4e9ea] p-1 text-sm font-semibold text-[#5a6061] xl:flex">
           {navItems.map((item) => {
-            const active = item.match(pathname);
+            const active = activeSection ? item.key === activeSection : item.match(pathname);
 
             return (
               <Link
@@ -71,7 +75,7 @@ export function SiteHeader({
       <div className="border-t border-[#dfe4e5] px-5 pb-3 sm:px-8 xl:hidden">
         <nav className={`mx-auto flex ${maxWidthClassName} gap-2 overflow-x-auto pt-3 text-sm font-semibold text-[#5a6061]`}>
           {navItems.map((item) => {
-            const active = item.match(pathname);
+            const active = activeSection ? item.key === activeSection : item.match(pathname);
 
             return (
               <Link
