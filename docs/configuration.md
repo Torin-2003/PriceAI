@@ -23,6 +23,7 @@ cp .env.example .env.local
 | `NEXT_PUBLIC_GA_MEASUREMENT_ID` | 可选，Google Analytics 4 Measurement ID |
 | `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | 可选，Umami Cloud / 自托管 Umami 的 Website ID |
 | `NEXT_PUBLIC_UMAMI_SCRIPT_URL` | 可选，Umami 统计脚本地址；Cloud 默认 `https://cloud.umami.is/script.js` |
+| `NEXT_PUBLIC_UMAMI_ALLOWED_DOMAINS` | 可选，允许加载 Umami 的正式域名，多个域名用英文逗号分隔 |
 
 不要把 `.env.local`、service role key 或后台密码提交到仓库。
 
@@ -33,9 +34,10 @@ PriceAI 支持 Umami Cloud 免费版作为轻量运营看板。先在 `https://c
 ```bash
 NEXT_PUBLIC_UMAMI_WEBSITE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 NEXT_PUBLIC_UMAMI_SCRIPT_URL=https://cloud.umami.is/script.js
+NEXT_PUBLIC_UMAMI_ALLOWED_DOMAINS=priceai.cc,www.priceai.cc
 ```
 
-如果只配置 `NEXT_PUBLIC_UMAMI_WEBSITE_ID`，脚本地址会自动使用 Umami Cloud 默认地址。未配置 Website ID 时，Umami 不会加载，不影响本地开发或线上访问。
+如果只配置 `NEXT_PUBLIC_UMAMI_WEBSITE_ID`，脚本地址会自动使用 Umami Cloud 默认地址。未配置 Website ID 时，Umami 不会加载；未配置允许域名时，默认只在 `priceai.cc` 和 `www.priceai.cc` 加载，不影响本地开发或预览域名。
 
 ## Supabase 初始化
 
