@@ -670,6 +670,9 @@ async function loadPublicProductOffers(
         };
       }
 
+      const paged = await listPublicProductOffersPage(product.id, { limit, offset });
+      if (paged) return paged;
+
       const offers = (await listVisibleProductOfferRows(product.id))
         .map(mapRawOffer)
         .filter((offer) => resolveOfferProduct(offer, products.length ? products : canonicalCatalog).id === product.id)
@@ -700,6 +703,53 @@ async function loadPublicProductOffers(
     limited: total > offset + limit,
     generatedAt: new Date().toISOString(),
   };
+}
+
+async function listPublicProductOffersPage(
+  productId: string,
+  filters: Required<Pick<ProductOfferListFilters, "limit" | "offset">>,
+): Promise<{ offers: RawOffer[]; total: number; limited: boolean; generatedAt: string } | null> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase.rpc("list_public_product_offers_page", {
+    p_product_id: productId,
+    p_limit: filters.limit,
+    p_offset: filters.offset,
+  });
+
+  if (error) {
+    console.warn("Falling back to in-process product offer pagination because RPC failed:", error.message);
+    return null;
+  }
+
+  const rows = ((data || []) as unknown as Record<string, unknown>[]);
+  const total = rows.length ? Number(rows[0].total_count || 0) : await countVisibleProductOffers(productId);
+  const offers = rows.map((row) => {
+    const { total_count: _totalCount, ...offerRow } = row;
+    return mapRawOffer(offerRow);
+  });
+
+  return {
+    offers,
+    total,
+    limited: total > filters.offset + filters.limit,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+async function countVisibleProductOffers(productId: string): Promise<number> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return 0;
+
+  const { count, error } = await supabase
+    .from("raw_offers")
+    .select("id", { count: "exact", head: true })
+    .eq("hidden", false)
+    .eq("canonical_product_id", productId);
+
+  if (error) throw error;
+  return count || 0;
 }
 
 export async function listPublicOffers(filters: OfferListFilters = {}) {
