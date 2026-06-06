@@ -4,6 +4,9 @@ import { listPublicProductOffers } from "@/lib/data";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const PRODUCT_OFFERS_EDGE_CACHE_SECONDS = 300;
+const PRODUCT_OFFERS_STALE_SECONDS = 1800;
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -16,7 +19,7 @@ export async function GET(
 
   return NextResponse.json(result, {
     headers: {
-      "Cache-Control": "public, s-maxage=30, stale-while-revalidate=120",
+      "Cache-Control": `public, s-maxage=${PRODUCT_OFFERS_EDGE_CACHE_SECONDS}, stale-while-revalidate=${PRODUCT_OFFERS_STALE_SECONDS}`,
     },
   });
 }

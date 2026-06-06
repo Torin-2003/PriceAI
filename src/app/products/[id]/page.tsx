@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { BrandIcon } from "@/components/BrandIcon";
 import { ProductDetailHeader, ProductReturnLink } from "@/components/ProductDetailHeader";
 import { ProductOffersPanel } from "@/components/ProductOffersPanel";
+import { canonicalCatalog } from "@/lib/catalog";
 import { getPublicProductSummary } from "@/lib/data";
 import {
   getOfficialPricePlanSummaryFromDataset,
@@ -17,9 +18,12 @@ import { getOfficialPricesDataset } from "@/lib/official-prices-db";
 import type { ExplorerProductSummary } from "@/lib/types";
 import { formatCurrency, formatRelativeTime } from "@/lib/utils";
 
-export const revalidate = 0;
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 export const dynamicParams = true;
+
+export function generateStaticParams() {
+  return canonicalCatalog.map((product) => ({ id: product.slug }));
+}
 
 const productTypeLabels: Record<string, string> = {
   "订阅/会员": "订阅/会员",
