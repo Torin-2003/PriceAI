@@ -7,9 +7,9 @@ import { AppLogo } from "@/components/AppLogo";
 import { FeedbackLink, GitHubLink } from "@/components/FeedbackLink";
 
 const navItems = [
-  { href: "/", label: "订阅比价", match: (pathname: string) => pathname === "/" || pathname.startsWith("/products") },
-  { href: "/official-prices", label: "官方地区价", match: (pathname: string) => pathname.startsWith("/official-prices") },
-  { href: "/api-models", label: "API 模型", match: (pathname: string) => pathname.startsWith("/api-models") },
+  { href: "/", label: "卡网渠道", match: (pathname: string) => pathname === "/" || pathname.startsWith("/products") },
+  { href: "/official-prices", label: "官方订阅", match: (pathname: string) => pathname.startsWith("/official-prices") },
+  { href: "/api-models", label: "模型 API", match: (pathname: string) => pathname.startsWith("/api-models") },
 ];
 
 export function SiteHeader({
