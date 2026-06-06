@@ -181,12 +181,22 @@ export function OfficialPricesExplorer({ dataset }: { dataset: OfficialPricesDat
 
       {scopeMode === "products" ? (
         summaries.length ? (
-          <OfficialPlanTable summaries={summaries} />
+          <>
+            <OfficialPlanMobileList summaries={summaries} />
+            <div className="hidden md:block">
+              <OfficialPlanTable summaries={summaries} />
+            </div>
+          </>
         ) : (
           <EmptyState text="没有符合条件的标准套餐" />
         )
       ) : offers.length ? (
-        <OfficialOfferTable rows={offers} />
+        <>
+          <OfficialOfferMobileList rows={offers} />
+          <div className="hidden md:block">
+            <OfficialOfferTable rows={offers} />
+          </div>
+        </>
       ) : (
         <EmptyState text="没有符合条件的地区报价" />
       )}
@@ -196,6 +206,48 @@ export function OfficialPricesExplorer({ dataset }: { dataset: OfficialPricesDat
       </p>
     </main>
     </>
+  );
+}
+
+function OfficialPlanMobileList({ summaries }: { summaries: OfficialPricePlanSummary[] }) {
+  return (
+    <section className="grid grid-cols-1 gap-3 md:hidden">
+      {summaries.map((summary) => {
+        const href = `/official-prices/${summary.id}`;
+
+        return (
+          <Link
+            key={summary.id}
+            href={href}
+            className="rounded-lg bg-white p-4 shadow-[0_16px_45px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15 transition active:scale-[0.995]"
+          >
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f2f4f4] ring-1 ring-[#adb3b4]/15">
+                <BrandIcon platform={summary.platform} className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-bold leading-6 text-[#202829]">{summary.label}</p>
+                    <p className="mt-0.5 truncate text-sm text-[#5a6061]">{summary.provider} · {billingPeriodLabel(summary.billingPeriod)}</p>
+                  </div>
+                  <p className="shrink-0 text-right text-lg font-bold tabular-nums text-[#202829]">
+                    {summary.lowestRow ? formatCurrency(summary.lowestRow.cnyPrice, "CNY") : "待确认"}
+                  </p>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-5 text-[#5a6061]">
+                  <span>最低地区：<strong className="font-semibold text-[#202829]">{summary.lowestRow?.countryLabel || "暂无"}</strong></span>
+                  {summary.lowestRow ? <span>{summary.lowestRow.priceText}</span> : null}
+                  <span>{summary.sampleCount} 个地区</span>
+                  <span>{formatRelativeTime(summary.latestFetchedAt)}</span>
+                </div>
+              </div>
+              <ChevronRight size={17} className="mt-3 shrink-0 text-[#adb3b4]" />
+            </div>
+          </Link>
+        );
+      })}
+    </section>
   );
 }
 
@@ -263,6 +315,51 @@ function OfficialPlanTable({ summaries }: { summaries: OfficialPricePlanSummary[
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+function OfficialOfferMobileList({ rows }: { rows: OfficialPriceOfferRow[] }) {
+  return (
+    <section className="grid grid-cols-1 gap-3 md:hidden">
+      {rows.map((row) => (
+        <article
+          key={row.id}
+          className="rounded-lg bg-white p-4 shadow-[0_16px_45px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15"
+        >
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f2f4f4] ring-1 ring-[#adb3b4]/15">
+              <BrandIcon platform={row.app.displayName} className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <Link href={`/official-prices/${row.appSlug}__${row.planSlug}`} className="block truncate text-base font-bold leading-6 text-[#202829]">
+                    {row.plan.label}
+                  </Link>
+                  <p className="mt-0.5 truncate text-sm text-[#5a6061]">{row.app.displayName} · {billingPeriodLabel(row.plan.billingPeriod)}</p>
+                </div>
+                <p className="shrink-0 text-right text-lg font-bold tabular-nums text-[#202829]">{formatCurrency(row.cnyPrice, "CNY")}</p>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-5 text-[#5a6061]">
+                <span><strong className="font-semibold text-[#202829]">{row.countryLabel}</strong> {row.countryCode}</span>
+                <span>{row.priceText} · {row.currencyCode}</span>
+                <span>1 {row.currencyCode} ≈ {formatCurrency(row.fxRateToCny, "CNY")}</span>
+                <span>{formatRelativeTime(row.fetchedAt)}</span>
+              </div>
+              <a
+                href={row.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-full bg-[#e4e9ea] px-3 text-xs font-semibold text-[#2d3435] transition hover:bg-[#dde4e5]"
+              >
+                App Store
+                <ExternalLink size={13} />
+              </a>
+            </div>
+          </div>
+        </article>
+      ))}
     </section>
   );
 }

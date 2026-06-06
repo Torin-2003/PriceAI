@@ -4,6 +4,7 @@ import {
   ArrowUpDown,
   ChevronRight,
   Database,
+  ExternalLink,
   Filter,
   Layers3,
   Loader2,
@@ -255,29 +256,30 @@ export function ApiModelsExplorer({ dataset }: { dataset: ApiModelDataset }) {
               onChange={(value) => setFamily(value)}
             />
           </div>
-          <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
-            <div className="inline-flex h-11 min-w-0 items-center rounded-full bg-[#e4e9ea] p-1">
-                <ViewToggleButton
-                  active={scopeMode === "models"}
-                  icon={<PackageCheck size={16} />}
-                  label="标准"
-                  onClick={() => setScopeMode("models")}
-                />
-                <ViewToggleButton
-                  active={scopeMode === "offers"}
-                  icon={<Database size={16} />}
-                  label="报价"
-                  onClick={() => setScopeMode("offers")}
-                />
-                <ViewToggleButton
-                  active={scopeMode === "providers"}
-                  icon={<Layers3 size={16} />}
-                  label="渠道"
-                  onClick={() => setScopeMode("providers")}
-                />
+          <div className="space-y-2">
+            <div className="inline-flex h-11 max-w-full items-center overflow-x-auto rounded-full bg-[#e4e9ea] p-1">
+              <ViewToggleButton
+                active={scopeMode === "models"}
+                icon={<PackageCheck size={16} />}
+                label="标准"
+                onClick={() => setScopeMode("models")}
+              />
+              <ViewToggleButton
+                active={scopeMode === "offers"}
+                icon={<Database size={16} />}
+                label="报价"
+                onClick={() => setScopeMode("offers")}
+              />
+              <ViewToggleButton
+                active={scopeMode === "providers"}
+                icon={<Layers3 size={16} />}
+                label="渠道"
+                onClick={() => setScopeMode("providers")}
+              />
             </div>
-            <label className="relative inline-flex h-11 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-full bg-[#e4e9ea] px-3 text-sm font-semibold text-[#2d3435]">
-                <ArrowUpDown size={16} />
+            <div className="grid grid-cols-2 gap-2">
+              <label className="relative inline-flex h-11 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-full bg-[#e4e9ea] px-3 text-sm font-semibold text-[#2d3435]">
+                <ArrowUpDown size={16} className="shrink-0" />
                 <span className="truncate">{mobileSortLabel(mobileSort, scopeMode)}</span>
                 <select
                   aria-label="排序"
@@ -290,15 +292,16 @@ export function ApiModelsExplorer({ dataset }: { dataset: ApiModelDataset }) {
                   <option value="updated">最新优先</option>
                   <option value="channels">渠道优先</option>
                 </select>
-            </label>
+              </label>
               <button
                 type="button"
                 onClick={() => setFiltersOpen(true)}
-                className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-[#e4e9ea] px-3 text-sm font-semibold text-[#2d3435] transition hover:bg-[#dde4e5]"
+                className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-[#e4e9ea] px-3 text-sm font-semibold text-[#2d3435] transition hover:bg-[#dde4e5]"
               >
                 <Filter size={16} />
                 筛选{mobileFilterCount({ currency, typeFilter }) ? ` ${mobileFilterCount({ currency, typeFilter })}` : ""}
               </button>
+            </div>
           </div>
         </div>
 
@@ -518,18 +521,33 @@ export function ApiModelsExplorer({ dataset }: { dataset: ApiModelDataset }) {
 
       {scopeMode === "models" ? (
         modelSummaries.length ? (
-          <ApiModelSummaryTable summaries={modelSummaries} currency={currency} />
+          <>
+            <ApiModelSummaryMobileList summaries={modelSummaries} currency={currency} />
+            <div className="hidden md:block">
+              <ApiModelSummaryTable summaries={modelSummaries} currency={currency} />
+            </div>
+          </>
         ) : (
           <EmptyState text="没有符合条件的标准模型" />
         )
       ) : scopeMode === "offers" ? (
         offerRows.length ? (
-          <ApiOfferTable rows={offerRows} currency={currency} />
+          <>
+            <ApiOfferMobileList rows={offerRows} currency={currency} />
+            <div className="hidden md:block">
+              <ApiOfferTable rows={offerRows} currency={currency} />
+            </div>
+          </>
         ) : (
           <EmptyState text="没有符合条件的报价明细" />
         )
       ) : providerSummaries.length ? (
-        <ApiProviderSummaryTable summaries={providerSummaries} currency={currency} />
+        <>
+          <ApiProviderSummaryMobileList summaries={providerSummaries} currency={currency} />
+          <div className="hidden md:block">
+            <ApiProviderSummaryTable summaries={providerSummaries} currency={currency} />
+          </div>
+        </>
       ) : (
         <EmptyState text="没有符合条件的渠道或 Token Plan" />
       )}
@@ -605,8 +623,8 @@ function ApiOfferTable({ rows, currency }: { rows: ApiModelOfferWithRelations[];
                       <PriceMetric label="输出" value={formatApiPrice(offer.outputPrice, currency)} />
                       <PriceMetric
                         label="缓存"
-                        value={offer.cacheReadPrice ? formatApiPrice(offer.cacheReadPrice, currency) : "待确认"}
-                        helper={offer.cacheWritePrice ? `写入：${formatApiPrice(offer.cacheWritePrice, currency)}` : undefined}
+                        value={formatCacheApiPrice(offer.cacheReadPrice, currency)}
+                        helper={offer.cacheWritePrice ? `写入：${formatCacheApiPrice(offer.cacheWritePrice, currency)}` : undefined}
                       />
                     </div>
                   </td>
@@ -640,6 +658,116 @@ function ApiOfferTable({ rows, currency }: { rows: ApiModelOfferWithRelations[];
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+function ApiOfferMobileList({ rows, currency }: { rows: ApiModelOfferWithRelations[]; currency: ApiCurrency }) {
+  return (
+    <section className="grid grid-cols-1 gap-3 md:hidden">
+      {rows.map((offer) => {
+        const sourceHref = offer.pricingUrl ?? offer.provider.pricingUrl ?? offer.provider.url;
+
+        return (
+          <article key={offer.id} className="rounded-lg bg-white p-4 shadow-[0_16px_45px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f2f4f4] ring-1 ring-[#adb3b4]/15">
+                <ApiModelIcon family={offer.model.family} className="h-7 w-7" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Link href={`/api-models/${offer.modelId}`} className="block truncate text-base font-bold leading-6 text-[#202829]">
+                      {offer.model.displayName}
+                    </Link>
+                    <p className="mt-0.5 truncate text-sm text-[#5a6061]">{offer.routeModelId ?? offer.model.modelId}</p>
+                  </div>
+                  <TypeChip type={offer.provider.type} />
+                </div>
+
+                <Link href={`/api-models/providers/${offer.providerId}`} className="mt-3 inline-flex max-w-full items-center gap-2">
+                  <ApiProviderIcon provider={offer.provider} size="sm" />
+                  <span className="truncate text-sm font-semibold text-[#202829]">{offer.provider.name}</span>
+                </Link>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <PriceMetric label="输入" value={formatApiPrice(offer.inputPrice, currency)} />
+                  <PriceMetric label="输出" value={formatApiPrice(offer.outputPrice, currency)} />
+                </div>
+                <div className="mt-2">
+                  <PriceMetric
+                    label="缓存"
+                    value={formatCacheApiPrice(offer.cacheReadPrice, currency)}
+                    helper={offer.cacheWritePrice ? `写入：${formatCacheApiPrice(offer.cacheWritePrice, currency)}` : undefined}
+                  />
+                </div>
+
+                <p className="mt-3 line-clamp-2 text-sm font-medium leading-6 text-[#2d3435]">{formatApiDisplayText(offer.freeOrPlan)}</p>
+                <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#5a6061]">{formatApiDisplayText(offer.limitSummary)}</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <a
+                    href={sourceHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full bg-[#e4e9ea] px-3 text-xs font-semibold text-[#2d3435] transition hover:bg-[#dde4e5]"
+                  >
+                    <span className="truncate">{offer.sourceLabel}</span>
+                    <ExternalLink size={13} className="shrink-0" />
+                  </a>
+                  <span className="text-xs text-[#5a6061]">{formatDatasetDate(offer.updatedAt)}</span>
+                </div>
+              </div>
+            </div>
+          </article>
+        );
+      })}
+    </section>
+  );
+}
+
+function ApiModelSummaryMobileList({ summaries, currency }: { summaries: ApiModelSummary[]; currency: ApiCurrency }) {
+  return (
+    <section className="grid grid-cols-1 gap-3 md:hidden">
+      {summaries.map((summary) => {
+        const href = `/api-models/${summary.id}`;
+        const primaryOffer = summary.primaryOffer;
+
+        return (
+          <Link key={summary.id} href={href} className="rounded-lg bg-white p-4 shadow-[0_16px_45px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15 transition active:scale-[0.995]">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f2f4f4] ring-1 ring-[#adb3b4]/15">
+                <ApiModelIcon family={summary.family} className="h-7 w-7" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-bold leading-6 text-[#202829]">{summary.displayName}</p>
+                    <p className="mt-0.5 truncate text-sm text-[#5a6061]">
+                      {summary.model.modelId}{summary.model.contextWindow ? ` · ${summary.model.contextWindow}` : ""}
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-right text-sm font-bold leading-6 text-[#202829]">
+                    {primaryOffer ? formatApiPrice(primaryOffer.inputPrice, currency) : "暂无价格"}
+                  </p>
+                </div>
+                <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#5a6061]">
+                  {primaryOffer ? `${primaryOffer.provider.name} · ${formatApiBillingMode(primaryOffer.billingMode)}` : summary.model.sourceLabel}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  <CountBadge tone="neutral">渠道 {summary.providerCount}</CountBadge>
+                  <CountBadge tone="good">官方 {summary.officialCount}</CountBadge>
+                  <CountBadge tone="warn">免费 {summary.freeCount}</CountBadge>
+                  <CountBadge tone="neutral">Token Plan {summary.planCount}</CountBadge>
+                </div>
+                <p className="mt-3 line-clamp-2 text-xs leading-5 text-[#5a6061]">
+                  {primaryOffer ? formatApiDisplayText(primaryOffer.limitSummary) : "保留来源，等待补充报价。"}
+                </p>
+              </div>
+              <ChevronRight size={17} className="mt-3 shrink-0 text-[#adb3b4]" />
+            </div>
+          </Link>
+        );
+      })}
     </section>
   );
 }
@@ -788,6 +916,49 @@ function ApiProviderSummaryTable({ summaries, currency }: { summaries: ApiProvid
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+function ApiProviderSummaryMobileList({ summaries, currency }: { summaries: ApiProviderSummary[]; currency: ApiCurrency }) {
+  return (
+    <section className="grid grid-cols-1 gap-3 md:hidden">
+      {summaries.map((summary) => {
+        const href = `/api-models/providers/${summary.id}`;
+        const provider = summary.provider;
+
+        return (
+          <Link key={summary.id} href={href} className="rounded-lg bg-white p-4 shadow-[0_16px_45px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15 transition active:scale-[0.995]">
+            <div className="flex min-w-0 items-start gap-3">
+              <ApiProviderIcon provider={provider} />
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-bold leading-6 text-[#202829]">{provider.name}</p>
+                    <p className="mt-0.5 truncate text-sm text-[#5a6061]">{formatApiBillingMode(provider.billingMode)}</p>
+                  </div>
+                  <TypeChip type={provider.type} />
+                </div>
+                <p className="mt-3 text-sm font-semibold leading-6 text-[#202829]">
+                  {summary.primaryPlan ? formatPlanPrice(summary.primaryPlan, currency) : `${summary.modelCount || summary.offerCount} 个模型`}
+                </p>
+                <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#5a6061]">
+                  {summary.modelNames.join("、") || summary.primaryPlan?.coverageLabel || "动态模型列表"}
+                </p>
+                <p className="mt-2 line-clamp-2 text-xs leading-5 text-[#5a6061]">
+                  {formatApiDisplayText(summary.primaryPlan?.limitSummary ?? provider.limitSummary)}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  <CountBadge tone="neutral">模型 {summary.modelCount || summary.offerCount}</CountBadge>
+                  <CountBadge tone="neutral">报价 {summary.offerCount}</CountBadge>
+                  <CountBadge tone="warn">Token Plan {summary.planCount}</CountBadge>
+                </div>
+              </div>
+              <ChevronRight size={17} className="mt-3 shrink-0 text-[#adb3b4]" />
+            </div>
+          </Link>
+        );
+      })}
     </section>
   );
 }
@@ -1182,6 +1353,10 @@ function PriceMetric({ label, value, helper }: { label: string; value: string; h
       {helper ? <p className="mt-1 break-words text-xs leading-5 text-[#5a6061]">{helper}</p> : null}
     </div>
   );
+}
+
+function formatCacheApiPrice(price: ApiModelOfferWithRelations["cacheReadPrice"], currency: ApiCurrency) {
+  return price ? formatApiPrice(price, currency, { maximumFractionDigits: 3 }) : "待确认";
 }
 
 function parseSubmittedUrls(value: string): string[] {

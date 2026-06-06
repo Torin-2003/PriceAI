@@ -228,8 +228,8 @@ function ApiOfferRow({ offer, currency }: { offer: ApiModelOfferWithRelations; c
           <PriceMetric label="输出" value={formatApiPrice(offer.outputPrice, currency)} />
           <PriceMetric
             label="缓存"
-            value={offer.cacheReadPrice ? formatApiPrice(offer.cacheReadPrice, currency) : "待确认"}
-            helper={offer.cacheWritePrice ? `写入：${formatApiPrice(offer.cacheWritePrice, currency)}` : undefined}
+            value={formatCacheApiPrice(offer.cacheReadPrice, currency)}
+            helper={offer.cacheWritePrice ? `写入：${formatCacheApiPrice(offer.cacheWritePrice, currency)}` : undefined}
           />
         </div>
       </td>
@@ -331,6 +331,10 @@ function PriceMetric({ label, value, helper }: { label: string; value: string; h
       {helper ? <p className="mt-1 break-words text-xs leading-5 text-[#5a6061]">{helper}</p> : null}
     </div>
   );
+}
+
+function formatCacheApiPrice(price: ApiModelOfferWithRelations["cacheReadPrice"], currency: ApiCurrency) {
+  return price ? formatApiPrice(price, currency, { maximumFractionDigits: 3 }) : "待确认";
 }
 
 function formatDatasetDate(value: string) {

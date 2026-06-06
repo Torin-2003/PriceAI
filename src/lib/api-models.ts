@@ -1419,7 +1419,11 @@ export const staticApiModelDataset: ApiModelDataset = {
   offers: apiModelOffers,
 };
 
-export function formatApiPrice(price: ApiPriceValue, currency: ApiCurrency) {
+export function formatApiPrice(
+  price: ApiPriceValue,
+  currency: ApiCurrency,
+  options: { maximumFractionDigits?: number } = {},
+) {
   if (price.kind === "text") return price.text;
 
   const value =
@@ -1429,9 +1433,10 @@ export function formatApiPrice(price: ApiPriceValue, currency: ApiCurrency) {
   if (typeof value !== "number") return price.label ?? "待确认";
 
   const prefix = currency === "CNY" ? "¥" : "$";
+  const maximumFractionDigits = options.maximumFractionDigits ?? 2;
   return `${prefix}${value.toLocaleString("zh-CN", {
-    minimumFractionDigits: value < 1 ? 4 : 2,
-    maximumFractionDigits: value < 1 ? 4 : 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits,
   })} / 1M tokens`;
 }
 
