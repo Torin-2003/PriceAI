@@ -7,7 +7,7 @@ These assets are cached locally for stable rendering and performance. They are s
 | `gmail.png` | `https://ssl.gstatic.com/ui/v1/icons/mail/rfr/gmail.ico` | Converted from official Google-hosted Gmail favicon to PNG. |
 | `outlook.png` | `https://outlook.live.com/mail/favicon.ico` | Converted from official Outlook web favicon to PNG. |
 | `google.png` | `https://www.google.com/favicon.ico` | Converted from official Google favicon to PNG. |
-| `google-workspace.png` | `https://workspace.google.com/favicon.ico` | Converted from official Google Workspace favicon to PNG for education and generic email rows. |
+| `google-workspace.png` | `https://workspace.google.com/favicon.ico` | Converted from official Google Workspace favicon to PNG for Google Workspace-specific rows if needed. |
 | `paypal.png` | `https://www.paypalobjects.com/webstatic/icon/pp258.png` | Official PayPal public icon cached as PNG. |
 | `visa.png` | `https://www.visa.com/favicon.ico` | Converted from official Visa favicon to PNG for virtual card rows. |
 | `cursor.png` | `https://cursor.com/favicon.ico` | Converted from official Cursor favicon to PNG. |
@@ -28,6 +28,7 @@ These assets are cached locally for stable rendering and performance. They are s
 | `ollama.png` | `https://ollama.com/public/ollama.png` | Official Ollama public image used for compact provider rows. |
 | `fireworks.png` | `https://fireworks.ai/favicon.ico` | Converted from official favicon to PNG. |
 | `apple.png` | `https://appleid.cdn-apple.com/appleid/button/logo?color=black&border=false&border_radius=0&scale=2&size=30` | Official Apple ID sign-in logo endpoint, cached as a transparent PNG for Apple ID account rows. |
+| `x.png` | `https://x.com/favicon.ico` | Converted from the official X public favicon to PNG for X / Twitter account rows. |
 | `stepfun.png` | `https://platform.stepfun.com/images/title-logo.png` | Official StepFun platform title logo. |
 | `baiducloud.png` | `https://bce.bdstatic.com/img/favicon.ico` | Converted from Baidu Cloud/BCE official public favicon to PNG. |
 | `jdcloud.png` | `https://img1.jcloudcs.com/portal/favicon.ico` | Converted from JD Cloud official public favicon to PNG. |

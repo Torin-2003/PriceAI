@@ -1,4 +1,4 @@
-import { Layers3 } from "lucide-react";
+import { GraduationCap, Layers3, Mail, MessageCircleMore, Wrench, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 
 const iconByPlatform: Record<string, string> = {
@@ -14,8 +14,6 @@ const iconByPlatform: Record<string, string> = {
 const iconByProductId: Record<string, string> = {
   "gmail-account": "/brand-icons/gmail.png",
   "outlook-account": "/brand-icons/outlook.png",
-  "education-email": "/brand-icons/google-workspace.png",
-  "email-account": "/brand-icons/google-workspace.png",
   "google-phone-verification": "/brand-icons/google.png",
   "paypal-phone-verification": "/brand-icons/paypal.png",
   "openai-phone-verification": "/brand-icons/chatgpt.svg",
@@ -26,6 +24,14 @@ const iconByProductId: Record<string, string> = {
   "perplexity-account": "/brand-icons/perplexity.png",
   "suno-account": "/brand-icons/suno.png",
   "apple-id-account": "/brand-icons/apple.png",
+  "x-twitter-account": "/brand-icons/x.png",
+};
+
+const semanticIconByProductId: Record<string, LucideIcon> = {
+  "education-email": GraduationCap,
+  "email-account": Mail,
+  "phone-verification": MessageCircleMore,
+  "other-tool-account": Wrench,
 };
 
 export function BrandIcon({
@@ -37,7 +43,12 @@ export function BrandIcon({
   productId?: string;
   className?: string;
 }) {
+  const SemanticIcon = productId ? semanticIconByProductId[productId] : null;
   const src = productId ? iconByProductId[productId] || iconByPlatform[platform] : iconByPlatform[platform];
+
+  if (SemanticIcon) {
+    return <SemanticIcon aria-hidden="true" className={`${className} shrink-0 text-[#5a6061]`} />;
+  }
 
   if (src) {
     return (

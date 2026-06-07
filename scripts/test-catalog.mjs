@@ -18,8 +18,10 @@ const cases = [
   ["【推荐】GPT Plus充值CDK - pix 自动充值渠道非成品需自备账号，自己账号有team不能冲", "chatgpt-plus"],
   ["ChatGPT Plus成品会员账号｜提供邮箱账密，带RT 可直接导入中转站｜自动发货", "chatgpt-plus"],
   ["谷歌邮箱gptplus月卡会员质保首登成品号带2fa（不可反代）", "chatgpt-plus"],
-  ["ChatGPT ios土区正规自助卡密", "chatgpt-plus"],
-  ["GPT续费一个月卡密（IOS 内购渠道）【质保订阅不管封号】", "chatgpt-plus"],
+  ["ChatGPT ios土区正规自助卡密", "chatgpt-plus-recharge"],
+  ["GPT续费一个月卡密（IOS 内购渠道）【质保订阅不管封号】", "chatgpt-plus-recharge"],
+  ["PLUS月卡批发(IOS土区)", "chatgpt-plus-recharge"],
+  ["ChatGPT自助卡密（ios土区）", "chatgpt-plus-recharge"],
   ["ChatGPT Pro 20倍 官方充值", "chatgpt-pro-20x"],
   ["Pro 20×正规卡充【带账单】", "chatgpt-pro-20x"],
   ["chatGPT PRO 200美金档 代充 人工交付", "chatgpt-pro-20x"],
@@ -39,6 +41,8 @@ const cases = [
   ["Google AI Ultra 250美元 Flow 积分", "gemini-ultra"],
   ["Gmail 老号 Google 账号", "gmail-account"],
   ["Outlook OAuth2 微软邮箱", "outlook-account"],
+  ["教育邮箱 .edu", "education-email"],
+  ["域名邮箱 企业邮箱", "email-account"],
   ["长效【微软邮箱交付】GPT账号（白号）FREE普通号含access_token", "chatgpt-free-account"],
   ["OpenAI ChatGPT 手机接码", "openai-phone-verification"],
   ["美国 VISA 虚拟卡 0刀卡", "virtual-card"],
@@ -50,6 +54,8 @@ const cases = [
   ["Apple ID 美区成品账号 质保首登", "apple-id-account"],
   ["苹果ID 土区账号 可改密", "apple-id-account"],
   ["美区ID 独享账号 自动发货", "apple-id-account"],
+  ["X-Twitter Premium自助卡密", "x-twitter-account"],
+  ["推特 Premium 会员直充卡密", "x-twitter-account"],
 ];
 
 for (const [title, expected] of cases) {

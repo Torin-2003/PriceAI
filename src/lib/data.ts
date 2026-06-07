@@ -827,7 +827,11 @@ export async function getPublicProductSummary(id: string) {
   if (summary) return summary;
 
   const explorerData = await getExplorerData();
-  return explorerData.products.find((product) => product.id === id || product.slug === id) || null;
+  const product = explorerData.products.find((item) => item.id === id || item.slug === id);
+  if (product) return product;
+
+  const catalogProduct = canonicalCatalog.find((item) => item.id === id || item.slug === id);
+  return catalogProduct ? toExplorerProductSummary(makeEmptyProductGroup(catalogProduct)) : null;
 }
 
 async function getPublicProductSummaryFromDatabase(id: string): Promise<ExplorerProductSummary | null> {

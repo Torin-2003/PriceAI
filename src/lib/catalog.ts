@@ -52,7 +52,7 @@ export const canonicalCatalog: CanonicalProduct[] = [
     platform: "ChatGPT",
     productType: "订阅/会员",
     spec: "Plus",
-    summary: "ChatGPT Plus 月卡、成品号、直充、代充、卡密、CDK 或自助开通。",
+    summary: "ChatGPT Plus 月卡、成品号、普通直充、卡密、CDK 或自助开通，不含单独拆分的 iOS 土区充值代充。",
     aliases: [
       "gpt plus",
       "chatgpt plus",
@@ -66,6 +66,27 @@ export const canonicalCatalog: CanonicalProduct[] = [
       "plus 日抛",
       "puls",
       "pulus",
+    ],
+  },
+  {
+    id: "chatgpt-plus-recharge",
+    slug: "chatgpt-plus-recharge",
+    displayName: "ChatGPT Plus 充值代充",
+    platform: "ChatGPT",
+    productType: "订阅/会员",
+    spec: "Plus / iOS 土区充值代充",
+    summary: "ChatGPT Plus iOS 土区、App Store 内购、月卡批发、自助卡密、直充或代充渠道。",
+    aliases: [
+      "ios土区",
+      "土区 ios",
+      "ios 土区",
+      "土耳其 plus",
+      "plus 土区",
+      "plus 充值代充",
+      "plus 代充",
+      "plus 直充",
+      "plus 内购",
+      "月卡批发",
     ],
   },
   {
@@ -339,6 +360,16 @@ export const canonicalCatalog: CanonicalProduct[] = [
     aliases: ["apple id", "苹果 id", "苹果账号", "美区 id", "土区 id", "apple 账号"],
   },
   {
+    id: "x-twitter-account",
+    slug: "x-twitter-account",
+    displayName: "X / 推特账号",
+    platform: "其他",
+    productType: "工具账号",
+    spec: "X / Twitter",
+    summary: "X、Twitter、推特账号、X Premium 或相关会员权益。",
+    aliases: ["x premium", "twitter premium", "twitter", "推特", "x 推特", "x/twitter", "x-twitter"],
+  },
+  {
     id: "other-tool-account",
     slug: "other-tool-account",
     displayName: "其他工具账号",
@@ -479,6 +510,10 @@ export function classifyOffer(
       return getCanonicalProduct("chatgpt-free-account");
     }
 
+    if (isChatGptPlusRecharge(value) && !isChatGptTeamDominant(value)) {
+      return getCanonicalProduct("chatgpt-plus-recharge");
+    }
+
     if (isChatGptPlus(value) && !isChatGptTeamDominant(value)) {
       return getCanonicalProduct("chatgpt-plus");
     }
@@ -505,6 +540,7 @@ export function classifyOffer(
   }
 
   if (contextValue && matches(contextValue, ["chatgpt", "openai"]) && matches(value, ["plus"])) {
+    if (isChatGptPlusRecharge(value)) return getCanonicalProduct("chatgpt-plus-recharge");
     return getCanonicalProduct("chatgpt-plus");
   }
 
@@ -669,6 +705,7 @@ function normalizeTitle(title: string): string {
     .replace(/[×]/g, "x")
     .replace(/[｜|/【】[\]()（）,，:：\-_/]+/g, " ")
     .replace(/gptplus/g, "gpt plus")
+    .replace(/plus月卡/g, "plus 月卡")
     .replace(/\bpuls\b/g, "plus")
     .replace(/\bpulus\b/g, "plus")
     .replace(/\bgemin\b/g, "gemini")
@@ -723,6 +760,8 @@ function classifyVerificationService(value: string): string {
 }
 
 function isOtherTool(value: string): boolean {
+  if (isXTwitterAccount(value)) return true;
+
   return matches(value, [
     "suno",
     "cursor",
@@ -732,8 +771,6 @@ function isOtherTool(value: string): boolean {
     "openclaw",
     "open claw",
     "perplexity",
-    "x premium",
-    "twitter premium",
     "telegram",
     "facebook",
     "苹果 id",
@@ -756,6 +793,7 @@ function isOtherTool(value: string): boolean {
 }
 
 function classifyOtherTool(value: string): string {
+  if (isXTwitterAccount(value)) return "x-twitter-account";
   if (matches(value, ["cursor"])) return "cursor-account";
   if (matches(value, ["kiro"])) return "kiro-account";
   if (matches(value, ["windsurf", "wind surf"])) return "windsurf-account";
@@ -764,6 +802,14 @@ function classifyOtherTool(value: string): string {
   if (isAppleIdAccount(value)) return "apple-id-account";
 
   return "other-tool-account";
+}
+
+function isXTwitterAccount(value: string): boolean {
+  if (matches(value, ["twitter", "推特"])) return true;
+  if (matches(value, ["x premium", "x 会员", "x账号", "x 账号", "x 推特"])) return true;
+  if (/\bx\s*(premium|account|账号|会员|推特)\b/.test(value)) return true;
+
+  return false;
 }
 
 function isAppleIdAccount(value: string): boolean {
@@ -818,6 +864,9 @@ function isPureEmail(value: string): boolean {
     "教育邮箱",
     "edu 邮箱",
     "学校邮箱",
+    "域名邮箱",
+    "企业邮箱",
+    "邮箱账号",
     ".edu",
   ]);
   if (!explicitEmail) return false;
@@ -961,6 +1010,21 @@ function isChatGptPlus(value: string): boolean {
     "cc 渠道",
     "谷歌正规付款",
   ]);
+}
+
+function isChatGptPlusRecharge(value: string): boolean {
+  if (!isChatGptPlus(value)) return false;
+  if (isChatGptAccountTitle(value)) return false;
+  if (matches(value, ["成品号", "独享账号", "账密", "首登", "直登", "普通号", "白号"])) return false;
+
+  const hasRegionSignal = matches(value, ["ios土区", "土区 ios", "ios 土区", "土耳其", "土区", "土耳其区"]);
+  const hasAppleBillingSignal = matches(value, ["ios", "app store", "appstore", "内购", "苹果内购"]);
+  const hasRechargeSignal = matches(value, ["充值", "代充", "直充", "续费", "卡密", "自助卡密", "月卡批发", "批发"]);
+
+  if (matches(value, ["月卡批发"]) && matches(value, ["plus", "chatgpt", "gpt", "openai"])) return true;
+  if (hasRegionSignal && matches(value, ["plus", "chatgpt", "gpt", "openai"])) return true;
+
+  return hasAppleBillingSignal && hasRechargeSignal && matches(value, ["plus", "chatgpt", "gpt", "openai"]);
 }
 
 function isChatGptAccountTitle(value: string): boolean {
