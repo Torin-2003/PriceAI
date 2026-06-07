@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ArrowRight, Clock3, ExternalLink, HelpCircle, Layers3 } from "lucide-react";
+import { ArrowRight, Clock3, ExternalLink, Layers3 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BrandIcon } from "@/components/BrandIcon";
@@ -127,8 +127,6 @@ export default async function ProductDetail({
         {officialReference ? (
           <OfficialPriceReferenceStrip reference={officialReference} product={product} />
         ) : null}
-
-        {seoProfile ? <ProductSeoBrief product={product} profile={seoProfile} /> : null}
 
         <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -455,75 +453,6 @@ function getOfficialPricePlanMapping(product: Pick<ExplorerProductSummary, "id" 
 
 function getProductSeoProfile(product: Pick<ExplorerProductSummary, "id" | "slug">): ProductSeoProfile | null {
   return productSeoProfiles[product.id] || productSeoProfiles[product.slug] || null;
-}
-
-function ProductSeoBrief({
-  product,
-  profile,
-}: {
-  product: ExplorerProductSummary;
-  profile: ProductSeoProfile;
-}) {
-  return (
-    <section className="mt-5 rounded-lg bg-white p-5 shadow-[0_18px_48px_rgba(45,52,53,0.035)] ring-1 ring-[#adb3b4]/15 lg:p-6">
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
-        <div className="min-w-0">
-          <p className="inline-flex items-center gap-1.5 rounded-full bg-[#e8f3ec] px-3 py-1 text-xs font-semibold text-[#2f7a4b]">
-            <HelpCircle size={14} />
-            商品解释
-          </p>
-          <h2 className="mt-4 font-serif text-2xl font-semibold tracking-normal text-[#202829]">
-            如何理解 {product.displayName}
-          </h2>
-          <p className="mt-3 text-sm leading-7 text-[#5a6061]">{profile.lead}</p>
-          <ul className="mt-4 grid gap-2 text-sm leading-6 text-[#5a6061]">
-            {profile.points.map((point) => (
-              <li key={point} className="flex gap-2">
-                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#45bf78]" />
-                <span>{point}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="min-w-0 rounded-lg bg-[#f2f4f4] p-4 ring-1 ring-[#adb3b4]/15">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#5a6061]">相关入口</p>
-          <div className="mt-3 grid gap-2">
-            {profile.links.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="group block rounded-md bg-white px-3 py-3 ring-1 ring-[#adb3b4]/10 transition hover:-translate-y-0.5 hover:ring-[#45bf78]/35"
-              >
-                <span className="flex items-center justify-between gap-3 text-sm font-semibold text-[#202829]">
-                  {link.label}
-                  <ArrowRight size={15} className="shrink-0 transition group-hover:translate-x-0.5" />
-                </span>
-                <span className="mt-1 block text-xs leading-5 text-[#5a6061]">{link.description}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-6 border-t border-[#edf0f1] pt-5">
-        <h3 className="font-serif text-xl font-semibold tracking-normal text-[#202829]">常见问题</h3>
-        <div className="mt-3 grid gap-3">
-          {profile.faq.map((item) => (
-            <details key={item.question} className="group rounded-lg bg-[#f9fafa] px-4 py-3 ring-1 ring-[#adb3b4]/15">
-              <summary className="cursor-pointer list-none text-sm font-semibold text-[#202829] marker:hidden">
-                <span className="inline-flex w-full items-center justify-between gap-3">
-                  {item.question}
-                  <ArrowRight size={15} className="shrink-0 transition group-open:rotate-90" />
-                </span>
-              </summary>
-              <p className="mt-2 text-sm leading-6 text-[#5a6061]">{item.answer}</p>
-            </details>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
 }
 
 function OfficialPriceReferenceStrip({
