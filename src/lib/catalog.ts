@@ -510,6 +510,10 @@ export function classifyOffer(
       return getCanonicalProduct("chatgpt-free-account");
     }
 
+    if (isChatGptTeamDominant(value)) {
+      return getCanonicalProduct("chatgpt-team-business");
+    }
+
     if (isChatGptPlusRecharge(value) && !isChatGptTeamDominant(value)) {
       return getCanonicalProduct("chatgpt-plus-recharge");
     }
@@ -871,6 +875,7 @@ function isPureEmail(value: string): boolean {
   ]);
   if (!explicitEmail) return false;
   if (matches(value, ["跑gemini", "跑 gemini", "失败的号", "包gcp", "带gcp"])) return true;
+  if (matches(value, ["plus 成品", "plus 会员", "plus 账号", "plus 已接码", "直接登录codex"])) return false;
 
   return !matches(value, [
     "chatgpt",
@@ -1053,16 +1058,34 @@ function isChatGptPro5(value: string): boolean {
 
 function isChatGptTeam(value: string): boolean {
   if (matches(value, ["gemini", "claude", "grok"])) return false;
-  if (matches(value, ["有team不能冲", "有 team 不能冲", "非team", "非 team"])) return false;
+  if (isChatGptTeamExclusion(value)) return false;
 
   return isChatGptTeamDominant(value) || matches(value, ["team", "t5", "t5倍"]);
 }
 
 function isChatGptTeamDominant(value: string): boolean {
   if (matches(value, ["gemini", "claude", "grok"])) return false;
+  if (isChatGptTeamExclusion(value)) return false;
 
   return matches(value, [
+    "gpt team",
+    "chatgpt team",
+    "team bug",
+    "bug team",
+    "team子号",
+    "team 子号",
+    "team账号",
+    "team 账号",
+    "team成品",
+    "team 成品",
+    "team席位",
+    "team 席位",
+    "team反代",
+    "team 反代",
     "business",
+    "busisness",
+    "business子号",
+    "business 子号",
     "团队",
     "母号",
     "自动拉",
@@ -1073,5 +1096,22 @@ function isChatGptTeamDominant(value: string): boolean {
     "团队号",
     "团队席位",
     "席位",
+  ]);
+}
+
+function isChatGptTeamExclusion(value: string): boolean {
+  return matches(value, [
+    "有team不能冲",
+    "有 team 不能冲",
+    "非team",
+    "非 team",
+    "不是team",
+    "不是 team",
+    "无team",
+    "无 team",
+    "不含team",
+    "不含 team",
+    "要稳买我的team",
+    "要稳买我的 team",
   ]);
 }

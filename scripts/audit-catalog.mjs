@@ -92,6 +92,15 @@ async function listVisibleOffers() {
 function buildSuspiciousChecks(items) {
   const checks = [
     {
+      key: "plus_maybe_team",
+      label: "Plus 中疑似 Team / Business 商品",
+      expected: "chatgpt-team-business",
+      filter: (offer) =>
+        offer.nextProductId === "chatgpt-plus" &&
+        /(gpt\s*team|chatgpt\s*team|team\s*bug|bug\s*team|team\s*子号|team\s*账号|team\s*成品|team\s*席位|team\s*反代|business|busisness|团队|母号|自动拉|直拉|团队号|团队席位)/i.test(offer.normalizedTitle) &&
+        !/(有\s*team\s*不能冲|非\s*team|不是\s*team|无\s*team|不含\s*team|要稳买我的\s*team)/i.test(offer.normalizedTitle),
+    },
+    {
       key: "team_maybe_plus",
       label: "Team 中疑似 Plus 商品",
       expected: "chatgpt-plus",
