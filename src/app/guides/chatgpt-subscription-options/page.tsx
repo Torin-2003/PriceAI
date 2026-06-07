@@ -10,15 +10,15 @@ export const revalidate = 86400;
 const pageUrl = "https://priceai.cc/guides/chatgpt-subscription-options";
 
 export const metadata: Metadata = {
-  title: "ChatGPT 有哪些获取方式",
+  title: "ChatGPT 获取方式：代充、成品号、Plus CDK 和 Team 邀请",
   description:
-    "面向中文用户解释 ChatGPT 官方订阅、地区价、第三方代充、成品号、Team / Business 和 API/CDK 的区别，以及如何用 PriceAI 查询价格。",
+    "面向中文用户解释 ChatGPT 官方订阅、地区价、第三方代充、账号购买、成品号、Plus CDK、Team 邀请和 API/CDK 的区别，以及如何用 PriceAI 查询价格。",
   alternates: {
     canonical: "/guides/chatgpt-subscription-options",
   },
   openGraph: {
-    title: "ChatGPT 有哪些获取方式 | PriceAI",
-    description: "先理解官方订阅、地区价、第三方渠道和 API/CDK，再回到 PriceAI 查看有货报价。",
+    title: "ChatGPT 获取方式：代充、成品号、Plus CDK 和 Team 邀请 | PriceAI",
+    description: "先理解官方订阅、地区价、代充、账号购买、Plus CDK、Team 邀请和 API/CDK，再回到 PriceAI 查看有货报价。",
     url: pageUrl,
   },
 };
@@ -43,7 +43,7 @@ export default function ChatGptSubscriptionOptionsGuide() {
                 ChatGPT 有哪些获取方式？
               </h1>
               <p className="mt-5 max-w-[70ch] text-base leading-8 text-[#5a6061]">
-                如果你只知道官网订阅要二十美元，但又看到很多渠道卖 Plus、Pro、Team、成品号、土区价、卡密和 API/CDK，这篇先帮你把路径拆清楚。PriceAI 不替任何渠道背书，只帮你在购买前看清价格和来源。
+                如果你只知道官网订阅要二十美元，但又看到很多渠道卖 Plus、Pro、Team 邀请、账号购买、成品号、土区价、Plus CDK、卡密和 API/CDK，这篇先帮你把路径拆清楚。PriceAI 不替任何渠道背书，只帮你在购买前看清价格和来源。
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
                 <Link
@@ -122,7 +122,7 @@ export default function ChatGptSubscriptionOptionsGuide() {
                 你可以按需求选路径。
               </h2>
               <p className="mt-4 text-sm leading-7 text-[#5a6061]">
-                PriceAI 的价值是把这些路径放在一起比较。它不保证某条路径最适合你，也不替原平台承担售后。
+                PriceAI 的价值是把这些路径放在一起比较。它不保证某条路径最适合你，也不替原平台承担售后。看到 ChatGPT 代充、Plus CDK、账号购买、Team 邀请这类标题时，先判断交付物是什么，再看价格。
               </p>
             </div>
             <div className="grid gap-3">
@@ -231,7 +231,7 @@ const paths = [
   },
   {
     title: "第三方代充或成品号",
-    text: "渠道可能提供代充、卡密、自助开通、成品号、团队邀请等。价格可能更低，但交付方式和售后差异很大。",
+    text: "渠道可能提供代充、直充、Plus CDK、卡密、自助开通、账号购买、成品号、Team 邀请等。价格可能更低，但交付方式和售后差异很大。",
     points: ["购买前看原始商品名", "只把有货价当作当前可买参考", "不把低价等同于可靠"],
     icon: <ShieldAlert size={17} />,
   },
@@ -250,7 +250,7 @@ const steps = [
   },
   {
     title: "再选商品",
-    text: "如果你确定要 Plus、Pro、Team 或普号，就看标准商品列表。如果还不确定，切到全部报价视图，先扫一遍原始商品标题。",
+    text: "如果你确定要 Plus、Pro、Team 或普号，就看标准商品列表。如果还不确定，切到全部报价视图，先扫一遍原始商品标题，尤其留意代充、账号购买、Plus CDK、Team 邀请这类关键词。",
   },
   {
     title: "最后去原站核验",
@@ -268,6 +268,22 @@ const faqs: Array<[string, string]> = [
     "可能来自地区价、资格权益、代订、批量号源、短期权益或其他交付方式。便宜背后的路径不同，风险和售后也不同，所以需要回到原平台核验。",
   ],
   [
+    "ChatGPT Plus CDK 和卡密是什么？",
+    "Plus CDK 或卡密一般是兑换码、激活码、自助开通码一类商品。它和官方账号直接订阅不一定是同一种交付方式，购买前要确认是给自己的账号开通，还是兑换某个权益，以及有效期、售后和失败处理。",
+  ],
+  [
+    "ChatGPT Plus 账号购买和成品号有什么区别？",
+    "账号购买通常指卖家直接交付一个账号；成品号通常指已经带有 Plus、Pro 或其他权益的账号。两者都要重点确认账号归属、是否能改密换绑、是否支持找回、售后多久，以及权益失效后怎么处理。",
+  ],
+  [
+    "ChatGPT 代充、直充和自助开通怎么区分？",
+    "直充通常强调给你的账号开通权益；代充通常是卖家代你完成支付或订阅流程；自助开通可能通过卡密、CDK 或自动化页面完成。最终仍要以原平台商品描述为准，不要只看标题和最低价。",
+  ],
+  [
+    "ChatGPT Team 邀请是什么？",
+    "Team 邀请一般是加入某个团队或商业权益空间，和个人 Plus、Pro 不一样。购买前要看清是团队邀请、母号拉人还是其他方式，并确认成员权限、使用期限、退出规则和售后范围。",
+  ],
+  [
     "Plus、Pro、Team 应该怎么选？",
     "如果只是日常使用，通常先看 Plus。如果需要更高额度或更强权益，再看 Pro。Team / Business 属于团队或商业权益，交付方式和个人 Plus 不一样。",
   ],
@@ -282,10 +298,10 @@ function buildGuideJsonLd() {
     {
       "@context": "https://schema.org",
       "@type": "Article",
-      headline: "ChatGPT 有哪些获取方式？",
+      headline: "ChatGPT 获取方式：代充、成品号、Plus CDK 和 Team 邀请",
       inLanguage: "zh-CN",
       url: pageUrl,
-      description: "解释 ChatGPT 官方订阅、官方地区价、第三方渠道、成品号和 API/CDK 的区别。",
+      description: "解释 ChatGPT 官方订阅、官方地区价、第三方代充、账号购买、成品号、Plus CDK、Team 邀请和 API/CDK 的区别。",
       author: {
         "@type": "Organization",
         name: "PriceAI",

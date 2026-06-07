@@ -21,15 +21,15 @@ const chatgptProductIds = [
 ];
 
 export const metadata: Metadata = {
-  title: "ChatGPT 订阅与渠道价格",
+  title: "ChatGPT 比价与订阅渠道价格",
   description:
-    "查看 ChatGPT Plus、Pro、Team、普号和 API/CDK 的有货最低价、渠道数量、更新时间和获取方式说明。",
+    "查看 ChatGPT Plus、Pro、Team 邀请、普号、Plus CDK、账号购买和 API/CDK 的有货最低价、渠道数量、更新时间和获取方式说明。",
   alternates: {
     canonical: "/platforms/chatgpt",
   },
   openGraph: {
-    title: "ChatGPT 订阅与渠道价格 | PriceAI",
-    description: "购买 ChatGPT 订阅前，先比较 Plus、Pro、Team、普号和 API/CDK 的价格、来源和更新时间。",
+    title: "ChatGPT 比价与订阅渠道价格 | PriceAI",
+    description: "购买 ChatGPT 订阅前，先比较 Plus、Pro、Team 邀请、普号、Plus CDK 和 API/CDK 的价格、来源和更新时间。",
     url: pageUrl,
   },
 };
@@ -63,10 +63,10 @@ export default async function ChatGptPlatformPage() {
                 ChatGPT 平台价格页
               </div>
               <h1 className="mt-5 font-serif text-4xl font-semibold leading-tight tracking-normal text-[#202829] sm:text-5xl">
-                ChatGPT 订阅与渠道价格
+                ChatGPT 比价与订阅渠道价格
               </h1>
               <p className="mt-5 max-w-[68ch] text-base leading-8 text-[#5a6061]">
-                这里聚合 ChatGPT 普号、Plus、Pro、Team / Business 和相关 API/CDK 报价。你可以先看当前有货最低价和更新时间，再进入工具页查看全部原始渠道。
+                这里聚合 ChatGPT 普号、Plus、Pro、Team / Business、Plus CDK、账号购买和相关 API/CDK 报价。你可以先看当前有货最低价和更新时间，再进入工具页查看全部原始渠道。
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
                 <Link
@@ -301,7 +301,7 @@ const optionCards = [
   },
   {
     title: "Plus",
-    text: "最常见的月度会员，渠道标题里可能写直充、代充、卡密、成品号或自助开通。",
+    text: "最常见的月度会员，渠道标题里可能写直充、代充、Plus CDK、卡密、成品号、账号购买或自助开通。",
     icon: <CheckCircle2 size={17} />,
   },
   {
@@ -311,7 +311,7 @@ const optionCards = [
   },
   {
     title: "Team / Business",
-    text: "团队或商业权益，可能以邀请、母号、自动拉等方式交付，和 Plus 不是同一种商品。",
+    text: "团队或商业权益，渠道里常见 Team 邀请、母号、自动拉等交付方式，和 Plus 不是同一种商品。",
     icon: <Clock3 size={17} />,
   },
 ];
@@ -320,6 +320,18 @@ const faqs: Array<[string, string]> = [
   [
     "ChatGPT Plus 和成品号要分开看吗？",
     "PriceAI 当前把 Plus 直充、代充、卡密、成品号等都归到 ChatGPT Plus，因为用户购买前最关心的是 Plus 权益和当前可买价格。具体交付方式仍需要看原始商品名和原平台说明。",
+  ],
+  [
+    "ChatGPT Plus CDK、卡密和账号购买有什么区别？",
+    "Plus CDK 或卡密通常指兑换码、激活码或自助开通类商品；账号购买或成品号通常是交付一个已经带权益的账号。它们和给你自己的账号直充不是一回事，购买前要看清账号归属、有效期、售后和是否支持找回。",
+  ],
+  [
+    "ChatGPT 代充要注意什么？",
+    "代充通常是卖家帮你完成官方订阅、地区价订阅或支付操作。需要确认是给你的账号直充，还是交付成品号、卡密或其他权益，同时看清失败处理、退款条件、售后时长和是否需要提供账号信息。",
+  ],
+  [
+    "ChatGPT Team 邀请能买吗？",
+    "Team 邀请属于团队或商业权益，常见交付方式包括邀请、母号拉人或自动拉。它和个人 Plus、Pro 不同，购买前要确认团队权限、使用期限、退出规则、成员管理方式和售后范围。",
   ],
   [
     "为什么有些 ChatGPT 商品价格差很多？",
@@ -340,10 +352,10 @@ function buildChatGptPlatformJsonLd(products: ExplorerProductSummary[]) {
     {
       "@context": "https://schema.org",
       "@type": "CollectionPage",
-      name: "ChatGPT 订阅与渠道价格",
+      name: "ChatGPT 比价与订阅渠道价格",
       url: pageUrl,
       inLanguage: "zh-CN",
-      description: "PriceAI 聚合 ChatGPT 普号、Plus、Pro、Team / Business 和 API/CDK 的渠道价格与更新时间。",
+      description: "PriceAI 聚合 ChatGPT 普号、Plus、Pro、Team / Business、Plus CDK、账号购买和 API/CDK 的渠道价格与更新时间。",
       hasPart: products.map((product) => ({
         "@type": "Product",
         name: product.displayName,
