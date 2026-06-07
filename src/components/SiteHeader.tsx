@@ -10,6 +10,7 @@ const navItems = [
   { key: "channels", href: "/", label: "卡网渠道", match: (pathname: string) => pathname === "/" || pathname.startsWith("/products") },
   { key: "official", href: "/official-prices", label: "官方订阅", match: (pathname: string) => pathname.startsWith("/official-prices") },
   { key: "api", href: "/api-models", label: "模型 API", match: (pathname: string) => pathname.startsWith("/api-models") },
+  { key: "guides", href: "/guides", label: "指南", match: (pathname: string) => pathname.startsWith("/guides") },
 ];
 
 type SiteHeaderSection = (typeof navItems)[number]["key"];
