@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicDataCacheHeaders } from "@/lib/cache-headers";
 import { getExplorerData } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
@@ -8,8 +9,6 @@ export async function GET() {
   const result = await getExplorerData();
 
   return NextResponse.json(result, {
-    headers: {
-      "Cache-Control": "public, s-maxage=120, stale-while-revalidate=600",
-    },
+    headers: publicDataCacheHeaders(),
   });
 }

@@ -16,7 +16,6 @@ import {
   Table2,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrandIcon } from "@/components/BrandIcon";
@@ -82,7 +81,6 @@ const PRODUCT_SKELETON_ROWS = [0, 1, 2];
 const EXPLORER_CACHE_KEY = "priceai:explorer:v1";
 const EXPLORER_CACHE_TTL_MS = 5 * 60 * 1000;
 const OFFER_LIST_CACHE_TTL_MS = 2 * 60 * 1000;
-const PRODUCT_DETAIL_PREFETCH_LIMIT = 3;
 const RETURN_HOME_INTENT_KEY = "priceai:return-home-intent";
 const stockOptions = ["all", "available", "out_of_stock"] as const;
 const sortOptions = ["available_price", "price", "updated", "channels"] as const;
@@ -125,7 +123,6 @@ export function PriceExplorer({
   initialState?: ExplorerInitialState;
   restoreStateFromUrl?: boolean;
 }) {
-  const router = useRouter();
   const [explorerData, setExplorerData] = useState<ExplorerData>(
     data ?? explorerMemoryCache ?? EMPTY_EXPLORER_DATA,
   );
@@ -148,7 +145,6 @@ export function PriceExplorer({
   const [offersError, setOffersError] = useState<string | null>(null);
   const [feedbackRow, setFeedbackRow] = useState<PlatformOfferRow | null>(null);
   const offerLoadMoreRef = useRef<HTMLDivElement | null>(null);
-  const prefetchedDetailHrefsRef = useRef<Set<string>>(new Set());
   const isDesktopViewport = useMediaQuery("(min-width: 768px)");
   const platformTabs = useMemo<CategoryTabItem[]>(
     () => ["全部", ...platformOptions].map((item) => ({
@@ -277,23 +273,6 @@ export function PriceExplorer({
       }).toString(),
     [maxPrice, minPrice, platform, productType, query, scopeMode, sort, stock, viewMode],
   );
-  const productDetailHrefsToWarm = useMemo(
-    () =>
-      showingOffers || dataLoading
-        ? []
-        : products
-            .slice(0, PRODUCT_DETAIL_PREFETCH_LIMIT)
-            .map((product) => productDetailHref(product.slug, explorerQueryString)),
-    [dataLoading, explorerQueryString, products, showingOffers],
-  );
-  const warmProductDetail = useCallback(
-    (href: string) => {
-      if (!href || prefetchedDetailHrefsRef.current.has(href)) return;
-      prefetchedDetailHrefsRef.current.add(href);
-      router.prefetch(href);
-    },
-    [router],
-  );
 
   useEffect(() => {
     if (!data) return;
@@ -337,27 +316,6 @@ export function PriceExplorer({
 
     return () => controller.abort();
   }, [data]);
-
-  useEffect(() => {
-    if (!productDetailHrefsToWarm.length) return;
-
-    let timeoutId: ReturnType<typeof globalThis.setTimeout> | null = null;
-    let idleId: number | null = null;
-    const warmVisibleDetails = () => {
-      productDetailHrefsToWarm.forEach(warmProductDetail);
-    };
-
-    if ("requestIdleCallback" in window) {
-      idleId = window.requestIdleCallback(warmVisibleDetails, { timeout: 1600 });
-    } else {
-      timeoutId = globalThis.setTimeout(warmVisibleDetails, 500);
-    }
-
-    return () => {
-      if (idleId !== null) window.cancelIdleCallback(idleId);
-      if (timeoutId !== null) globalThis.clearTimeout(timeoutId);
-    };
-  }, [productDetailHrefsToWarm, warmProductDetail]);
 
   function changePlatform(nextPlatform: string) {
     setPlatform(nextPlatform);
@@ -809,20 +767,20 @@ export function PriceExplorer({
             {renderMobileProductList ? (
               <div className="grid grid-cols-1 gap-3 md:hidden">
                 {products.map((product) => (
-                  <MobileProductCard key={product.id} product={product} returnQuery={explorerQueryString} onIntent={warmProductDetail} />
+                  <MobileProductCard key={product.id} product={product} returnQuery={explorerQueryString} />
                 ))}
               </div>
             ) : null}
             {renderDesktopProductCards ? (
               <div className="hidden gap-6 md:grid md:grid-cols-2 xl:grid-cols-3">
                 {products.map((product) => (
-                  <ProductCard key={product.id} product={product} returnQuery={explorerQueryString} onIntent={warmProductDetail} />
+                  <ProductCard key={product.id} product={product} returnQuery={explorerQueryString} />
                 ))}
               </div>
             ) : null}
             {renderDesktopProductTable ? (
               <div className="hidden md:block">
-                <ProductTable products={products} returnQuery={explorerQueryString} onIntent={warmProductDetail} />
+                <ProductTable products={products} returnQuery={explorerQueryString} />
               </div>
             ) : null}
           </>
@@ -841,11 +799,9 @@ export function PriceExplorer({
 function ProductTable({
   products,
   returnQuery,
-  onIntent,
 }: {
   products: ExplorerProductSummary[];
   returnQuery: string;
-  onIntent: (href: string) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
@@ -875,8 +831,7 @@ function ProductTable({
                   <td className="max-w-[310px] px-5 py-4">
                     <Link
                       href={productHref}
-                      onMouseEnter={() => onIntent(productHref)}
-                      onFocus={() => onIntent(productHref)}
+                      prefetch={false}
                       onClick={() => trackProductDetailOpen(product)}
                       className="group flex min-w-0 items-center gap-3"
                     >
@@ -926,8 +881,7 @@ function ProductTable({
                   <td className="px-5 py-4">
                     <Link
                       href={productHref}
-                      onMouseEnter={() => onIntent(productHref)}
-                      onFocus={() => onIntent(productHref)}
+                      prefetch={false}
                       onClick={() => trackProductDetailOpen(product)}
                       className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-[#2d3435] px-3 text-xs font-semibold text-[#f8f8f8] transition hover:bg-[#1f2526]"
                     >
@@ -1205,11 +1159,9 @@ function RelativeTime({ value }: { value: string | null | undefined }) {
 function ProductCard({
   product,
   returnQuery,
-  onIntent,
 }: {
   product: ExplorerProductSummary;
   returnQuery: string;
-  onIntent: (href: string) => void;
 }) {
   const previewOffer = product.lowestOffer;
   const flags = previewOffer ? collectOfferFlags(previewOffer).slice(0, 2) : [];
@@ -1235,8 +1187,7 @@ function ProductCard({
 
       <Link
         href={productHref}
-        onMouseEnter={() => onIntent(productHref)}
-        onFocus={() => onIntent(productHref)}
+        prefetch={false}
         onClick={() => trackProductDetailOpen(product)}
         className="block"
       >
@@ -1279,8 +1230,7 @@ function ProductCard({
       <div className="mt-auto pt-6">
         <Link
           href={productHref}
-          onMouseEnter={() => onIntent(productHref)}
-          onFocus={() => onIntent(productHref)}
+          prefetch={false}
           onClick={() => trackProductDetailOpen(product)}
           className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#5e5e5e] to-[#525252] px-5 text-sm font-semibold text-[#f8f8f8] transition hover:opacity-90"
         >
@@ -1295,11 +1245,9 @@ function ProductCard({
 function MobileProductCard({
   product,
   returnQuery,
-  onIntent,
 }: {
   product: ExplorerProductSummary;
   returnQuery: string;
-  onIntent: (href: string) => void;
 }) {
   const previewOffer = product.lowestOffer;
   const available = product.inStockCount > 0;
@@ -1331,8 +1279,7 @@ function MobileProductCard({
         </div>
         <Link
           href={productHref}
-          onMouseEnter={() => onIntent(productHref)}
-          onFocus={() => onIntent(productHref)}
+          prefetch={false}
           onClick={() => trackProductDetailOpen(product)}
           className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#2d3435] px-4 text-sm font-semibold text-[#f8f8f8] transition hover:bg-[#1f2526]"
         >
