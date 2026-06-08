@@ -1037,6 +1037,7 @@ const FETCH_TIMEOUT_MS = 5000;
 const SHOP_API_TIMEOUT_MS = 8000;
 const KAMI_HOSTS = new Set([
   "123456787kelie.top",
+  "acg.nbcode.xyz",
   "ai666.dnxb.cc",
   "ai666.id",
   "aisou.pro",
@@ -1045,6 +1046,7 @@ const KAMI_HOSTS = new Set([
   "douyiner.cn",
   "faka.redeemgpt.com",
   "feifei.shop",
+  "fk.gptcz.cc",
   "fk.ybkjs.top",
   "gemini91.shop",
   "gmail1888.com",
@@ -1071,16 +1073,33 @@ const DUJIAO_HOSTS = new Set([
   "gmail91.shop",
   "kapay.shop",
   "morimm.com",
+  "ac-card.org",
   "shop.aitonse.com",
   "shop.auto-subscribe.com",
+  "shop.mfttai.com",
   "ultra.makelove.cloud",
   "zhang520.store",
 ]);
 const GENERIC_HTML_HOSTS = new Set([
   "19cm.tech",
+  "of365.vip",
   "woaimaihao.com",
   "xingbao-ai.shop",
   "xxxyan.cc",
+]);
+const PUBLIC_PRODUCTS_API_HOSTS = new Set([
+  "academicgate.org",
+  "catcard.uk",
+]);
+const SHOP_USER_PRODUCTS_API_HOSTS = new Set([
+  "sd.ncet.top",
+]);
+const UNICORN_HTML_HOSTS = new Set([
+  "meowka.vip",
+  "ouvg.top",
+]);
+const MOONCAKE_CATALOG_HOSTS = new Set([
+  "fk1.ybkjs.top",
 ]);
 
 export async function parseSubmissionMetadata(rawUrl: string): Promise<{
@@ -1270,6 +1289,10 @@ async function resolveSourceFromKnownOffer(
 function inferCollectorKind(host: string): string {
   if (KAMI_HOSTS.has(host)) return "kami";
   if (DUJIAO_HOSTS.has(host)) return "dujiao";
+  if (PUBLIC_PRODUCTS_API_HOSTS.has(host)) return "publicProductsApi";
+  if (SHOP_USER_PRODUCTS_API_HOSTS.has(host)) return "shopUserProductsApi";
+  if (UNICORN_HTML_HOSTS.has(host)) return "unicornHtml";
+  if (MOONCAKE_CATALOG_HOSTS.has(host)) return "mooncakeCatalog";
   if (host === "pay.qxvx.cn" || host === "pay.ldxp.cn" || host === "ldxp.cn") return "shopApi";
   if (host === "upgrade.xiaoheiwan.com") return "xiaoheiwan";
   if (host === "aifk.opensora.de") return "opensoraHtml";
@@ -1474,6 +1497,10 @@ function normalizeCollectorKind(value: unknown): CollectorKind | null {
     normalized === "beibeiHtml" ||
     normalized === "ikunloveApi" ||
     normalized === "getgptApi" ||
+    normalized === "publicProductsApi" ||
+    normalized === "shopUserProductsApi" ||
+    normalized === "unicornHtml" ||
+    normalized === "mooncakeCatalog" ||
     normalized === "genericHtml" ||
     normalized === "browser" ||
     normalized === "unsupported"

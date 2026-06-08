@@ -9,6 +9,7 @@ const env = readEnvFile(".env.local");
 
 const KAMI_HOSTS = new Set([
   "123456787kelie.top",
+  "acg.nbcode.xyz",
   "ai666.dnxb.cc",
   "ai666.id",
   "aisou.pro",
@@ -17,6 +18,7 @@ const KAMI_HOSTS = new Set([
   "douyiner.cn",
   "faka.redeemgpt.com",
   "feifei.shop",
+  "fk.gptcz.cc",
   "fk.ybkjs.top",
   "gemini91.shop",
   "gmail1888.com",
@@ -44,17 +46,38 @@ const DUJIAO_HOSTS = new Set([
   "gmail91.shop",
   "kapay.shop",
   "morimm.com",
+  "ac-card.org",
   "shop.aitonse.com",
   "shop.auto-subscribe.com",
+  "shop.mfttai.com",
   "ultra.makelove.cloud",
   "zhang520.store",
 ]);
 
 const GENERIC_HTML_HOSTS = new Set([
   "19cm.tech",
+  "of365.vip",
   "woaimaihao.com",
   "xingbao-ai.shop",
   "xxxyan.cc",
+]);
+
+const PUBLIC_PRODUCTS_API_HOSTS = new Set([
+  "academicgate.org",
+  "catcard.uk",
+]);
+
+const SHOP_USER_PRODUCTS_API_HOSTS = new Set([
+  "sd.ncet.top",
+]);
+
+const UNICORN_HTML_HOSTS = new Set([
+  "meowka.vip",
+  "ouvg.top",
+]);
+
+const MOONCAKE_CATALOG_HOSTS = new Set([
+  "fk1.ybkjs.top",
 ]);
 
 const PRICE_VALUE_PATTERN = String.raw`(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)`;
@@ -307,6 +330,10 @@ async function collectTarget(target, options = {}) {
   if (target.kind === "beibeiHtml") return collectBeibeiHtml(target);
   if (target.kind === "ikunloveApi") return collectIkunloveApi(target);
   if (target.kind === "getgptApi") return collectGetgptApi(target);
+  if (target.kind === "publicProductsApi") return collectPublicProductsApi(target);
+  if (target.kind === "shopUserProductsApi") return collectShopUserProductsApi(target, options);
+  if (target.kind === "unicornHtml") return collectUnicornHtml(target);
+  if (target.kind === "mooncakeCatalog") return collectMooncakeCatalog(target);
   if (target.kind === "genericHtml") return collectGenericHtml(target);
 
   throw new Error(`Unsupported collector kind: ${target.kind}`);
@@ -757,8 +784,158 @@ async function collectGetgptApi(target) {
     .filter(Boolean);
 }
 
+async function collectPublicProductsApi(target) {
+  const payload = await fetchJson(`${target.baseUrl}/api/products`);
+  const products = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload.products)
+      ? payload.products
+      : Array.isArray(payload.data?.products)
+        ? payload.data.products
+        : [];
+
+  return products
+    .map((product) => {
+      const title = cleanText(
+        product.display_name || product.displayName || product.name || product.productName || product.title,
+      );
+      const price = numberOrNull(product.price_cny ?? product.priceCny ?? product.price ?? product.amount);
+      if (!title || price === null || isNonComparableTitle(title)) return null;
+
+      const stockCount = numberOrNull(product.stock ?? product.stock_count ?? product.stockCount);
+      const hidden = product.is_hidden === true || product.hidden === true || product.isVisible === false;
+      const disabled = hidden || Number(product.status ?? 1) === 0;
+      const tags = compact([
+        product.project_title || product.projectTitle || product.project,
+        product.group_name || product.groupName,
+        product.delivery_label || product.deliveryLabel,
+        product.product_type || product.productType,
+        ...(Array.isArray(product.tags)
+          ? product.tags.map((tag) => typeof tag === "string" ? tag : tag?.text || tag?.name)
+          : []),
+      ]);
+
+      return makeOffer(target, {
+        title,
+        price,
+        status: disabled ? "out_of_stock" : statusFromStock(stockCount),
+        stockCount,
+        url: publicProductUrl(target, product),
+        tags,
+      });
+    })
+    .filter(Boolean);
+}
+
+async function collectShopUserProductsApi(target, options = {}) {
+  const offers = [];
+
+  for (let page = 1; page <= 10; page += 1) {
+    await waitBetweenPages(options);
+    const payload = await fetchJson(`${target.baseUrl}/shop/user/products?page=${page}&size=100&productName=`);
+    const records = Array.isArray(payload.data?.records) ? payload.data.records : [];
+    if (!records.length) break;
+
+    for (const product of records) {
+      const title = cleanText(product.productName || product.name || product.title);
+      const price = numberOrNull(product.price ?? product.salePrice);
+      if (!title || price === null || isNonComparableTitle(title)) continue;
+
+      const stockCount = numberOrNull(product.stock);
+      const hidden = Number(product.isVisible ?? 1) !== 1 || Number(product.status ?? 1) !== 1;
+
+      offers.push(
+        makeOffer(target, {
+          title,
+          price,
+          status: hidden ? "out_of_stock" : statusFromStock(stockCount),
+          stockCount,
+          url: `${target.baseUrl}/product/${encodeURIComponent(String(product.id))}`,
+          tags: compact([product.category, product.cardType, product.isHot ? "热门" : null]),
+        }),
+      );
+    }
+
+    if (records.length < 100) break;
+  }
+
+  return offers;
+}
+
+async function collectUnicornHtml(target) {
+  const html = await fetchText(target.sourceUrl);
+  const blocks = [...html.matchAll(/<div class="card position-relative">[\s\S]*?(?=<div class="col">|<!-- goods end -->|<\/section>|<\/body>)/gi)];
+  const offers = [];
+
+  for (const block of blocks) {
+    const body = block[0];
+    const title = cleanText(body.match(/<h6[^>]*class=["'][^"']*card-title[^"']*["'][^>]*>([\s\S]*?)<\/h6>/i)?.[1]);
+    const price = numberOrNull(body.match(/<strong>\s*([^<]+?)\s*<\/strong>/i)?.[1]);
+    if (!title || price === null || isNonComparableTitle(title)) continue;
+
+    const stockCount = numberOrNull(body.match(/库存[:：]\s*(\d+)/)?.[1]);
+    const soldOut = /缺货|售罄|已售罄|disabled|btn-secondary/i.test(body) || stockCount === 0;
+    const href = body.match(/<a[^>]+href=["']([^"']*(?:\/buy\/\d+|\/product\/\d+)[^"']*)["']/i)?.[1];
+
+    offers.push(
+      makeOffer(target, {
+        title,
+        price,
+        status: soldOut ? "out_of_stock" : statusFromStock(stockCount),
+        stockCount: soldOut ? 0 : stockCount,
+        url: absolutize(href || target.sourceUrl, target.baseUrl),
+        tags: compact([
+          /自动发货/.test(body) ? "自动发货" : null,
+          /人工处理/.test(body) ? "人工处理" : null,
+          "页面解析",
+        ]),
+      }),
+    );
+  }
+
+  return dedupeOffers(offers);
+}
+
+async function collectMooncakeCatalog(target) {
+  const js = await fetchText(`${target.baseUrl}/mooncake-official-media/catalog.js`);
+  const jsonText = js.match(/window\.MOONCAKE_CATALOG\s*=\s*([\s\S]*?);\s*(?:window\.|$)/)?.[1];
+  if (!jsonText) throw new Error("Mooncake catalog data not found.");
+
+  let categories;
+  try {
+    categories = JSON.parse(jsonText);
+  } catch {
+    throw new Error("Mooncake catalog JSON parse failed.");
+  }
+
+  const offers = [];
+  for (const category of Array.isArray(categories) ? categories : []) {
+    const categoryName = cleanText(category.name);
+    for (const item of Array.isArray(category.items) ? category.items : []) {
+      const title = cleanText(item.name);
+      const price = numberOrNull(item.price);
+      if (!title || price === null || isNonComparableTitle(title)) continue;
+      const stockCount = numberOrNull(item.stock);
+
+      offers.push(
+        makeOffer(target, {
+          title,
+          price,
+          status: statusFromStock(stockCount),
+          stockCount,
+          url: `${target.baseUrl}/#item-${encodeURIComponent(String(item.id))}`,
+          tags: compact([categoryName, item.delivery_way === 0 ? "自动发货" : null]),
+        }),
+      );
+    }
+  }
+
+  return offers;
+}
+
 async function collectGenericHtml(target) {
   const html = await fetchText(target.sourceUrl);
+  const pageTitle = cleanPageTitle(html);
   const text = stripHtml(html)
     .replace(/&amp;/g, "&")
     .replace(/\s+/g, " ")
@@ -766,6 +943,7 @@ async function collectGenericHtml(target) {
   const matches = [...text.matchAll(new RegExp(String.raw`[¥￥]\s*${PRICE_VALUE_PATTERN}`, "g"))];
   const offers = [];
   let previousPriceEnd = 0;
+  const singleProductPage = isLikelySingleProductPage(target.sourceUrl, matches.length);
 
   for (let index = 0; index < matches.length; index += 1) {
     const match = matches[index];
@@ -777,7 +955,9 @@ async function collectGenericHtml(target) {
     const after = text.slice(match.index + match[0].length, nextPriceIndex);
     previousPriceEnd = match.index + match[0].length;
 
-    const title = titleFromGenericSegment(segment, price);
+    const title = singleProductPage
+      ? pageTitle || titleFromGenericSegment(segment, price)
+      : titleFromGenericSegment(segment, price);
     if (!title || isNonComparableTitle(title)) continue;
     if (/合计|支付|订单|充值金额|余额|声明|举证|预览/.test(title)) continue;
 
@@ -799,6 +979,7 @@ async function collectGenericHtml(target) {
         ]),
       }),
     );
+    if (singleProductPage) break;
   }
 
   return dedupeOffers(offers).slice(0, 200);
@@ -812,6 +993,20 @@ function titleFromGenericSegment(value, price = null) {
     .replace(/价格\s*$/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+  let matchedDetailTitle = false;
+  const detailMatch = text.match(/(.{4,220}?)(?:\s*(?:自动发货|人工处理))?\s*库存[:：]\s*\d+\s*(?:价格[:：]?)?$/);
+  if (detailMatch) {
+    const candidate = detailMatch[1]
+      .split(/(?:购买商品|查询订单|补货通知|友情提醒|QQ[:：]|TG|-->|在线客服)/)
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .at(-1);
+    if (candidate && candidate.length >= 4) {
+      text = candidate;
+      matchedDetailTitle = true;
+    }
+  }
 
   const markers = [
     "立即下单 查看详情",
@@ -849,10 +1044,12 @@ function titleFromGenericSegment(value, price = null) {
     .replace(/\s+/g, " ")
     .trim();
 
-  const productNameMatch = text.match(
-    /((?:ChatGPT|GPT|Claude|Grok|Gemini|OpenAI|Google|Gmail|Outlook|Telegram|Pixel|Apple ID|GV|API)[^，。,；;]{0,80})/i,
-  );
-  if (productNameMatch) text = productNameMatch[1].trim();
+  if (!matchedDetailTitle) {
+    const productNameMatch = text.match(
+      /((?:ChatGPT|GPT|Claude|Grok|Gemini|OpenAI|Google|Gmail|Outlook|Telegram|Pixel|Apple ID|GV|API)[^，。,；;]{0,80})/i,
+    );
+    if (productNameMatch) text = productNameMatch[1].trim();
+  }
 
   if (text.length > 96) {
     const parts = text.split(/\s{2,}|[。；;，,]/).map((part) => part.trim()).filter(Boolean);
@@ -864,8 +1061,25 @@ function titleFromGenericSegment(value, price = null) {
 
 function stockFromGenericContext(value) {
   const text = cleanText(value);
-  const stockMatch = text.match(/库存\s*(\d+)/) || text.match(/(\d+)\s*件现货/);
+  const stockMatch = text.match(/库存\s*[:：]?\s*(\d+)/) || text.match(/(\d+)\s*件现货/);
   return stockMatch ? numberOrNull(stockMatch[1]) : null;
+}
+
+function cleanPageTitle(html) {
+  const title = cleanText(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]);
+  if (!title) return "";
+  return title
+    .split(/\s*(?:购买\s*\||\|\s*购买|-\s*购买|_\s*购买)\s*/)[0]
+    .replace(/\s*\|\s*(?:office\s*365|发卡|小店|商城|商店).*$/i, "")
+    .replace(/\s+-\s*(?:office\s*365|发卡|小店|商城|商店).*$/i, "")
+    .trim()
+    .slice(0, 140);
+}
+
+function isLikelySingleProductPage(url, priceCount) {
+  const parsed = safeUrl(url);
+  if (!parsed) return priceCount <= 2;
+  return priceCount <= 2 && /\/(?:product|products|goods|item)\//i.test(parsed.pathname);
 }
 
 async function discoverShopTokens(target, options = {}) {
@@ -1486,6 +1700,10 @@ function lockSecondsFor(options = {}) {
 function inferCollectorKind(host, text = "") {
   if (KAMI_HOSTS.has(host)) return "kami";
   if (DUJIAO_HOSTS.has(host)) return "dujiao";
+  if (PUBLIC_PRODUCTS_API_HOSTS.has(host)) return "publicProductsApi";
+  if (SHOP_USER_PRODUCTS_API_HOSTS.has(host)) return "shopUserProductsApi";
+  if (UNICORN_HTML_HOSTS.has(host)) return "unicornHtml";
+  if (MOONCAKE_CATALOG_HOSTS.has(host)) return "mooncakeCatalog";
   if (host === "pay.qxvx.cn" || host === "pay.ldxp.cn" || host === "ldxp.cn") return "shopApi";
   if (host === "upgrade.xiaoheiwan.com") return "xiaoheiwan";
   if (host === "aifk.opensora.de") return "opensoraHtml";
@@ -1512,12 +1730,23 @@ function normalizeCollectorKind(value) {
     "beibeiHtml",
     "ikunloveApi",
     "getgptApi",
+    "publicProductsApi",
+    "shopUserProductsApi",
+    "unicornHtml",
+    "mooncakeCatalog",
     "genericHtml",
     "browser",
     "unsupported",
   ].includes(text)
     ? text
     : null;
+}
+
+function publicProductUrl(target, product) {
+  const id = product.id || product.slug || product.key;
+  if (!id) return target.sourceUrl;
+  if (normalizeHostname(target.baseUrl) === "catcard.uk") return `${target.baseUrl}/#product-${encodeURIComponent(String(id))}`;
+  return `${target.baseUrl}/#${encodeURIComponent(String(id))}`;
 }
 
 function maxAttemptsFor(options = {}) {
@@ -1739,6 +1968,14 @@ function absolutize(value, baseUrl) {
     return new URL(value, baseUrl).toString();
   } catch {
     return baseUrl;
+  }
+}
+
+function safeUrl(value) {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
   }
 }
 

@@ -132,6 +132,10 @@ function collectorKindFromDetails(details: Record<string, unknown> | undefined) 
     value === "beibeiHtml" ||
     value === "ikunloveApi" ||
     value === "getgptApi" ||
+    value === "publicProductsApi" ||
+    value === "shopUserProductsApi" ||
+    value === "unicornHtml" ||
+    value === "mooncakeCatalog" ||
     value === "genericHtml" ||
     value === "browser" ||
     value === "unsupported"

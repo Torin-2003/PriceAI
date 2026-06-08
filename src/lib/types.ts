@@ -26,6 +26,10 @@ export type CollectorKind =
   | "beibeiHtml"
   | "ikunloveApi"
   | "getgptApi"
+  | "publicProductsApi"
+  | "shopUserProductsApi"
+  | "unicornHtml"
+  | "mooncakeCatalog"
   | "genericHtml"
   | "browser"
   | "unsupported";
