@@ -199,6 +199,7 @@ export default function GuidesIndexPage() {
                     <span className="min-w-0">
                       <span className="block font-semibold text-[#202829]">{item.title}</span>
                       <span className="mt-1 block text-sm leading-7 text-[#5a6061]">{item.text}</span>
+                      {item.title === "举报问题商品" ? <ReportOfferIllustration /> : null}
                     </span>
                     <span className="inline-flex items-center text-sm font-semibold text-[#2d3435]">
                       {item.label}
@@ -244,6 +245,71 @@ export default function GuidesIndexPage() {
         </article>
       </GuideDocsLayout>
     </>
+  );
+}
+
+function ReportOfferIllustration() {
+  const rows = [
+    { price: "¥0.29", time: "53 分钟前", width: "w-[78%]" },
+    { price: "¥0.40", time: "55 分钟前", width: "w-[72%]" },
+    { price: "¥0.44", time: "59 分钟前", width: "w-[58%]" },
+  ];
+
+  return (
+    <figure
+      className="relative mt-4 max-w-[720px] overflow-hidden rounded-md border border-[#dfe4e5] bg-[#f8f8f8]"
+      aria-label="商品详情页报价表中，右侧旗帜图标是举报入口"
+    >
+      <div className="border-b border-[#dfe4e5] bg-[#edf0f1]/70 px-4 py-3">
+        <div className="h-3 w-32 rounded-full bg-[#d5dcdd]" />
+      </div>
+      <div className="grid grid-cols-[64px_minmax(84px,1fr)_64px_70px_44px] text-[11px] font-semibold text-[#7a8182] sm:grid-cols-[74px_minmax(130px,1fr)_74px_84px_52px]">
+        <div className="px-4 py-3">状态</div>
+        <div className="px-3 py-3">原始商品名</div>
+        <div className="px-3 py-3">价格</div>
+        <div className="px-3 py-3">更新时间</div>
+        <div className="px-3 py-3">反馈</div>
+      </div>
+      <div className="divide-y divide-[#e7ebec]">
+        {rows.map((row, index) => (
+          <div
+            key={`${row.price}-${row.time}`}
+            className="grid grid-cols-[64px_minmax(84px,1fr)_64px_70px_44px] items-center text-sm sm:grid-cols-[74px_minmax(130px,1fr)_74px_84px_52px]"
+          >
+            <div className="px-4 py-3">
+              <span className="inline-flex rounded-full bg-[#e8f3ec] px-2.5 py-1 text-xs font-semibold text-[#2f7a4b]">
+                有货
+              </span>
+            </div>
+            <div className="px-3 py-3">
+              <div className={`h-3 rounded-full bg-[#cfd6d7] ${row.width}`} />
+              <div className="mt-2 h-3 w-[44%] rounded-full bg-[#e0e5e6]" />
+            </div>
+            <div className="px-3 py-3 font-bold text-[#202829]">{row.price}</div>
+            <div className="px-3 py-3 text-xs text-[#5a6061]">{row.time}</div>
+            <div className="px-3 py-3">
+              <span
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-full border bg-white text-[#5a6061] ${
+                  index === 0 ? "border-[#ef4444] ring-2 ring-[#ef4444]/20" : "border-[#dfe4e5]"
+                }`}
+                aria-hidden="true"
+              >
+                <Flag size={15} />
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="pointer-events-none absolute right-2 top-[58px] h-[150px] w-[44px] rounded-md border-2 border-[#ef4444]" />
+      <div className="pointer-events-none absolute right-10 top-4 hidden items-center gap-2 text-xs font-bold text-[#ef4444] sm:flex">
+        举报入口
+        <span className="h-0.5 w-20 rotate-[32deg] rounded-full bg-[#ef4444]" />
+        <ArrowRight size={18} className="translate-x-[-8px] translate-y-6 rotate-[32deg]" />
+      </div>
+      <figcaption className="border-t border-[#dfe4e5] px-4 py-3 text-xs leading-5 text-[#5a6061]">
+        在商品详情页的报价表里，点击右侧旗帜图标，可以反馈价格异常、链接下架、描述异常或疑似虚假商品。
+      </figcaption>
+    </figure>
   );
 }
 
