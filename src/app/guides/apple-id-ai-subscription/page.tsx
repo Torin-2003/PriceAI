@@ -59,14 +59,14 @@ export default function AppleIdAiSubscriptionGuide() {
               <div className="mt-7 flex flex-wrap gap-3">
                 <Link
                   href="/official-prices"
-                  className="inline-flex h-11 items-center gap-2 rounded-full bg-[#2d3435] px-5 text-sm font-semibold text-[#f8f8f8] transition hover:-translate-y-0.5 hover:bg-[#202829]"
+                  className="inline-flex h-10 items-center gap-2 rounded-md bg-[#2d3435] px-4 text-sm font-semibold text-[#f8f8f8] transition hover:bg-[#202829]"
                 >
                   查看官方地区价
                   <ArrowRight size={16} />
                 </Link>
                 <Link
                   href="/guides/how-to-subscribe-ai-officially"
-                  className="inline-flex h-11 items-center gap-2 rounded-full bg-[#dde4e5] px-5 text-sm font-semibold text-[#2d3435] transition hover:-translate-y-0.5 hover:bg-[#d3dcdd]"
+                  className="inline-flex h-10 items-center gap-2 rounded-md bg-[#dde4e5] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#d3dcdd]"
                 >
                   官方自助订阅总览
                   <ExternalLink size={15} />
@@ -74,25 +74,25 @@ export default function AppleIdAiSubscriptionGuide() {
               </div>
             </div>
 
-            <aside className="rounded-lg bg-white p-5 shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#5a6061]">快速结论</p>
+            <aside className="border-l border-[#dfe4e5] pl-5">
+              <p className="text-xs font-semibold text-[#7a8182]">快速结论</p>
               <p className="mt-4 text-sm leading-7 text-[#5a6061]">
                 Apple ID 不是“低价魔法”。它只是 App Store 内购的账户和地区入口。真正要判断的是：目标 AI App 是否支持内购、该地区是否可买、你是否有可用付款方式或余额，以及后续续费能不能稳定。
               </p>
             </aside>
           </section>
 
-          <section className="mt-10 rounded-lg bg-[#202829] p-6 text-[#f8f8f8] md:p-8">
+          <section className="mt-10 border-y border-[#dfe4e5] py-7">
             <div className="grid gap-6 md:grid-cols-[0.72fr_1fr] md:items-start">
               <div>
-                <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#f8f8f8]/10 text-[#45bf78]">
+                <div className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-[#e8f3ec] text-[#2f7a4b]">
                   <ShieldAlert size={19} />
                 </div>
-                <h2 className="mt-5 font-serif text-3xl font-semibold leading-tight tracking-normal">
+                <h2 className="mt-4 font-serif text-3xl font-semibold leading-tight tracking-normal text-[#202829]">
                   先说结论：Apple ID 地区价要按总成本看。
                 </h2>
               </div>
-              <p className="text-sm leading-7 text-[#d7dddd]">
+              <p className="text-sm leading-7 text-[#5a6061]">
                 App Store 标价只是第一层。你还要看 Apple 账户地区、付款方式、礼品卡溢价、账户余额限制、税费、汇率、订阅管理入口和失败退款成本。PriceAI 只解释这些关系，不提供绕过地区或风控的方法。
               </p>
             </div>
@@ -107,17 +107,17 @@ export default function AppleIdAiSubscriptionGuide() {
             </div>
           </section>
 
-          <section className="mt-12 overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
-            <div className="border-b border-[#edf0f1] px-5 py-4 sm:px-6">
+          <section className="mt-12">
+            <div className="border-b border-[#dfe4e5] pb-4">
               <h2 className="font-serif text-2xl font-semibold tracking-normal text-[#202829]">购买前按这个顺序检查</h2>
               <p className="mt-2 text-sm leading-6 text-[#5a6061]">
                 这是一份判断清单，不是“照做即可”的教程。每一步都应该回到 Apple 和目标 AI App 的实际提示核验。
               </p>
             </div>
-            <div className="divide-y divide-[#edf0f1]">
+            <div className="divide-y divide-[#dfe4e5] border-b border-[#dfe4e5]">
               {checkSteps.map((item, index) => (
-                <div key={item.title} className="grid gap-3 px-5 py-5 sm:grid-cols-[52px_1fr] sm:px-6">
-                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#f2f4f4] text-sm font-bold text-[#202829]">
+                <div key={item.title} className="grid gap-3 py-5 sm:grid-cols-[44px_1fr]">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#edf0f1] text-sm font-bold text-[#202829]">
                     {index + 1}
                   </span>
                   <div>
@@ -155,7 +155,7 @@ export default function AppleIdAiSubscriptionGuide() {
             </div>
           </section>
 
-          <section className="mt-12 rounded-lg bg-white p-6 shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15 md:p-8">
+          <section className="mt-12 border-y border-[#dfe4e5] py-8">
             <div className="grid gap-6 md:grid-cols-[0.68fr_1fr] md:items-start">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#5a6061]">PriceAI</p>
@@ -182,14 +182,14 @@ export default function AppleIdAiSubscriptionGuide() {
             <p className="mt-3 max-w-[78ch] text-sm leading-7 text-[#5a6061]">
               这些链接适合在购买礼品卡、调整账户地区或尝试 App Store 内购前核对原始规则。账户地区、余额、税费和订阅限制最终以 Apple 官方页面和实际支付页提示为准。
             </p>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <div className="mt-6 divide-y divide-[#dfe4e5] border-y border-[#dfe4e5]">
               {officialReferences.map((item) => (
                 <a
                   key={item.href}
                   href={item.href}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-start justify-between gap-4 rounded-lg bg-white px-5 py-4 text-sm leading-6 text-[#5a6061] shadow-[0_16px_40px_rgba(45,52,53,0.035)] ring-1 ring-[#adb3b4]/15 transition hover:-translate-y-0.5 hover:text-[#202829]"
+                  className="flex items-start justify-between gap-4 py-4 text-sm leading-6 text-[#5a6061] transition hover:text-[#202829]"
                 >
                   <span>
                     <span className="block font-semibold text-[#202829]">{item.title}</span>
@@ -203,9 +203,9 @@ export default function AppleIdAiSubscriptionGuide() {
 
           <section className="mt-12">
             <h2 className="font-serif text-3xl font-semibold tracking-normal text-[#202829]">常见问题</h2>
-            <div className="mt-6 divide-y divide-[#edf0f1] overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
+            <div className="mt-6 divide-y divide-[#dfe4e5] border-y border-[#dfe4e5]">
               {faqs.map(([question, answer]) => (
-                <div key={question} className="px-5 py-5 sm:px-6">
+                <div key={question} className="py-5">
                   <h3 className="font-semibold text-[#202829]">{question}</h3>
                   <p className="mt-2 text-sm leading-7 text-[#5a6061]">{answer}</p>
                 </div>
@@ -213,7 +213,7 @@ export default function AppleIdAiSubscriptionGuide() {
             </div>
           </section>
 
-          <section className="mt-12 flex flex-col gap-4 rounded-lg bg-[#f2f4f4] p-6 ring-1 ring-[#adb3b4]/15 lg:flex-row lg:items-center lg:justify-between">
+          <section className="mt-12 flex flex-col gap-4 border-t border-[#dfe4e5] pt-8 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="font-serif text-2xl font-semibold tracking-normal text-[#202829]">先看 Apple 路径，再决定是否需要渠道。</h2>
               <p className="mt-2 text-sm leading-6 text-[#5a6061]">
@@ -223,35 +223,35 @@ export default function AppleIdAiSubscriptionGuide() {
             <div className="flex shrink-0 flex-wrap gap-3">
               <Link
                 href="/official-prices"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-semibold text-[#2d3435] ring-1 ring-[#adb3b4]/20 transition hover:bg-[#f5f7f7]"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#edf0f1] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#f5f7f7]"
               >
                 官方地区价
                 <ArrowRight size={16} />
               </Link>
               <Link
                 href="/guides/google-play-ai-subscription"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-semibold text-[#2d3435] ring-1 ring-[#adb3b4]/20 transition hover:bg-[#f5f7f7]"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#edf0f1] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#f5f7f7]"
               >
                 Google Play
                 <ArrowRight size={16} />
               </Link>
               <Link
                 href="/guides/visa-card-for-ai-subscription"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-semibold text-[#2d3435] ring-1 ring-[#adb3b4]/20 transition hover:bg-[#f5f7f7]"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#edf0f1] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#f5f7f7]"
               >
                 支付卡指南
                 <ArrowRight size={16} />
               </Link>
               <Link
                 href="/guides/how-to-subscribe-ai-officially"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#dde4e5] px-5 text-sm font-semibold text-[#2d3435] transition hover:bg-[#d3dcdd]"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#dde4e5] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#d3dcdd]"
               >
                 官方自助订阅
                 <ArrowRight size={16} />
               </Link>
               <Link
                 href="/?stock=available"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#2d3435] px-5 text-sm font-semibold text-[#f8f8f8] transition hover:bg-[#202829]"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#2d3435] px-4 text-sm font-semibold text-[#f8f8f8] transition hover:bg-[#202829]"
               >
                 查看有货报价
                 <ArrowRight size={16} />
@@ -278,9 +278,9 @@ function InfoCard({
   icon: ReactNode;
 }) {
   return (
-    <div className="rounded-lg bg-white p-5 shadow-[0_18px_45px_rgba(45,52,53,0.035)] ring-1 ring-[#adb3b4]/15">
-      <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#e8f3ec] text-[#2f7a4b]">{icon}</div>
-      <h3 className="mt-4 font-semibold text-[#202829]">{title}</h3>
+    <div className="rounded-md bg-[#f2f4f4] p-4">
+      <div className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#e8f3ec] text-[#2f7a4b]">{icon}</div>
+      <h3 className="mt-3 font-semibold text-[#202829]">{title}</h3>
       <p className="mt-2 text-sm leading-7 text-[#5a6061]">{text}</p>
       <ul className="mt-4 space-y-2 text-sm text-[#5a6061]">
         {points.map((point) => (
@@ -296,7 +296,7 @@ function InfoCard({
 
 function CostCard({ title, text }: { title: string; text: string }) {
   return (
-    <div className="rounded-lg bg-white px-5 py-4 shadow-[0_16px_40px_rgba(45,52,53,0.035)] ring-1 ring-[#adb3b4]/15">
+    <div className="rounded-md bg-[#f2f4f4] px-4 py-3">
       <h3 className="font-semibold text-[#202829]">{title}</h3>
       <p className="mt-2 text-sm leading-6 text-[#5a6061]">{text}</p>
     </div>
@@ -313,9 +313,9 @@ function WarningCard({
   icon: ReactNode;
 }) {
   return (
-    <div className="rounded-lg bg-white p-5 shadow-[0_18px_45px_rgba(45,52,53,0.035)] ring-1 ring-[#adb3b4]/15">
+    <div className="rounded-md bg-[#f2f4f4] p-4">
       <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#fff3d8] text-[#986400]">{icon}</div>
-      <h3 className="mt-4 font-semibold text-[#202829]">{title}</h3>
+      <h3 className="mt-3 font-semibold text-[#202829]">{title}</h3>
       <p className="mt-2 text-sm leading-7 text-[#5a6061]">{text}</p>
     </div>
   );

@@ -45,14 +45,14 @@ export default function ChatGptSubscriptionOptionsGuide() {
               <div className="mt-7 flex flex-wrap gap-3">
                 <Link
                   href="/platforms/chatgpt"
-                  className="inline-flex h-11 items-center gap-2 rounded-full bg-[#2d3435] px-5 text-sm font-semibold text-[#f8f8f8] transition hover:-translate-y-0.5 hover:bg-[#202829]"
+                  className="inline-flex h-10 items-center gap-2 rounded-md bg-[#2d3435] px-4 text-sm font-semibold text-[#f8f8f8] transition hover:bg-[#202829]"
                 >
                   查看 ChatGPT 平台价格
                   <ArrowRight size={16} />
                 </Link>
                 <Link
                   href="/?platform=ChatGPT&stock=available"
-                  className="inline-flex h-11 items-center gap-2 rounded-full bg-[#dde4e5] px-5 text-sm font-semibold text-[#2d3435] transition hover:-translate-y-0.5 hover:bg-[#d3dcdd]"
+                  className="inline-flex h-10 items-center gap-2 rounded-md bg-[#dde4e5] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#d3dcdd]"
                 >
                   进入比价工具
                   <ExternalLink size={15} />
@@ -60,25 +60,25 @@ export default function ChatGptSubscriptionOptionsGuide() {
               </div>
             </div>
 
-            <aside className="rounded-lg bg-white p-5 shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#5a6061]">快速结论</p>
+            <aside className="border-l border-[#dfe4e5] pl-5">
+              <p className="text-xs font-semibold text-[#7a8182]">快速结论</p>
               <p className="mt-4 text-sm leading-7 text-[#5a6061]">
                 大体可以先分成三类：官方订阅、第三方渠道、API/CDK。你要的是稳定省心、低价试用，还是把模型接进 Codex、Cursor、OpenCode 这类工具，答案会不一样。
               </p>
             </aside>
           </div>
 
-          <section className="mt-10 rounded-lg bg-[#202829] p-6 text-[#f8f8f8] md:p-8">
+          <section className="mt-10 border-y border-[#dfe4e5] py-7">
             <div className="grid gap-6 md:grid-cols-[0.7fr_1fr] md:items-start">
               <div>
-                <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#f8f8f8]/10 text-[#45bf78]">
+                <div className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-[#e8f3ec] text-[#2f7a4b]">
                   <ShieldAlert size={19} />
                 </div>
-                <h2 className="mt-5 font-serif text-3xl font-semibold leading-tight tracking-normal">
+                <h2 className="mt-4 font-serif text-3xl font-semibold leading-tight tracking-normal text-[#202829]">
                   先说结论：便宜只是一个维度。
                 </h2>
               </div>
-              <p className="text-sm leading-7 text-[#d7dddd]">
+              <p className="text-sm leading-7 text-[#5a6061]">
                 官网正价通常更清楚，但国内用户会遇到支付、地区、Apple ID 或外币卡问题。第三方渠道可能更便宜，也可能来自不同交付方式。购买前应该看清原始商品名、价格、库存、更新时间和售后规则，而不是只看最低价。
               </p>
             </div>
@@ -93,14 +93,14 @@ export default function ChatGptSubscriptionOptionsGuide() {
             </div>
           </section>
 
-          <section className="mt-12 overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
-            <div className="border-b border-[#edf0f1] px-5 py-4 sm:px-6">
+          <section className="mt-12">
+            <div className="border-b border-[#dfe4e5] pb-4">
               <h2 className="font-serif text-2xl font-semibold tracking-normal text-[#202829]">用 PriceAI 怎么查</h2>
             </div>
-            <div className="divide-y divide-[#edf0f1]">
+            <div className="divide-y divide-[#dfe4e5] border-b border-[#dfe4e5]">
               {steps.map((item, index) => (
-                <div key={item.title} className="grid gap-3 px-5 py-5 sm:grid-cols-[52px_1fr] sm:px-6">
-                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#f2f4f4] text-sm font-bold text-[#202829]">
+                <div key={item.title} className="grid gap-3 py-5 sm:grid-cols-[44px_1fr]">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#edf0f1] text-sm font-bold text-[#202829]">
                     {index + 1}
                   </span>
                   <div>
@@ -131,9 +131,9 @@ export default function ChatGptSubscriptionOptionsGuide() {
 
           <section className="mt-12">
             <h2 className="font-serif text-3xl font-semibold tracking-normal text-[#202829]">常见问题</h2>
-            <div className="mt-6 divide-y divide-[#edf0f1] overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
+            <div className="mt-6 divide-y divide-[#dfe4e5] border-y border-[#dfe4e5]">
               {faqs.map(([question, answer]) => (
-                <div key={question} className="px-5 py-5 sm:px-6">
+                <div key={question} className="py-5">
                   <h3 className="font-semibold text-[#202829]">{question}</h3>
                   <p className="mt-2 text-sm leading-7 text-[#5a6061]">{answer}</p>
                 </div>
@@ -141,7 +141,7 @@ export default function ChatGptSubscriptionOptionsGuide() {
             </div>
           </section>
 
-          <section className="mt-12 flex flex-col gap-4 rounded-lg bg-[#f2f4f4] p-6 ring-1 ring-[#adb3b4]/15 lg:flex-row lg:items-center lg:justify-between">
+          <section className="mt-12 flex flex-col gap-4 border-t border-[#dfe4e5] pt-8 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="font-serif text-2xl font-semibold tracking-normal text-[#202829]">看完路径，再看实时价格。</h2>
               <p className="mt-2 text-sm leading-6 text-[#5a6061]">如果想自己订阅，可以先看官方自助订阅指南；如果准备从第三方渠道购买，再看价格分层和卡网渠道判断清单。</p>
@@ -149,28 +149,28 @@ export default function ChatGptSubscriptionOptionsGuide() {
             <div className="flex shrink-0 flex-wrap gap-3">
               <Link
                 href="/guides/how-to-subscribe-ai-officially"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-semibold text-[#2d3435] ring-1 ring-[#adb3b4]/20 transition hover:bg-[#f5f7f7]"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#edf0f1] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#f5f7f7]"
               >
                 官方自助订阅
                 <ArrowRight size={16} />
               </Link>
               <Link
                 href="/guides/are-ai-subscription-card-shops-reliable"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-semibold text-[#2d3435] ring-1 ring-[#adb3b4]/20 transition hover:bg-[#f5f7f7]"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#edf0f1] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#f5f7f7]"
               >
                 卡网渠道靠谱吗
                 <ArrowRight size={16} />
               </Link>
               <Link
                 href="/guides/why-ai-subscription-prices-differ"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#dde4e5] px-5 text-sm font-semibold text-[#2d3435] transition hover:bg-[#d3dcdd]"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#dde4e5] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#d3dcdd]"
               >
                 了解价格分层
                 <ArrowRight size={16} />
               </Link>
               <Link
                 href="/?platform=ChatGPT&stock=available"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#2d3435] px-5 text-sm font-semibold text-[#f8f8f8] transition hover:bg-[#202829]"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#2d3435] px-4 text-sm font-semibold text-[#f8f8f8] transition hover:bg-[#202829]"
               >
                 查看有货报价
                 <ArrowRight size={16} />
@@ -197,9 +197,9 @@ function PathCard({
   icon: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg bg-white p-5 shadow-[0_18px_45px_rgba(45,52,53,0.035)] ring-1 ring-[#adb3b4]/15">
-      <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#e8f3ec] text-[#2f7a4b]">{icon}</div>
-      <h3 className="mt-4 font-semibold text-[#202829]">{title}</h3>
+    <div className="rounded-md bg-[#f2f4f4] p-4">
+      <div className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#e8f3ec] text-[#2f7a4b]">{icon}</div>
+      <h3 className="mt-3 font-semibold text-[#202829]">{title}</h3>
       <p className="mt-2 text-sm leading-7 text-[#5a6061]">{text}</p>
       <ul className="mt-4 space-y-2 text-sm text-[#5a6061]">
         {points.map((point) => (
@@ -215,7 +215,7 @@ function PathCard({
 
 function Recommendation({ title, text }: { title: string; text: string }) {
   return (
-    <div className="rounded-lg bg-white px-5 py-4 shadow-[0_16px_40px_rgba(45,52,53,0.035)] ring-1 ring-[#adb3b4]/15">
+    <div className="rounded-md bg-[#f2f4f4] px-4 py-3">
       <h3 className="font-semibold text-[#202829]">{title}</h3>
       <p className="mt-2 text-sm leading-6 text-[#5a6061]">{text}</p>
     </div>

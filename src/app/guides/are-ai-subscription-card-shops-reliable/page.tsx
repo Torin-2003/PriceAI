@@ -57,14 +57,14 @@ export default function AreAiSubscriptionCardShopsReliableGuide() {
               <div className="mt-7 flex flex-wrap gap-3">
                 <Link
                   href="/"
-                  className="inline-flex h-11 items-center gap-2 rounded-full bg-[#2d3435] px-5 text-sm font-semibold text-[#f8f8f8] transition hover:-translate-y-0.5 hover:bg-[#202829]"
+                  className="inline-flex h-10 items-center gap-2 rounded-md bg-[#2d3435] px-4 text-sm font-semibold text-[#f8f8f8] transition hover:bg-[#202829]"
                 >
                   回到比价工具
                   <ArrowRight size={16} />
                 </Link>
                 <Link
                   href="/guides/why-ai-subscription-prices-differ"
-                  className="inline-flex h-11 items-center gap-2 rounded-full bg-[#dde4e5] px-5 text-sm font-semibold text-[#2d3435] transition hover:-translate-y-0.5 hover:bg-[#d3dcdd]"
+                  className="inline-flex h-10 items-center gap-2 rounded-md bg-[#dde4e5] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#d3dcdd]"
                 >
                   先理解价格分层
                   <ExternalLink size={15} />
@@ -72,25 +72,25 @@ export default function AreAiSubscriptionCardShopsReliableGuide() {
               </div>
             </div>
 
-            <aside className="rounded-lg bg-white p-5 shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#5a6061]">快速结论</p>
+            <aside className="border-l border-[#dfe4e5] pl-5">
+              <p className="text-xs font-semibold text-[#7a8182]">快速结论</p>
               <p className="mt-4 text-sm leading-7 text-[#5a6061]">
                 PriceAI 不卖货、不收款、不替渠道担保。它做的是把原始来源、标题、价格、库存和更新时间放到一起，让你购买前多一个核验入口。
               </p>
             </aside>
           </section>
 
-          <section className="mt-10 rounded-lg bg-[#202829] p-6 text-[#f8f8f8] md:p-8">
+          <section className="mt-10 border-y border-[#dfe4e5] py-7">
             <div className="grid gap-6 md:grid-cols-[0.7fr_1fr] md:items-start">
               <div>
-                <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#f8f8f8]/10 text-[#45bf78]">
+                <div className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-[#e8f3ec] text-[#2f7a4b]">
                   <Store size={19} />
                 </div>
-                <h2 className="mt-5 font-serif text-3xl font-semibold leading-tight tracking-normal">
+                <h2 className="mt-4 font-serif text-3xl font-semibold leading-tight tracking-normal text-[#202829]">
                   先说结论：不要把“卡网”当成一个统一卖家。
                 </h2>
               </div>
-              <p className="text-sm leading-7 text-[#d7dddd]">
+              <p className="text-sm leading-7 text-[#5a6061]">
                 一个卡网页面背后，可能是长期做 AI 订阅的个人、小团队、渠道商、代理，也可能只是短期销售某类权益的人。它和闲鱼、Telegram 群、私域链接类似，都是找到商品和卖家的线索。购买前要看的是人、商品、交付和售后，而不是只看网址形式。
               </p>
             </div>
@@ -105,14 +105,14 @@ export default function AreAiSubscriptionCardShopsReliableGuide() {
             </div>
           </section>
 
-          <section className="mt-12 overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
-            <div className="border-b border-[#edf0f1] px-5 py-4 sm:px-6">
+          <section className="mt-12">
+            <div className="border-b border-[#dfe4e5] pb-4">
               <h2 className="font-serif text-2xl font-semibold tracking-normal text-[#202829]">购买前检查清单</h2>
               <p className="mt-2 text-sm leading-6 text-[#5a6061]">
                 这几项不是保证安全的充分条件，但能帮你排除很多明显不清楚的商品。
               </p>
             </div>
-            <div className="divide-y divide-[#edf0f1]">
+            <div className="divide-y divide-[#dfe4e5] border-b border-[#dfe4e5]">
               {checklist.map((item) => (
                 <ChecklistRow key={item.title} {...item} />
               ))}
@@ -129,11 +129,11 @@ export default function AreAiSubscriptionCardShopsReliableGuide() {
                 小额商品可以理解成试错成本；大额代充、年卡、团队权益、Pro 或 API 大额额度，应该先把细节问清楚。
               </p>
             </div>
-            <div className="rounded-lg bg-white p-6 shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
+            <div className="rounded-md bg-[#f2f4f4] p-5">
               <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#e8f3ec] text-[#2f7a4b]">
                 <MessageCircle size={18} />
               </div>
-              <h3 className="mt-4 font-semibold text-[#202829]">大额交易建议</h3>
+              <h3 className="mt-3 font-semibold text-[#202829]">大额交易建议</h3>
               <p className="mt-3 text-sm leading-7 text-[#5a6061]">
                 建议先联系卖家沟通商品规格、交付方式、售后范围、退款条件等细节；沟通清楚后，再判断是否需要转到闲鱼或其他中介 / 担保型平台交易。
               </p>
@@ -143,7 +143,7 @@ export default function AreAiSubscriptionCardShopsReliableGuide() {
             </div>
           </section>
 
-          <section className="mt-12 rounded-lg bg-white p-6 shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15 md:p-8">
+          <section className="mt-12 border-y border-[#dfe4e5] py-8">
             <div className="grid gap-6 md:grid-cols-[0.68fr_1fr] md:items-start">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#5a6061]">If it goes wrong</p>
@@ -189,9 +189,9 @@ export default function AreAiSubscriptionCardShopsReliableGuide() {
 
           <section className="mt-12">
             <h2 className="font-serif text-3xl font-semibold tracking-normal text-[#202829]">常见问题</h2>
-            <div className="mt-6 divide-y divide-[#edf0f1] overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
+            <div className="mt-6 divide-y divide-[#dfe4e5] border-y border-[#dfe4e5]">
               {faqs.map(([question, answer]) => (
-                <div key={question} className="px-5 py-5 sm:px-6">
+                <div key={question} className="py-5">
                   <h3 className="font-semibold text-[#202829]">{question}</h3>
                   <p className="mt-2 text-sm leading-7 text-[#5a6061]">{answer}</p>
                 </div>
@@ -199,7 +199,7 @@ export default function AreAiSubscriptionCardShopsReliableGuide() {
             </div>
           </section>
 
-          <section className="mt-12 flex flex-col gap-4 rounded-lg bg-[#f2f4f4] p-6 ring-1 ring-[#adb3b4]/15 lg:flex-row lg:items-center lg:justify-between">
+          <section className="mt-12 flex flex-col gap-4 border-t border-[#dfe4e5] pt-8 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="font-serif text-2xl font-semibold tracking-normal text-[#202829]">理解风险边界后，再看当前有货价。</h2>
               <p className="mt-2 text-sm leading-6 text-[#5a6061]">
@@ -209,14 +209,14 @@ export default function AreAiSubscriptionCardShopsReliableGuide() {
             <div className="flex shrink-0 flex-wrap gap-3">
               <Link
                 href="/?stock=available"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#2d3435] px-5 text-sm font-semibold text-[#f8f8f8] transition hover:bg-[#202829]"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#2d3435] px-4 text-sm font-semibold text-[#f8f8f8] transition hover:bg-[#202829]"
               >
                 查看有货报价
                 <ArrowRight size={16} />
               </Link>
               <Link
                 href="/guides/chatgpt-subscription-options"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#dde4e5] px-5 text-sm font-semibold text-[#2d3435] transition hover:bg-[#d3dcdd]"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#dde4e5] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#d3dcdd]"
               >
                 看 ChatGPT 获取方式
                 <ExternalLink size={15} />
@@ -243,9 +243,9 @@ function InfoCard({
   icon: ReactNode;
 }) {
   return (
-    <div className="rounded-lg bg-white p-5 shadow-[0_18px_45px_rgba(45,52,53,0.035)] ring-1 ring-[#adb3b4]/15">
-      <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#e8f3ec] text-[#2f7a4b]">{icon}</div>
-      <h3 className="mt-4 font-semibold text-[#202829]">{title}</h3>
+    <div className="rounded-md bg-[#f2f4f4] p-4">
+      <div className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#e8f3ec] text-[#2f7a4b]">{icon}</div>
+      <h3 className="mt-3 font-semibold text-[#202829]">{title}</h3>
       <p className="mt-2 text-sm leading-7 text-[#5a6061]">{text}</p>
       <ul className="mt-4 space-y-2 text-sm text-[#5a6061]">
         {points.map((point) => (
@@ -310,7 +310,7 @@ function StepCard({ index, title, text }: { index: number; title: string; text: 
 function BoundaryCard({ title, items, tone }: { title: string; items: string[]; tone: "good" | "warn" }) {
   const isGood = tone === "good";
   return (
-    <div className="rounded-lg bg-white p-6 shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
+    <div className="rounded-md bg-[#f2f4f4] p-5">
       <div className={`inline-flex h-10 w-10 items-center justify-center rounded-full ${isGood ? "bg-[#e8f3ec] text-[#2f7a4b]" : "bg-[#fff0ed] text-[#9b3328]"}`}>
         {isGood ? <SearchCheck size={18} /> : <AlertTriangle size={18} />}
       </div>
