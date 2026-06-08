@@ -59,7 +59,7 @@ function GuideSidebar({ currentHref }: { currentHref: string }) {
         aria-current={currentHref === "/guides" ? "page" : undefined}
       >
         <BookOpenText size={16} />
-        指南总览
+        快速入门
       </Link>
 
       <div className="mt-6 space-y-6">

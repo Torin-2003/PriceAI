@@ -32,12 +32,12 @@ export type GuideReadingPath = {
 export const guideCategories: GuideCategory[] = [
   {
     id: "basics",
-    label: "价格基础",
-    description: "先理解官网价、地区价、代充价和渠道价为什么不同。",
+    label: "入门必读",
+    description: "先理解价格来源、地区价风险和第三方渠道边界。",
   },
   {
     id: "official",
-    label: "官方自助",
+    label: "官方订阅",
     description: "官网、App Store、Google Play 和地区价路径。",
   },
   {
@@ -47,8 +47,8 @@ export const guideCategories: GuideCategory[] = [
   },
   {
     id: "channels",
-    label: "渠道判断",
-    description: "第三方渠道、卡网、具体平台和购买前核验。",
+    label: "平台指南",
+    description: "卡网渠道、ChatGPT 获取方式和具体平台购买前核验。",
   },
 ];
 

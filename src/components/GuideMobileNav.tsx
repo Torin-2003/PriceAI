@@ -131,13 +131,13 @@ export function GuideMobileNav({ currentHref }: { currentHref: string }) {
                 </>
               ) : null}
             </div>
-            <p className="mt-1 truncate text-sm font-bold text-[#202829]">{currentGuide?.title ?? "指南总览"}</p>
+            <p className="mt-1 truncate text-sm font-bold text-[#202829]">{currentGuide?.title ?? "快速入门"}</p>
           </div>
           <Link
             href="/guides"
             className="inline-flex h-10 shrink-0 items-center rounded-md bg-[#edf0f1] px-3 text-sm font-semibold text-[#2d3435] transition hover:bg-[#dde4e5]"
           >
-            总览
+            入门
           </Link>
         </div>
       </nav>
@@ -184,7 +184,7 @@ export function GuideMobileNav({ currentHref }: { currentHref: string }) {
                 aria-current={currentHref === "/guides" ? "page" : undefined}
               >
                 <BookOpenText size={16} />
-                指南总览
+                快速入门
               </Link>
 
               <div className="mt-6 space-y-6">
