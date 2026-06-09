@@ -81,7 +81,7 @@ const productTypeLabels: Record<string, string> = {
 
 const OFFER_PAGE_SIZE = 80;
 const PRODUCT_SKELETON_ROWS = [0, 1, 2];
-const EXPLORER_CACHE_KEY = "priceai:explorer:v1";
+const EXPLORER_CACHE_KEY = "priceai:explorer:v2";
 const EXPLORER_CACHE_TTL_MS = 5 * 60 * 1000;
 const OFFER_LIST_CACHE_TTL_MS = 2 * 60 * 1000;
 const RETURN_HOME_INTENT_KEY = "priceai:return-home-intent";

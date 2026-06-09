@@ -1,7 +1,7 @@
 const DEFAULT_PUBLIC_DATA_EDGE_SECONDS = 300;
 const DEFAULT_PUBLIC_DATA_STALE_SECONDS = 1800;
-const PRICE_DATA_EDGE_SECONDS = 120;
-const PRICE_DATA_STALE_SECONDS = 600;
+const PRICE_DATA_EDGE_SECONDS = 0;
+const PRICE_DATA_STALE_SECONDS = 0;
 
 export function publicDataCacheHeaders({
   edgeSeconds = DEFAULT_PUBLIC_DATA_EDGE_SECONDS,
@@ -19,6 +19,15 @@ export function publicDataCacheHeaders({
 }
 
 export function priceDataCacheHeaders(): HeadersInit {
+  if (PRICE_DATA_EDGE_SECONDS <= 0) {
+    return {
+      "Cache-Control": "no-store, max-age=0",
+      "CDN-Cache-Control": "no-store",
+      "Cloudflare-CDN-Cache-Control": "no-store",
+      "Vercel-CDN-Cache-Control": "no-store",
+    };
+  }
+
   return publicDataCacheHeaders({
     edgeSeconds: PRICE_DATA_EDGE_SECONDS,
     staleSeconds: PRICE_DATA_STALE_SECONDS,
