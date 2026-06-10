@@ -225,6 +225,12 @@ type OfferFeedbackVerdict = {
   batchSafe: boolean;
 };
 
+const feedbackStatusOptions: Array<{ value: OfferFeedbackStatus; label: string }> = [
+  { value: "pending", label: "待处理" },
+  { value: "resolved", label: "已处理" },
+  { value: "ignored", label: "已忽略" },
+];
+
 /* ─── Main Component ─── */
 
 export function AdminConsole({ data }: { data: AdminSummary }) {
@@ -238,7 +244,10 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
   const [offerFeedback, setOfferFeedback] = useState<OfferFeedback[]>(data.pendingOfferFeedback || []);
   const [feedbackRawOffers, setFeedbackRawOffers] = useState<RawOffer[]>(data.feedbackRawOffers || []);
   const [siteFeedback, setSiteFeedback] = useState<SiteFeedback[]>(data.pendingSiteFeedback || []);
+  const [feedbackStatusFilter, setFeedbackStatusFilter] = useState<OfferFeedbackStatus>("pending");
   const [feedbackFilter, setFeedbackFilter] = useState<FeedbackWorkFilter>("all");
+  const [pendingOfferFeedbackCount, setPendingOfferFeedbackCount] = useState((data.pendingOfferFeedback || []).length);
+  const [pendingSiteFeedbackCount, setPendingSiteFeedbackCount] = useState((data.pendingSiteFeedback || []).length);
   const [selectedFeedbackIds, setSelectedFeedbackIds] = useState<Set<string>>(new Set());
   const [probeResults, setProbeResults] = useState<Record<string, ProbeResult>>({});
   const [officialProbeResult, setOfficialProbeResult] = useState<OfficialProbeResult | null>(null);
@@ -292,6 +301,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     },
   });
   const offerMaintenanceRef = useRef(offerMaintenance);
+  const feedbackStatusFilterRef = useRef<OfferFeedbackStatus>("pending");
   const listRef = useRef<HTMLDivElement>(null);
 
   const reviewSubmissions = useMemo(
@@ -346,6 +356,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     () => getFeedbackWorkFilterCounts(offerFeedback, siteFeedback, offerById),
     [offerById, offerFeedback, siteFeedback],
   );
+  const pendingFeedbackCount = pendingOfferFeedbackCount + pendingSiteFeedbackCount;
   useEffect(() => {
     if (!selectedFeedbackIds.size) return;
     const visibleIds = new Set(filteredOfferFeedback.map((item) => item.id));
@@ -354,6 +365,10 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       return next.size === prev.size ? prev : next;
     });
   }, [filteredOfferFeedback, selectedFeedbackIds.size]);
+  useEffect(() => {
+    setSelectedFeedbackIds(new Set());
+    feedbackStatusFilterRef.current = feedbackStatusFilter;
+  }, [feedbackStatusFilter, feedbackFilter]);
   const apiModels = useMemo(
     (): ApiModelAdminData => ({
       ...data.apiModels,
@@ -534,10 +549,10 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       { label: "官方价", value: officialPrices.currentPrices.length, icon: <Database key="op" size={15} /> },
       { label: "API 模型", value: apiModels.offers.length, icon: <TerminalSquare key="api" size={15} /> },
       { label: "待审核", value: reviewSubmissions.length, icon: <Inbox key="i" size={15} /> },
-      { label: "反馈", value: siteFeedback.length + offerFeedback.length, icon: <Flag key="fb" size={15} /> },
+      { label: "反馈", value: pendingFeedbackCount, icon: <Flag key="fb" size={15} /> },
       { label: "采集待办", value: collectorTodoSubmissions.length, icon: <TerminalSquare key="t" size={15} /> },
     ],
-    [apiModels.offers.length, collectorTodoSubmissions.length, data.products.length, data.rawOfferTotal, offerFeedback.length, officialPrices.currentPrices.length, reviewSubmissions.length, siteFeedback.length, sources.length],
+    [apiModels.offers.length, collectorTodoSubmissions.length, data.products.length, data.rawOfferTotal, officialPrices.currentPrices.length, pendingFeedbackCount, reviewSubmissions.length, sources.length],
   );
   const sourceStatsById = useMemo(
     () => new Map((data.sourceOfferStats || []).map((stats) => [stats.sourceId, stats])),
@@ -594,7 +609,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     () => [
       { id: "review", label: "审核", count: reviewSubmissions.length, icon: <Inbox size={15} /> },
       { id: "todo", label: "待办", count: collectorTodoSubmissions.length, icon: <ClipboardList size={15} /> },
-      { id: "feedback", label: "反馈", count: siteFeedback.length + offerFeedback.length, icon: <Flag size={15} /> },
+      { id: "feedback", label: "反馈", count: pendingFeedbackCount, icon: <Flag size={15} /> },
       { id: "history", label: "历史", count: null, icon: <History size={15} /> },
       { id: "collect", label: "采集", count: failedRunCount || null, icon: <RefreshCcw size={15} /> },
       { id: "official", label: "官方价", count: officialPrices.currentPrices.length || null, icon: <Database size={15} /> },
@@ -603,7 +618,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       { id: "manual", label: "维护", count: null, icon: <Plus size={15} /> },
       { id: "logs", label: "日志", count: data.crawlRuns.length, icon: <Clock size={15} /> },
     ],
-    [apiModels.offers.length, collectorTodoSubmissions.length, data.crawlRuns.length, failedRunCount, offerFeedback.length, officialPrices.currentPrices.length, reviewSubmissions.length, siteFeedback.length, sources.length],
+    [apiModels.offers.length, collectorTodoSubmissions.length, data.crawlRuns.length, failedRunCount, officialPrices.currentPrices.length, pendingFeedbackCount, reviewSubmissions.length, sources.length],
   );
 
   /* ─── Keyboard shortcuts ─── */
@@ -1314,34 +1329,46 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     }
   }
 
-  async function refreshOfferFeedback() {
+  const refreshOfferFeedback = useCallback(async (status: OfferFeedbackStatus = feedbackStatusFilter) => {
     try {
-      const response = await fetch("/api/admin/feedback?status=pending", {
+      const response = await fetch(`/api/admin/feedback?status=${status}`, {
         credentials: "include",
       });
       const json = await response.json().catch(() => ({ ok: false }));
       if (response.ok && json.ok) {
-        setOfferFeedback(json.feedback || []);
+        if (status !== feedbackStatusFilterRef.current) return;
+        const nextFeedback = json.feedback || [];
+        setOfferFeedback(nextFeedback);
         setFeedbackRawOffers(json.offers || []);
+        if (status === "pending") setPendingOfferFeedbackCount(nextFeedback.length);
       }
     } catch {
       /* ignore */
     }
-  }
+  }, [feedbackStatusFilter]);
 
-  async function refreshSiteFeedback() {
+  const refreshSiteFeedback = useCallback(async (status: SiteFeedbackStatus = feedbackStatusFilter) => {
     try {
-      const response = await fetch("/api/admin/site-feedback?status=pending", {
+      const response = await fetch(`/api/admin/site-feedback?status=${status}`, {
         credentials: "include",
       });
       const json = await response.json().catch(() => ({ ok: false }));
       if (response.ok && json.ok) {
-        setSiteFeedback(json.feedback || []);
+        if (status !== feedbackStatusFilterRef.current) return;
+        const nextFeedback = json.feedback || [];
+        setSiteFeedback(nextFeedback);
+        if (status === "pending") setPendingSiteFeedbackCount(nextFeedback.length);
       }
     } catch {
       /* ignore */
     }
-  }
+  }, [feedbackStatusFilter]);
+
+  useEffect(() => {
+    if (activeTab !== "feedback") return;
+    void refreshOfferFeedback(feedbackStatusFilter);
+    void refreshSiteFeedback(feedbackStatusFilter);
+  }, [activeTab, feedbackStatusFilter, refreshOfferFeedback, refreshSiteFeedback]);
 
   async function updateFeedbackStatus(feedback: OfferFeedback, status: OfferFeedbackStatus, reviewerNote?: string) {
     setLoadingAction(`feedback-${status}-${feedback.id}`);
@@ -1353,7 +1380,15 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     setLoadingAction(null);
 
     if (result.ok && result.feedback) {
-      setOfferFeedback((prev) => prev.filter((item) => item.id !== feedback.id));
+      const nextFeedback = result.feedback as OfferFeedback;
+      setOfferFeedback((prev) =>
+        feedbackStatusFilter === nextFeedback.status
+          ? prev.map((item) => (item.id === feedback.id ? nextFeedback : item))
+          : prev.filter((item) => item.id !== feedback.id),
+      );
+      if (feedback.status === "pending" && nextFeedback.status !== "pending") {
+        setPendingOfferFeedbackCount((count) => Math.max(0, count - 1));
+      }
       showRowFeedback(feedback.id, "success", status === "ignored" ? "反馈已忽略。" : "反馈已标记处理。");
     } else {
       showRowFeedback(feedback.id, "error", result.message || "处理反馈失败。");
@@ -1404,22 +1439,28 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
 
     setLoadingAction(status === "resolved" ? "batch-feedback-resolved" : "batch-feedback-ignored");
     let success = 0;
+    const succeededIds = new Set<string>();
     for (const item of targets) {
       const result = await requestWithMethod("/api/admin/feedback", "PATCH", password, {
         id: item.id,
         status,
         reviewerNote: note,
       });
-      if (result.ok) success++;
+      if (result.ok) {
+        success++;
+        succeededIds.add(item.id);
+      }
     }
 
-    const targetIds = new Set(targets.map((item) => item.id));
-    setOfferFeedback((prev) => prev.filter((item) => !targetIds.has(item.id)));
+    setOfferFeedback((prev) => prev.filter((item) => !succeededIds.has(item.id)));
     setSelectedFeedbackIds((prev) => {
       const next = new Set(prev);
-      for (const id of targetIds) next.delete(id);
+      for (const id of succeededIds) next.delete(id);
       return next;
     });
+    if (feedbackStatusFilter === "pending" && succeededIds.size) {
+      setPendingOfferFeedbackCount((count) => Math.max(0, count - succeededIds.size));
+    }
     setLoadingAction(null);
     setGlobalMessage({
       type: success === targets.length ? "success" : "info",
@@ -1438,7 +1479,15 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     setLoadingAction(null);
 
     if (result.ok && result.feedback) {
-      setSiteFeedback((prev) => prev.filter((item) => item.id !== feedback.id));
+      const nextFeedback = result.feedback as SiteFeedback;
+      setSiteFeedback((prev) =>
+        feedbackStatusFilter === nextFeedback.status
+          ? prev.map((item) => (item.id === feedback.id ? nextFeedback : item))
+          : prev.filter((item) => item.id !== feedback.id),
+      );
+      if (feedback.status === "pending" && nextFeedback.status !== "pending") {
+        setPendingSiteFeedbackCount((count) => Math.max(0, count - 1));
+      }
       showRowFeedback(feedback.id, "success", status === "ignored" ? "意见已忽略。" : "意见已标记处理。");
     } else {
       showRowFeedback(feedback.id, "error", result.message || "处理意见失败。");
@@ -1978,10 +2027,6 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                     setFocusedIndex(-1);
                     setExpandedId(null);
                     if (tab.id === "history" && !historySubmissions.length) void loadHistory();
-                    if (tab.id === "feedback") {
-                      void refreshOfferFeedback();
-                      void refreshSiteFeedback();
-                    }
                   }}
                   className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
                     activeTab === tab.id
@@ -2305,42 +2350,68 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                       <button
                         type="button"
                         onClick={() => {
-                          void refreshSiteFeedback();
-                          void refreshOfferFeedback();
+                          void refreshSiteFeedback(feedbackStatusFilter);
+                          void refreshOfferFeedback(feedbackStatusFilter);
                         }}
                         className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4]"
                       >
                         <RefreshCcw size={14} />
                         刷新
                       </button>
-                      <button
-                        type="button"
-                        onClick={toggleAllVisibleFeedback}
-                        disabled={!filteredOfferFeedback.length || feedbackFilter === "site"}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4] disabled:opacity-50"
-                      >
-                        <Check size={14} />
-                        {selectedFeedbackIds.size ? "取消选择" : "选择当前"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => batchUpdateSelectedOfferFeedback("resolved")}
-                        disabled={!safeBatchFeedback.length || loadingAction === "batch-feedback-resolved"}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#2f7a4b]/20 bg-white px-3 text-xs font-medium text-[#2f7a4b] transition-colors hover:bg-[#e8f3ec] disabled:opacity-50"
-                      >
-                        {loadingAction === "batch-feedback-resolved" ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                        批量已处理 ({safeBatchFeedback.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => batchUpdateSelectedOfferFeedback("ignored")}
-                        disabled={!selectedFeedbackIds.size || loadingAction === "batch-feedback-ignored"}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4] disabled:opacity-50"
-                      >
-                        {loadingAction === "batch-feedback-ignored" ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
-                        批量忽略
-                      </button>
+                      {feedbackStatusFilter === "pending" ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={toggleAllVisibleFeedback}
+                            disabled={!filteredOfferFeedback.length || feedbackFilter === "site"}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4] disabled:opacity-50"
+                          >
+                            <Check size={14} />
+                            {selectedFeedbackIds.size ? "取消选择" : "选择当前"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => batchUpdateSelectedOfferFeedback("resolved")}
+                            disabled={!safeBatchFeedback.length || loadingAction === "batch-feedback-resolved"}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#2f7a4b]/20 bg-white px-3 text-xs font-medium text-[#2f7a4b] transition-colors hover:bg-[#e8f3ec] disabled:opacity-50"
+                          >
+                            {loadingAction === "batch-feedback-resolved" ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                            批量已处理 ({safeBatchFeedback.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => batchUpdateSelectedOfferFeedback("ignored")}
+                            disabled={!selectedFeedbackIds.size || loadingAction === "batch-feedback-ignored"}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4] disabled:opacity-50"
+                          >
+                            {loadingAction === "batch-feedback-ignored" ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                            批量忽略
+                          </button>
+                        </>
+                      ) : null}
                     </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {feedbackStatusOptions.map((item) => (
+                      <button
+                        key={item.value}
+                        type="button"
+                        onClick={() => {
+                          feedbackStatusFilterRef.current = item.value;
+                          setFeedbackStatusFilter(item.value);
+                          void refreshSiteFeedback(item.value);
+                          void refreshOfferFeedback(item.value);
+                        }}
+                        className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-colors ${
+                          feedbackStatusFilter === item.value
+                            ? "bg-[#2d3435] text-white"
+                            : "bg-[#f2f4f4] text-[#5a6061] hover:bg-[#e4e9ea]"
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -2363,9 +2434,10 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                     ))}
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#adb3b4]">
+                    <span>当前状态：{feedbackStatusLabel(feedbackStatusFilter)}</span>
                     <span>{siteFeedback.length} 条站点意见</span>
                     <span>{offerFeedback.length} 条报价举报</span>
-                    <span>已选 {selectedFeedbackIds.size} 条</span>
+                    {feedbackStatusFilter === "pending" ? <span>已选 {selectedFeedbackIds.size} 条</span> : null}
                   </div>
                 </div>
                 <div className="space-y-6">
@@ -2377,6 +2449,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                     </div>
                     <SiteFeedbackList
                       feedback={siteFeedback}
+                      statusFilter={feedbackStatusFilter}
                       loadingAction={loadingAction}
                       rowFeedback={rowFeedback}
                       onResolve={(item) => updateSiteFeedbackStatus(item, "resolved", "已人工确认处理")}
@@ -2392,6 +2465,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                     </div>
                     <OfferFeedbackList
                       feedback={filteredOfferFeedback}
+                      statusFilter={feedbackStatusFilter}
                       offerById={offerById}
                       productByKey={productByKey}
                       loadingAction={loadingAction}
@@ -3322,6 +3396,7 @@ function ProbePreview({ result }: { result: ProbeResult }) {
 
 function OfferFeedbackList({
   feedback,
+  statusFilter,
   offerById,
   productByKey,
   loadingAction,
@@ -3334,6 +3409,7 @@ function OfferFeedbackList({
   onIgnore,
 }: {
   feedback: OfferFeedback[];
+  statusFilter: OfferFeedbackStatus;
   offerById: Map<string, RawOffer>;
   productByKey: Map<string, AdminProduct>;
   loadingAction: string | null;
@@ -3345,12 +3421,14 @@ function OfferFeedbackList({
   onResolve: (feedback: OfferFeedback) => void;
   onIgnore: (feedback: OfferFeedback) => void;
 }) {
+  const historyView = statusFilter !== "pending";
+
   if (!feedback.length) {
     return (
       <EmptyState
         icon={<Flag size={32} className="text-[#adb3b4]" />}
-        title="暂无待处理反馈"
-        description="用户在商品详情页提交的问题会出现在这里。"
+        title={historyView ? `暂无${feedbackStatusLabel(statusFilter)}报价举报` : "暂无待处理反馈"}
+        description={historyView ? "这里会保留已处理和已忽略的报价举报记录。" : "用户在商品详情页提交的问题会出现在这里。"}
       />
     );
   }
@@ -3406,22 +3484,27 @@ function OfferFeedbackList({
         return (
           <article key={item.id} className="rounded-lg border border-[#adb3b4]/20 bg-white p-4 shadow-[0_12px_34px_rgba(45,52,53,0.035)]">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-              <button
-                type="button"
-                role="checkbox"
-                aria-checked={selectedIds.has(item.id)}
-                aria-label={`选择反馈 ${sourceTitle}`}
-                onClick={() => onToggleSelect(item.id)}
-                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
-                  selectedIds.has(item.id)
-                    ? "border-[#2f7a4b] bg-[#2f7a4b] text-white"
-                    : "border-[#adb3b4]/40 hover:border-[#2d3435]"
-                }`}
-              >
-                {selectedIds.has(item.id) && <Check size={12} strokeWidth={3} />}
-              </button>
+              {!historyView ? (
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={selectedIds.has(item.id)}
+                  aria-label={`选择反馈 ${sourceTitle}`}
+                  onClick={() => onToggleSelect(item.id)}
+                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+                    selectedIds.has(item.id)
+                      ? "border-[#2f7a4b] bg-[#2f7a4b] text-white"
+                      : "border-[#adb3b4]/40 hover:border-[#2d3435]"
+                  }`}
+                >
+                  {selectedIds.has(item.id) && <Check size={12} strokeWidth={3} />}
+                </button>
+              ) : null}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${feedbackStatusClass(item.status)}`}>
+                    {feedbackStatusLabel(item.status)}
+                  </span>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${feedbackReasonClass(item.reason)}`}>
                     {feedbackReasonLabel(item.reason)}
                   </span>
@@ -3514,6 +3597,12 @@ function OfferFeedbackList({
                 {item.contact ? (
                   <p className="mt-1 text-xs text-[#adb3b4]">联系方式：{item.contact}</p>
                 ) : null}
+                {historyView ? (
+                  <div className="mt-2 rounded-lg bg-[#f7f9f9] px-3 py-2 text-xs leading-5 text-[#5a6061]">
+                    <p><span className="font-semibold text-[#2d3435]">处理时间</span>：{item.reviewedAt ? formatRelativeTime(item.reviewedAt) : "未记录"}</p>
+                    {item.reviewerNote ? <p className="mt-1"><span className="font-semibold text-[#2d3435]">处理备注</span>：{item.reviewerNote}</p> : null}
+                  </div>
+                ) : null}
                 {rowState ? (
                   <div className={`mt-3 rounded-lg px-3 py-2 text-xs ${rowFeedbackClass(rowState.type)}`}>
                     {rowState.text}
@@ -3521,52 +3610,54 @@ function OfferFeedbackList({
                 ) : null}
               </div>
 
-              <div className="flex shrink-0 flex-wrap gap-2 xl:max-w-[360px] xl:justify-end">
-                <button
-                  type="button"
-                  disabled={isLegacyCategoryFeedback || !item.offerId || hideOfferLoading}
-                  onClick={() => onHideOffer(item)}
-                  className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors disabled:opacity-50 ${
-                    item.suggestedAction === "hide_offer"
-                      ? "border-[#9b3328]/30 bg-[#fbe9e7] text-[#9b3328] hover:bg-[#f6d6d2]"
-                      : "border-[#9b3328]/20 bg-white text-[#9b3328] hover:bg-[#fbe9e7]"
-                  }`}
-                >
-                  {hideOfferLoading ? <Loader2 size={14} className="animate-spin" /> : null}
-                  下架报价
-                </button>
-                <button
-                  type="button"
-                  disabled={isLegacyCategoryFeedback || !item.sourceId || hideSourceLoading}
-                  onClick={() => onHideSource(item)}
-                  className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors disabled:opacity-50 ${
-                    item.suggestedAction === "hide_source"
-                      ? "border-[#9b3328]/30 bg-[#fbe9e7] text-[#9b3328] hover:bg-[#f6d6d2]"
-                      : "border-[#9b3328]/20 bg-white text-[#9b3328] hover:bg-[#fbe9e7]"
-                  }`}
-                >
-                  {hideSourceLoading ? <Loader2 size={14} className="animate-spin" /> : null}
-                  下架渠道
-                </button>
-                <button
-                  type="button"
-                  disabled={resolveLoading}
-                  onClick={() => onResolve(item)}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#2f7a4b]/20 bg-white px-3 text-xs font-medium text-[#2f7a4b] transition-colors hover:bg-[#e8f3ec] disabled:opacity-60"
-                >
-                  {resolveLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                  已处理
-                </button>
-                <button
-                  type="button"
-                  disabled={ignoreLoading}
-                  onClick={() => onIgnore(item)}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4] disabled:opacity-60"
-                >
-                  {ignoreLoading ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
-                  忽略
-                </button>
-              </div>
+              {!historyView ? (
+                <div className="flex shrink-0 flex-wrap gap-2 xl:max-w-[360px] xl:justify-end">
+                  <button
+                    type="button"
+                    disabled={isLegacyCategoryFeedback || !item.offerId || hideOfferLoading}
+                    onClick={() => onHideOffer(item)}
+                    className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors disabled:opacity-50 ${
+                      item.suggestedAction === "hide_offer"
+                        ? "border-[#9b3328]/30 bg-[#fbe9e7] text-[#9b3328] hover:bg-[#f6d6d2]"
+                        : "border-[#9b3328]/20 bg-white text-[#9b3328] hover:bg-[#fbe9e7]"
+                    }`}
+                  >
+                    {hideOfferLoading ? <Loader2 size={14} className="animate-spin" /> : null}
+                    下架报价
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isLegacyCategoryFeedback || !item.sourceId || hideSourceLoading}
+                    onClick={() => onHideSource(item)}
+                    className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors disabled:opacity-50 ${
+                      item.suggestedAction === "hide_source"
+                        ? "border-[#9b3328]/30 bg-[#fbe9e7] text-[#9b3328] hover:bg-[#f6d6d2]"
+                        : "border-[#9b3328]/20 bg-white text-[#9b3328] hover:bg-[#fbe9e7]"
+                    }`}
+                  >
+                    {hideSourceLoading ? <Loader2 size={14} className="animate-spin" /> : null}
+                    下架渠道
+                  </button>
+                  <button
+                    type="button"
+                    disabled={resolveLoading}
+                    onClick={() => onResolve(item)}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#2f7a4b]/20 bg-white px-3 text-xs font-medium text-[#2f7a4b] transition-colors hover:bg-[#e8f3ec] disabled:opacity-60"
+                  >
+                    {resolveLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                    已处理
+                  </button>
+                  <button
+                    type="button"
+                    disabled={ignoreLoading}
+                    onClick={() => onIgnore(item)}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4] disabled:opacity-60"
+                  >
+                    {ignoreLoading ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                    忽略
+                  </button>
+                </div>
+              ) : null}
             </div>
           </article>
         );
@@ -3577,23 +3668,27 @@ function OfferFeedbackList({
 
 function SiteFeedbackList({
   feedback,
+  statusFilter,
   loadingAction,
   rowFeedback,
   onResolve,
   onIgnore,
 }: {
   feedback: SiteFeedback[];
+  statusFilter: SiteFeedbackStatus;
   loadingAction: string | null;
   rowFeedback: RowFeedback | null;
   onResolve: (feedback: SiteFeedback) => void;
   onIgnore: (feedback: SiteFeedback) => void;
 }) {
+  const historyView = statusFilter !== "pending";
+
   if (!feedback.length) {
     return (
       <EmptyState
         icon={<MessageCircle size={32} className="text-[#adb3b4]" />}
-        title="暂无待处理意见"
-        description="顶部反馈入口提交的功能建议、体验问题和站点意见会出现在这里。"
+        title={historyView ? `暂无${feedbackStatusLabel(statusFilter)}站点意见` : "暂无待处理意见"}
+        description={historyView ? "这里会保留已处理和已忽略的站点意见记录。" : "顶部反馈入口提交的功能建议、体验问题和站点意见会出现在这里。"}
       />
     );
   }
@@ -3610,6 +3705,9 @@ function SiteFeedbackList({
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${feedbackStatusClass(item.status)}`}>
+                    {feedbackStatusLabel(item.status)}
+                  </span>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${siteFeedbackTypeClass(item.type)}`}>
                     {siteFeedbackTypeLabel(item.type)}
                   </span>
@@ -3634,6 +3732,12 @@ function SiteFeedbackList({
                   )}
                   {item.contact ? <span>联系方式：{item.contact}</span> : null}
                 </div>
+                {historyView ? (
+                  <div className="mt-2 rounded-lg bg-[#f7f9f9] px-3 py-2 text-xs leading-5 text-[#5a6061]">
+                    <p><span className="font-semibold text-[#2d3435]">处理时间</span>：{item.reviewedAt ? formatRelativeTime(item.reviewedAt) : "未记录"}</p>
+                    {item.reviewerNote ? <p className="mt-1"><span className="font-semibold text-[#2d3435]">处理备注</span>：{item.reviewerNote}</p> : null}
+                  </div>
+                ) : null}
                 {rowState ? (
                   <div className={`mt-3 rounded-lg px-3 py-2 text-xs ${rowFeedbackClass(rowState.type)}`}>
                     {rowState.text}
@@ -3641,26 +3745,28 @@ function SiteFeedbackList({
                 ) : null}
               </div>
 
-              <div className="flex shrink-0 flex-wrap gap-2 xl:justify-end">
-                <button
-                  type="button"
-                  disabled={resolveLoading}
-                  onClick={() => onResolve(item)}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#2f7a4b]/20 bg-white px-3 text-xs font-medium text-[#2f7a4b] transition-colors hover:bg-[#e8f3ec] disabled:opacity-60"
-                >
-                  {resolveLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                  已处理
-                </button>
-                <button
-                  type="button"
-                  disabled={ignoreLoading}
-                  onClick={() => onIgnore(item)}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4] disabled:opacity-60"
-                >
-                  {ignoreLoading ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
-                  忽略
-                </button>
-              </div>
+              {!historyView ? (
+                <div className="flex shrink-0 flex-wrap gap-2 xl:justify-end">
+                  <button
+                    type="button"
+                    disabled={resolveLoading}
+                    onClick={() => onResolve(item)}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#2f7a4b]/20 bg-white px-3 text-xs font-medium text-[#2f7a4b] transition-colors hover:bg-[#e8f3ec] disabled:opacity-60"
+                  >
+                    {resolveLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                    已处理
+                  </button>
+                  <button
+                    type="button"
+                    disabled={ignoreLoading}
+                    onClick={() => onIgnore(item)}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4] disabled:opacity-60"
+                  >
+                    {ignoreLoading ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                    忽略
+                  </button>
+                </div>
+              ) : null}
             </div>
           </article>
         );
@@ -6247,6 +6353,18 @@ function offerFeedbackVerdictClass(tone: OfferFeedbackVerdictTone): string {
   if (tone === "danger") return "bg-[#fbe9e7] text-[#9b3328]";
   if (tone === "warn") return "bg-[#fff7e8] text-[#7a541b]";
   return "bg-[#eef3f8] text-[#47657a]";
+}
+
+function feedbackStatusLabel(value: OfferFeedbackStatus): string {
+  if (value === "resolved") return "已处理";
+  if (value === "ignored") return "已忽略";
+  return "待处理";
+}
+
+function feedbackStatusClass(value: OfferFeedbackStatus): string {
+  if (value === "resolved") return "bg-[#e8f3ec] text-[#2f7a4b]";
+  if (value === "ignored") return "bg-[#f2f4f4] text-[#5a6061]";
+  return "bg-[#fff7e8] text-[#7a541b]";
 }
 
 function feedbackReasonLabel(value: OfferFeedback["reason"]): string {
