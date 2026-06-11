@@ -6777,12 +6777,16 @@ function collectionMethodLabel(value: string): string {
 }
 
 function crawlStatusLabel(value: CrawlRun["status"]): string {
-  return value === "success" ? "成功" : value === "partial" ? "部分成功" : "失败";
+  if (value === "success") return "成功";
+  if (value === "partial") return "部分成功";
+  if (value === "skipped") return "已跳过";
+  return "失败";
 }
 
 function crawlStatusClass(value: CrawlRun["status"]): string {
   if (value === "success") return "bg-[#e8f3ec] text-[#2f7a4b]";
   if (value === "partial") return "bg-[#fff7e8] text-[#7a541b]";
+  if (value === "skipped") return "bg-[#eef3f8] text-[#47657a]";
   return "bg-[#fbe9e7] text-[#9b3328]";
 }
 

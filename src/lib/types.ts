@@ -164,7 +164,7 @@ export type CrawlRun = {
   sourceId?: string | null;
   sourceName?: string | null;
   mode: CollectionMethod | "public_json_import" | "legacy_json_import";
-  status: "success" | "partial" | "failed";
+  status: "success" | "partial" | "failed" | "skipped";
   startedAt: string;
   finishedAt?: string | null;
   successCount: number;

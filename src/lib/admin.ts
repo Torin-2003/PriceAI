@@ -664,7 +664,7 @@ export function rawOfferInputId(offer: Pick<OfferInput, "sourceName" | "sourceSt
 
 export async function recordSourceCollectionResult(input: {
   sourceId: string;
-  status: "success" | "partial" | "failed";
+  status: "success" | "partial" | "failed" | "skipped";
   checkedAt: string;
   message?: string | null;
   seenOfferIds?: string[];
@@ -686,6 +686,10 @@ export async function recordSourceCollectionResult(input: {
   }
 
   const previousFailures = Number(existing?.consecutive_failures || 0);
+  if (input.status === "skipped") {
+    return { changedOfferCount: 0 };
+  }
+
   const consecutiveFailures = input.status === "failed" ? previousFailures + 1 : 0;
   const healthStatus =
     input.status === "success"

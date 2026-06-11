@@ -32,7 +32,7 @@ const crawlLogPayloadSchema = z.object({
   sourceName: z.string().min(1),
   sourceUrl: z.string().url(),
   mode: z.enum(["browser", "http", "manual"]).default("browser"),
-  status: z.enum(["success", "partial", "failed"]).default("success"),
+  status: z.enum(["success", "partial", "failed", "skipped"]).default("success"),
   message: z.string().optional(),
   offers: z.array(offerSchema).default([]),
   details: z.record(z.string(), z.unknown()).optional(),

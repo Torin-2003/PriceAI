@@ -117,6 +117,7 @@ async function collectOneTarget(target, options, logger, lockOwner, familyState,
   if (familySkip) {
     logger?.log(`\n==> ${target.sourceName} [${target.kind}]`);
     logger?.log(`Skipped: ${familySkip.message}`);
+    await postSkippedCrawlLog(target, familySkip, options, writeQueue, logger);
     return skipped(familySkip.message);
   }
 
@@ -1321,7 +1322,7 @@ async function loadTargets() {
   const supabase = getSupabaseClient();
   if (supabase) {
     const [sourcesResult, offersResult] = await Promise.all([
-      supabase.from("sources").select("id,name,base_url,entry_url,collection_method,collector_kind,enabled,notes,last_success_at").eq("enabled", true),
+      supabase.from("sources").select("id,name,base_url,entry_url,collection_method,collector_kind,enabled,notes,last_success_at,last_checked_at").eq("enabled", true),
       supabase.from("raw_offers").select("source_id,source_name,source_store_name,source_title,url").limit(5000),
     ]);
 
@@ -1374,6 +1375,7 @@ function buildTarget(source, rawOffers) {
     kind: runnableKind,
     configuredKind: configuredKind || null,
     lastSuccessAt: source.last_success_at || null,
+    lastCheckedAt: source.last_checked_at || null,
     rawOffers,
   };
 }
@@ -1525,7 +1527,7 @@ async function postCrawlLog(target, offers, status, message, options = {}, detai
 async function postCrawlLogBatched(target, offers, status, message, options = {}, details = {}, writeQueue = null) {
   const runs = crawlLogPayloadsFor(target, offers, status, message, options, details);
 
-  if (writeQueue && status === "success") {
+  if (writeQueue) {
     writeQueue.enqueue(runs, { sourceId: target.sourceId, sourceName: target.sourceName });
     return { ok: true, queued: true, successCount: offers.length };
   }
@@ -1544,6 +1546,22 @@ async function postCrawlLogBatched(target, offers, status, message, options = {}
   }
 
   return { ok: true, successCount, writtenCount, unchangedCount, refreshedCount };
+}
+
+async function postSkippedCrawlLog(target, skip, options = {}, writeQueue = null, logger = null) {
+  if (!options.post) return;
+
+  await postCrawlLogBatched(target, [], "skipped", skip.message, options, {
+    skip: {
+      reason: skip.reason || "family_protection",
+      family: skip.family || null,
+      familyLabel: skip.familyLabel || null,
+      limit: skip.limit ?? null,
+      startedCount: skip.startedCount ?? null,
+    },
+  }, writeQueue).catch((error) => {
+    logger?.error(`Failed to post skipped log: ${errorMessage(error)}`);
+  });
 }
 
 function createCrawlLogWriteQueue(options = {}, logger = null) {
@@ -1806,7 +1824,43 @@ function targetGroupsForCollection(targets) {
       groups.set(key, { key, targets: [target] });
     }
   }
+  for (const group of groups.values()) {
+    sortTargetsForCollectionGroup(group.targets);
+  }
   return [...groups.values()];
+}
+
+function sortTargetsForCollectionGroup(targets) {
+  if (targets.length <= 1) return targets;
+  if (!targets.some((target) => collectionFamilyForTarget(target))) return targets;
+
+  return targets.sort((a, b) => {
+    const familyA = collectionFamilyForTarget(a);
+    const familyB = collectionFamilyForTarget(b);
+    if (familyA && !familyB) return -1;
+    if (!familyA && familyB) return 1;
+    if (familyA?.key !== familyB?.key) return String(familyA?.key || "").localeCompare(String(familyB?.key || ""));
+
+    return compareTargetFreshness(a, b);
+  });
+}
+
+function compareTargetFreshness(a, b) {
+  const checkedA = targetCheckedAtMs(a);
+  const checkedB = targetCheckedAtMs(b);
+  if (!Number.isFinite(checkedA) && !Number.isFinite(checkedB)) {
+    return String(a.sourceName || a.sourceId).localeCompare(String(b.sourceName || b.sourceId));
+  }
+  if (!Number.isFinite(checkedA)) return -1;
+  if (!Number.isFinite(checkedB)) return 1;
+  if (checkedA !== checkedB) return checkedA - checkedB;
+  return String(a.sourceName || a.sourceId).localeCompare(String(b.sourceName || b.sourceId));
+}
+
+function targetCheckedAtMs(target) {
+  const value = target.lastCheckedAt || target.lastSuccessAt;
+  const timestamp = value ? new Date(value).getTime() : NaN;
+  return Number.isFinite(timestamp) ? timestamp : NaN;
 }
 
 async function runWithConcurrency(items, concurrency, worker) {
