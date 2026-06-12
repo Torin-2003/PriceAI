@@ -34,11 +34,12 @@ import type {
 
 const PUBLIC_OFFER_LIMIT = 1200;
 const SUPABASE_PAGE_SIZE = 1000;
+const PUBLIC_FALLBACK_MAX_ROWS = 5000;
 const PUBLIC_DATA_CACHE_TTL_MS = 120_000;
 const EXPLORER_DATA_CACHE_TTL_MS = 120_000;
 const PRODUCT_OFFERS_CACHE_TTL_MS = 120_000;
 const DASHBOARD_DATA_CACHE_TTL_MS = 30_000;
-const ADMIN_DATA_CACHE_TTL_MS = 30_000;
+const ADMIN_DATA_CACHE_TTL_MS = 120_000;
 const ADMIN_OFFER_SAMPLE_LIMIT = 80;
 const RAW_OFFER_PUBLIC_SELECT = [
   "id",
@@ -216,8 +217,8 @@ async function listVisibleRawOfferRows(): Promise<Record<string, unknown>[]> {
 
   const rows: Record<string, unknown>[] = [];
 
-  for (let from = 0; ; from += SUPABASE_PAGE_SIZE) {
-    const to = from + SUPABASE_PAGE_SIZE - 1;
+  for (let from = 0; from < PUBLIC_FALLBACK_MAX_ROWS; from += SUPABASE_PAGE_SIZE) {
+    const to = Math.min(from + SUPABASE_PAGE_SIZE, PUBLIC_FALLBACK_MAX_ROWS) - 1;
     const { data, error } = await supabase
       .from("raw_offers")
       .select(RAW_OFFER_PUBLIC_SELECT)
@@ -779,6 +780,18 @@ async function listCollectionJobs(): Promise<CollectionJob[]> {
 async function listSourceOfferStats(): Promise<SourceOfferStats[]> {
   const supabase = getSupabaseServerClient();
   if (!supabase) return [];
+
+  const { data: rpcData, error: rpcError } = await supabase.rpc("list_source_offer_stats");
+  if (!rpcError) {
+    return ((rpcData || []) as Array<Record<string, unknown>>).map((row) => ({
+      sourceId: String(row.source_id || ""),
+      visibleCount: Number(row.visible_count || 0),
+      hiddenCount: Number(row.hidden_count || 0),
+      manuallyHiddenCount: Number(row.manually_hidden_count || 0),
+      totalCount: Number(row.total_count || 0),
+    })).filter((row) => row.sourceId);
+  }
+  console.warn("Falling back to raw source offer stats because RPC failed:", rpcError.message);
 
   const rows: Array<Pick<RawOffer, "sourceId" | "hidden" | "failureReason">> = [];
 

@@ -8,6 +8,8 @@ import { shouldNoIndexProduct } from "@/lib/product-seo";
 
 const siteUrl = "https://priceai.cc";
 
+export const revalidate = 3600;
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [data, apiDataset] = await Promise.all([
     getExplorerData(),
