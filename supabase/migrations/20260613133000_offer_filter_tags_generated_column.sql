@@ -89,6 +89,7 @@ as $$
 $$;
 
 drop function if exists list_public_product_offers_page_v2(text, text[], text, integer, integer);
+drop function if exists list_public_product_offers_page_v2(text, text[], text, text, integer, integer);
 
 create or replace function list_public_product_offers_page_v2(
   p_product_id text,
