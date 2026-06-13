@@ -11,7 +11,7 @@
 - 旧的两个无用域名不纳入迁移。
 - Vercel 保留为短期回滚目标，直到 Cloudflare 生产运行稳定。
 
-当前状态：`priceai.cc` 已于 2026-06-14 切到 Cloudflare Workers route；`www.priceai.cc` 仍由 Vercel 返回 307 跳转到主域名，用户访问不中断，但待补 DNS 编辑权限后应把 `www` DNS 记录改为 Cloudflare 代理入口，让 Worker route 直接接管。
+当前状态：`priceai.cc` 与 `www.priceai.cc` 已于 2026-06-14 切到 Cloudflare Workers route。`www.priceai.cc` 的 DNS 记录已改为 Cloudflare 代理状态，不再经 Vercel 307 跳转。
 
 ## 目标架构
 
@@ -60,8 +60,7 @@
 
 仍需准备：
 
-1. 获取 Cloudflare DNS edit 权限，把 `www.priceai.cc` 的 DNS 记录改成 Cloudflare 代理状态，使 `www.priceai.cc/*` Worker route 真正接管。
-2. 连续观察 24-72 小时 Worker 5xx、Supabase egress、R2 incremental cache 和 Umami 访问数据。
+1. 连续观察 24-72 小时 Worker 5xx、Supabase egress、R2 incremental cache 和 Umami 访问数据。
 
 Cloudflare Worker runtime secrets：
 
@@ -215,7 +214,7 @@ npm run deploy:cloudflare
 
 ## 阶段 5：生产切换
 
-状态：主域已完成，`www` 待 DNS 代理收口。
+状态：已完成。
 
 2026-06-14 执行结果：
 
@@ -225,7 +224,7 @@ npm run deploy:cloudflare
 - `npm run smoke:cloudflare -- https://priceai.cc` 全部通过：`/`、`/api-models`、guide、`/api/health`、公开价格 API、cron 未授权拒绝、`robots.txt`、`sitemap.xml`。
 - 公开价格 API 继续返回 `Cloudflare-CDN-Cache-Control: public, s-maxage=120`。
 - 首页 HTML 已确认包含 `https://umami.dimthink.com/script.js`、Umami Website ID 和 `data-priceai-umami`，且不包含 `cloud.umami`。
-- `https://www.priceai.cc/` 目前仍由 Vercel 返回 307 到 `https://priceai.cc/`；用户访问正常，但不是最终形态。
+- `www.priceai.cc` CNAME 已改为 Cloudflare 代理状态，`https://www.priceai.cc/` 直接返回 `server: cloudflare`、`x-opennext: 1`，并通过完整 smoke test。
 
 切换前准备：
 
@@ -292,9 +291,8 @@ curl -sS -o /tmp/health.json -w '%{http_code} %{size_download} %{time_total}\n' 
 
 ## 当前下一步
 
-当前最值得做的是生产后观察和 `www` 收口：
+当前最值得做的是生产后观察：
 
-1. 获取 DNS edit 权限，把 `www.priceai.cc` 从 Vercel CNAME / 灰云状态收口到 Cloudflare 代理入口。
-2. 用后台真实登录做一次低风险写操作验证。
-3. 观察 `priceai.cc` 24-72 小时内 Worker 5xx、CPU、请求量、R2 增长、Supabase egress 和 Umami 访问数据。
-4. 确认官方价格采集和第三方价格采集只有一个生产入口，避免 Vercel / Cloudflare 双触发。
+1. 用后台真实登录做一次低风险写操作验证。
+2. 观察 `priceai.cc` 与 `www.priceai.cc` 24-72 小时内 Worker 5xx、CPU、请求量、R2 增长、Supabase egress 和 Umami 访问数据。
+3. 确认官方价格采集和第三方价格采集只有一个生产入口，避免 Vercel / Cloudflare 双触发。

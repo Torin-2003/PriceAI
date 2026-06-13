@@ -114,7 +114,7 @@ Cloudflare 资源：
 | 域名 | 当前状态 |
 |------|----------|
 | `priceai.cc/*` | 已由 Cloudflare Workers route 接管 |
-| `www.priceai.cc/*` | Worker route 已配置，但 DNS 仍由 Vercel 返回 307 到主域，待 DNS edit 权限收口 |
+| `www.priceai.cc/*` | 已由 Cloudflare Workers route 接管 |
 | `cf.priceai.cc` | 保留为 Cloudflare custom domain 预览 / 排障入口 |
 
 生产 smoke test：
@@ -139,10 +139,10 @@ Cloudflare 资源：
 - 用带 Umami 公开变量的 `npm run build:cloudflare` 重新生成预渲染产物后再部署，避免首页静态 HTML 缺少统计脚本。
 - 线上首页 HTML 已确认包含 `https://umami.dimthink.com/script.js`、Website ID `ded26a4f-77c4-45ed-86ef-774b0fed0ef6` 和 `data-priceai-umami`，不包含 `cloud.umami`。
 
-当前遗留：
+生产后观察：
 
-1. 当前可用的 Cloudflare OAuth / 本地 token 没有 DNS record edit 权限；`www.priceai.cc` 暂时继续由 Vercel 307 到主域。
-2. 获取 DNS edit 权限后，把 `www.priceai.cc` DNS 记录改成 Cloudflare 代理状态，让已配置的 `www.priceai.cc/*` Worker route 生效。
+1. `www.priceai.cc` CNAME 已改成 Cloudflare 代理状态，`https://www.priceai.cc/` 直接返回 `server: cloudflare`、`x-opennext: 1`。
+2. `npm run smoke:cloudflare -- https://www.priceai.cc` 已全部通过。
 3. 生产后继续观察 24-72 小时 Worker 5xx、Supabase egress、R2 incremental cache 和 Umami 访问数据。
 
 ## 生产部署前置项
@@ -180,6 +180,5 @@ Cloudflare 资源：
 
 - 保留 Supabase 作为数据库，不在本 POC 中迁移 D1。
 - 使用 OpenNext 的 R2 incremental cache，以便支持 ISR / revalidate 类页面。
-- `priceai.cc` 生产域名已由 Cloudflare Workers route 承载。
+- `priceai.cc` 与 `www.priceai.cc` 生产域名已由 Cloudflare Workers route 承载。
 - `wrangler.jsonc` 中的 `CRON_PUBLIC_BASE_URL` 指向 `https://priceai.cc`。
-- `www.priceai.cc` 仍需 DNS 代理收口；在此之前用户会先经 Vercel 307 跳到主域。
