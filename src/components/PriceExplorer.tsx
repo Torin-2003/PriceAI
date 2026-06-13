@@ -922,7 +922,6 @@ function ProductTable({
                   <td className="max-w-[310px] px-5 py-4">
                     <Link
                       href={productHref}
-                      prefetch={false}
                       onClick={() => trackProductDetailOpen(product)}
                       className="group flex min-w-0 items-center gap-3"
                     >
@@ -972,7 +971,6 @@ function ProductTable({
                   <td className="px-5 py-4">
                     <Link
                       href={productHref}
-                      prefetch={false}
                       onClick={() => trackProductDetailOpen(product)}
                       className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-[#2d3435] px-3 text-xs font-semibold text-[#f8f8f8] transition hover:bg-[#1f2526]"
                     >
@@ -1299,7 +1297,6 @@ function ProductCard({
 
       <Link
         href={productHref}
-        prefetch={false}
         onClick={() => trackProductDetailOpen(product)}
         className="block"
       >
@@ -1342,7 +1339,6 @@ function ProductCard({
       <div className="mt-auto pt-6">
         <Link
           href={productHref}
-          prefetch={false}
           onClick={() => trackProductDetailOpen(product)}
           className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#5e5e5e] to-[#525252] px-5 text-sm font-semibold text-[#f8f8f8] transition hover:opacity-90"
         >
@@ -1391,7 +1387,6 @@ function MobileProductCard({
         </div>
         <Link
           href={productHref}
-          prefetch={false}
           onClick={() => trackProductDetailOpen(product)}
           className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#2d3435] px-4 text-sm font-semibold text-[#f8f8f8] transition hover:bg-[#1f2526]"
         >

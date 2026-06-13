@@ -568,23 +568,53 @@ function OfferFilterBar({
 }
 
 function OfferTableSkeleton({ count }: { count: number }) {
+  const rows = Array.from({ length: Math.min(Math.max(count, 3), 6) });
+
   return (
-    <section className="mt-6 overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
-      {Array.from({ length: Math.min(Math.max(count, 3), 6) }).map((_, index) => (
-        <div key={index} className="grid grid-cols-[110px_220px_1fr_120px_130px_110px] gap-5 border-b border-[#edf0f1] px-5 py-5 last:border-b-0">
-          <Skeleton className="h-8 w-16 rounded-full" />
-          <div>
-            <Skeleton className="h-5 w-32 rounded-full" />
-            <Skeleton className="mt-3 h-4 w-24 rounded-full" />
+    <>
+      <section className="mt-5 grid gap-3 md:hidden">
+        {rows.map((_, index) => (
+          <div key={index} className="rounded-lg bg-white p-4 shadow-[0_16px_45px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <Skeleton className="h-5 w-28 rounded-full" />
+                <Skeleton className="mt-3 h-4 w-full rounded-full" />
+                <Skeleton className="mt-2 h-4 w-3/4 rounded-full" />
+              </div>
+              <Skeleton className="h-7 w-16 rounded-full" />
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-4">
+              <div>
+                <Skeleton className="h-7 w-20 rounded-full" />
+                <Skeleton className="mt-2 h-4 w-24 rounded-full" />
+              </div>
+              <Skeleton className="h-9 w-20 rounded-full" />
+            </div>
           </div>
-          <Skeleton className="h-5 w-full rounded-full" />
-          <Skeleton className="h-7 w-20 rounded-full" />
-          <Skeleton className="h-5 w-24 rounded-full" />
-          <Skeleton className="h-9 w-24 rounded-full" />
-        </div>
-      ))}
-    </section>
+        ))}
+      </section>
+
+      <section className="mt-6 hidden overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15 md:block">
+        {rows.map((_, index) => (
+          <div key={index} className="grid grid-cols-[110px_220px_1fr_120px_130px_110px] gap-5 border-b border-[#edf0f1] px-5 py-5 last:border-b-0">
+            <Skeleton className="h-8 w-16 rounded-full" />
+            <div>
+              <Skeleton className="h-5 w-32 rounded-full" />
+              <Skeleton className="mt-3 h-4 w-24 rounded-full" />
+            </div>
+            <Skeleton className="h-5 w-full rounded-full" />
+            <Skeleton className="h-7 w-20 rounded-full" />
+            <Skeleton className="h-5 w-24 rounded-full" />
+            <Skeleton className="h-9 w-24 rounded-full" />
+          </div>
+        ))}
+      </section>
+    </>
   );
+}
+
+function Skeleton({ className }: { className: string }) {
+  return <div className={`bg-[#e4e9ea] ${className}`} />;
 }
 
 function EmptyOfferFilterState({ onClear }: { onClear: () => void }) {
@@ -1069,10 +1099,6 @@ const expectedActionOptions = [
 function extractEvidenceUrls(value: string): string[] {
   const matches = value.match(/https?:\/\/[^\s"'<>，。；、]+/g) || [];
   return Array.from(new Set(matches)).slice(0, 10);
-}
-
-function Skeleton({ className }: { className: string }) {
-  return <div className={`bg-[#e4e9ea] ${className}`} />;
 }
 
 function isOfferAvailable(offer: RawOffer): boolean {

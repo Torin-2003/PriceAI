@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import { ArrowRight, Clock3, ExternalLink, Layers3 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { BrandIcon } from "@/components/BrandIcon";
 import { JsonLd } from "@/components/JsonLd";
 import { ProductDetailHeader, ProductReturnLink } from "@/components/ProductDetailHeader";
 import { ProductOffersPanel } from "@/components/ProductOffersPanel";
-import { canonicalCatalog, isAvailable } from "@/lib/catalog";
-import { getPublicProductSummary, listPublicProductOffers } from "@/lib/data";
+import { canonicalCatalog } from "@/lib/catalog";
+import { getPublicProductSummary } from "@/lib/data";
 import {
   getOfficialPricePlanSummaryFromDataset,
   getOfficialPriceRowsByIdFromDataset,
@@ -18,7 +19,7 @@ import {
 } from "@/lib/official-prices";
 import { getOfficialPricesDataset } from "@/lib/official-prices-db";
 import { getProductSeoProfile, shouldNoIndexProduct, type ProductSeoProfile } from "@/lib/product-seo";
-import type { ExplorerProductSummary, RawOffer } from "@/lib/types";
+import type { ExplorerProductSummary } from "@/lib/types";
 import { formatCurrency, formatRelativeTime } from "@/lib/utils";
 
 export const revalidate = 1800;
@@ -93,23 +94,15 @@ export default async function ProductDetail({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [product, initialOffers, officialPricesDataset] = await Promise.all([
-    getPublicProductSummary(id),
-    listPublicProductOffers(id, {
-      limit: 80,
-      offset: 0,
-    }),
-    getOfficialPricesDataset(),
-  ]);
+  const product = await getPublicProductSummary(id);
 
   if (!product) notFound();
 
-  const officialReference = buildOfficialPriceReference(product, officialPricesDataset);
   const seoProfile = getProductSeoProfile(product);
 
   return (
     <>
-    <JsonLd data={buildProductJsonLd(product, initialOffers.offers, officialReference, seoProfile)} />
+    <JsonLd data={buildProductJsonLd(product, seoProfile)} />
     <main className="min-h-screen bg-[#f9f9f9] text-[#2d3435]">
       <ProductDetailHeader />
 
@@ -132,9 +125,9 @@ export default async function ProductDetail({
           </div>
         </section>
 
-        {officialReference ? (
-          <OfficialPriceReferenceStrip reference={officialReference} product={product} />
-        ) : null}
+        <Suspense fallback={<OfficialPriceReferenceSkeleton />}>
+          <OfficialPriceReferenceSection product={product} />
+        </Suspense>
 
         <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -154,7 +147,6 @@ export default async function ProductDetail({
           productSlug={product.slug}
           productName={product.displayName}
           initialCount={product.offerCount}
-          initialData={initialOffers}
         />
 
         <ProductRelatedCta product={product} />
@@ -209,6 +201,17 @@ function getOfficialPricePlanMapping(product: Pick<ExplorerProductSummary, "id" 
   return officialPlanByProductId[product.id] || officialPlanByProductId[product.slug] || null;
 }
 
+async function OfficialPriceReferenceSection({ product }: { product: ExplorerProductSummary }) {
+  const mapping = getOfficialPricePlanMapping(product);
+  if (!mapping) return null;
+
+  const officialPricesDataset = await getOfficialPricesDataset();
+  const officialReference = buildOfficialPriceReference(product, officialPricesDataset);
+  if (!officialReference) return null;
+
+  return <OfficialPriceReferenceStrip reference={officialReference} product={product} />;
+}
+
 function OfficialPriceReferenceStrip({
   reference,
   product,
@@ -247,6 +250,27 @@ function OfficialPriceReferenceStrip({
       </div>
     </section>
   );
+}
+
+function OfficialPriceReferenceSkeleton() {
+  return (
+    <section className="mt-4 rounded-lg bg-white px-4 py-3 shadow-[0_14px_42px_rgba(45,52,53,0.035)] ring-1 ring-[#adb3b4]/15">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+          <Skeleton className="h-7 w-24 rounded-full" />
+          <Skeleton className="h-5 w-32 rounded-full" />
+          <Skeleton className="h-5 w-36 rounded-full" />
+          <Skeleton className="h-5 w-32 rounded-full" />
+          <Skeleton className="h-4 w-28 rounded-full" />
+        </div>
+        <Skeleton className="h-9 w-28 rounded-full" />
+      </div>
+    </section>
+  );
+}
+
+function Skeleton({ className }: { className: string }) {
+  return <div className={`bg-[#e4e9ea] ${className}`} />;
 }
 
 function ReferenceText({ label, value, detail }: { label: string; value: string; detail?: string }) {
@@ -373,23 +397,17 @@ function getRelatedCta(product: ExplorerProductSummary): RelatedCta | null {
 
 function buildProductJsonLd(
   product: ExplorerProductSummary,
-  offers: RawOffer[],
-  officialReference: OfficialPriceReference | null,
   seoProfile: ProductSeoProfile | null,
 ) {
   const productUrl = `https://priceai.cc/products/${product.slug}`;
-  const availablePrices = offers
-    .filter((offer) => isAvailable(offer) && offer.currency === (product.lowestOffer?.currency || offer.currency))
-    .map((offer) => offer.price)
-    .filter((price): price is number => typeof price === "number" && Number.isFinite(price));
-  const priceCurrency = product.lowestOffer?.currency || offers.find((offer) => offer.currency)?.currency || "CNY";
-  const lowestOffer = product.lowestPrice !== null && product.lowestOffer && availablePrices.length
+  const priceCurrency = product.lowestOffer?.currency || "CNY";
+  const lowestOffer = product.lowestPrice !== null && product.lowestOffer
     ? {
         "@type": "AggregateOffer",
-        lowPrice: Math.min(...availablePrices),
-        highPrice: Math.max(...availablePrices),
+        lowPrice: product.lowestPrice,
+        highPrice: product.lowestPrice,
         priceCurrency,
-        offerCount: availablePrices.length,
+        offerCount: Math.max(product.inStockCount, 1),
         availability: "https://schema.org/InStock",
         url: productUrl,
       }
@@ -413,21 +431,6 @@ function buildProductJsonLd(
     url: productUrl,
     offers: lowestOffer,
   };
-
-  if (officialReference?.summary.lowestRow) {
-    productSchema.additionalProperty = [
-      {
-        "@type": "PropertyValue",
-        name: "官方最低地区价参考",
-        value: formatCurrency(officialReference.summary.lowestRow.cnyPrice, "CNY"),
-      },
-      {
-        "@type": "PropertyValue",
-        name: "官方最低地区",
-        value: officialReference.summary.lowestRow.countryLabel,
-      },
-    ];
-  }
 
   const schemas: Record<string, unknown>[] = [
     productSchema,
