@@ -41,11 +41,12 @@ import type {
 
 const PUBLIC_OFFER_LIMIT = 1200;
 const SUPABASE_PAGE_SIZE = 1000;
+const PUBLIC_FALLBACK_MAX_ROWS = 5000;
 const PUBLIC_DATA_CACHE_TTL_MS = 120_000;
 const EXPLORER_DATA_CACHE_TTL_MS = 120_000;
 const PRODUCT_OFFERS_CACHE_TTL_MS = 120_000;
 const DASHBOARD_DATA_CACHE_TTL_MS = 30_000;
-const ADMIN_DATA_CACHE_TTL_MS = 30_000;
+const ADMIN_DATA_CACHE_TTL_MS = 120_000;
 const ADMIN_OFFER_SAMPLE_LIMIT = 80;
 const RAW_OFFER_PUBLIC_SELECT = [
   "id",
@@ -107,6 +108,7 @@ let dashboardDataPromise: Promise<DashboardData> | null = null;
 let adminSummaryCache: { expiresAt: number; value: AdminSummary } | null = null;
 let adminSummaryPromise: Promise<AdminSummary> | null = null;
 const productOffersCache = new Map<string, { expiresAt: number; value: Awaited<ReturnType<typeof loadPublicProductOffers>> }>();
+const productOfferFacetsCache = new Map<string, { expiresAt: number; value: OfferFilterTagFacet[] }>();
 
 type OfferListFilters = {
   platform?: string | null;
@@ -147,6 +149,7 @@ export function clearPublicDataCache(): void {
   dashboardDataPromise = null;
   clearAdminDataCache();
   productOffersCache.clear();
+  productOfferFacetsCache.clear();
 }
 
 export function clearAdminDataCache(): void {
@@ -221,8 +224,8 @@ async function listVisibleRawOfferRows(): Promise<Record<string, unknown>[]> {
 
   const rows: Record<string, unknown>[] = [];
 
-  for (let from = 0; ; from += SUPABASE_PAGE_SIZE) {
-    const to = from + SUPABASE_PAGE_SIZE - 1;
+  for (let from = 0; from < PUBLIC_FALLBACK_MAX_ROWS; from += SUPABASE_PAGE_SIZE) {
+    const to = Math.min(from + SUPABASE_PAGE_SIZE, PUBLIC_FALLBACK_MAX_ROWS) - 1;
     const { data, error } = await supabase
       .from("raw_offers")
       .select(RAW_OFFER_PUBLIC_SELECT)
@@ -1180,6 +1183,18 @@ async function listSourceOfferStats(): Promise<SourceOfferStats[]> {
   const supabase = getSupabaseServerClient();
   if (!supabase) return [];
 
+  const { data: rpcData, error: rpcError } = await supabase.rpc("list_source_offer_stats");
+  if (!rpcError) {
+    return ((rpcData || []) as Array<Record<string, unknown>>).map((row) => ({
+      sourceId: String(row.source_id || ""),
+      visibleCount: Number(row.visible_count || 0),
+      hiddenCount: Number(row.hidden_count || 0),
+      manuallyHiddenCount: Number(row.manually_hidden_count || 0),
+      totalCount: Number(row.total_count || 0),
+    })).filter((row) => row.sourceId);
+  }
+  console.warn("Falling back to raw source offer stats because RPC failed:", rpcError.message);
+
   const rows: Array<Pick<RawOffer, "sourceId" | "hidden" | "failureReason">> = [];
 
   for (let from = 0; ; from += SUPABASE_PAGE_SIZE) {
@@ -1438,8 +1453,7 @@ async function getPublicProductOffersFromDatabase(
   const supabase = getSupabaseServerClient();
   if (!supabase) return null;
 
-  const filterFacets = await getPublicProductOfferFilterFacetsFromDatabase(id);
-  if (!filterFacets) return null;
+  const filterFacetsPromise = getPublicProductOfferFilterFacetsFromDatabase(id);
   const hasServerFilters = filters.filterTags.length > 0 || filters.query.length > 0 || filters.excludeQuery.length > 0;
   const rpcName = hasServerFilters
     ? "list_public_product_offers_page_v2"
@@ -1465,6 +1479,7 @@ async function getPublicProductOffersFromDatabase(
     return null;
   }
 
+  const filterFacets = await filterFacetsPromise ?? [];
   const rows = ((data || []) as unknown as Record<string, unknown>[]);
   const offers = rows.map(mapRawOffer);
   const total = rows.length ? Number(rows[0].total_count || rows.length) : 0;
@@ -1485,6 +1500,11 @@ async function getPublicProductOfferFilterFacetsFromDatabase(id: string): Promis
   const supabase = getSupabaseServerClient();
   if (!supabase) return null;
 
+  const cacheKey = `facets:${id}`;
+  const now = Date.now();
+  const cached = productOfferFacetsCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.value;
+
   const { data, error } = await supabase.rpc("list_public_product_offer_filter_facets", {
     p_product_id: id,
   });
@@ -1497,7 +1517,21 @@ async function getPublicProductOfferFilterFacetsFromDatabase(id: string): Promis
   const rows = (data || []) as Array<Record<string, unknown>>;
   const counts = new Map(rows.map((row) => [String(row.tag_id), Number(row.offer_count || 0)]));
 
-  return buildOfferFilterFacetsFromCounts(counts);
+  const facets = buildOfferFilterFacetsFromCounts(counts);
+  productOfferFacetsCache.set(cacheKey, {
+    expiresAt: Date.now() + PRODUCT_OFFERS_CACHE_TTL_MS,
+    value: facets,
+  });
+  if (productOfferFacetsCache.size > 120) {
+    const expiredAt = Date.now();
+    for (const [key, entry] of productOfferFacetsCache) {
+      if (entry.expiresAt <= expiredAt || productOfferFacetsCache.size > 120) {
+        productOfferFacetsCache.delete(key);
+      }
+    }
+  }
+
+  return facets;
 }
 
 function buildOfferFilterFacetsFromCounts(counts: Map<string, number>): OfferFilterTagFacet[] {
@@ -1933,6 +1967,12 @@ function normalizeSourceCollectorKind(value: unknown): Source["collectorKind"] {
 export function mapRawOffer(row: Record<string, unknown>): RawOffer {
   const sourceTitle = String(row.source_title || "");
   const tags = Array.isArray(row.tags) ? row.tags.map(String) : [];
+  const filterTags =
+    Array.isArray(row.filter_tags)
+      ? row.filter_tags.map(String)
+      : Array.isArray(row.public_filter_tags)
+        ? row.public_filter_tags.map(String)
+        : deriveOfferFilterTags({ sourceTitle, tags });
 
   return {
     id: String(row.id),
@@ -1945,7 +1985,7 @@ export function mapRawOffer(row: Record<string, unknown>): RawOffer {
     status: String(row.status || "unknown") as RawOffer["status"],
     url: String(row.url || ""),
     tags,
-    filterTags: deriveOfferFilterTags({ sourceTitle, tags }),
+    filterTags,
     stockCount: row.stock_count === null || row.stock_count === undefined ? null : Number(row.stock_count),
     hidden: Boolean(row.hidden),
     canonicalProductId: row.canonical_product_id ? String(row.canonical_product_id) : null,

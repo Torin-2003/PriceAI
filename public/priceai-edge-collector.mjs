@@ -12,8 +12,11 @@ const DEFAULT_INTERVAL_SECONDS = 300;
 const DEFAULT_MAX_ROUND_TASKS = 200;
 const DEFAULT_WIND_CONTROL_COOLDOWN_SECONDS = 300;
 const DEFAULT_WIND_CONTROL_THRESHOLD = 3;
+const MAX_DISCOVERED_TOKENS = 3;
+const MAX_CATEGORY_PAGES = 10;
 
 const args = parseArgs(process.argv.slice(2));
+const explicitMaxCycles = args.maxCycles || args["max-cycles"] || process.env.PRICEAI_AGENT_MAX_CYCLES;
 const config = {
   endpoint: stripTrailingSlash(
     args.endpoint ||
@@ -37,7 +40,7 @@ const config = {
   windControlCooldownSeconds: integerInRange(args.windControlCooldownSeconds || args["wind-control-cooldown-seconds"] || process.env.PRICEAI_AGENT_WIND_CONTROL_COOLDOWN_SECONDS, 30, 3600, DEFAULT_WIND_CONTROL_COOLDOWN_SECONDS),
   windControlThreshold: integerInRange(args.windControlThreshold || args["wind-control-threshold"] || process.env.PRICEAI_AGENT_WIND_CONTROL_THRESHOLD, 1, 20, DEFAULT_WIND_CONTROL_THRESHOLD),
   loop: truthy(args.loop) || truthy(process.env.PRICEAI_AGENT_LOOP),
-  maxCycles: integerInRange(args.maxCycles || args["max-cycles"] || process.env.PRICEAI_AGENT_MAX_CYCLES, 1, 1000000, 1),
+  maxCycles: explicitMaxCycles ? integerInRange(explicitMaxCycles, 1, 1000000, 1) : null,
   dryRun: truthy(args.dryRun) || truthy(args["dry-run"]) || truthy(process.env.PRICEAI_AGENT_DRY_RUN),
 };
 
@@ -102,7 +105,7 @@ async function main() {
         if (!config.loop) process.exitCode = 1;
       });
 
-    if (!config.loop || cycle >= config.maxCycles) break;
+    if (!config.loop || (config.maxCycles !== null && cycle >= config.maxCycles)) break;
     console.log(`[priceai-edge] sleeping ${config.intervalSeconds}s`);
     await delay(config.intervalSeconds * 1000);
   } while (true);
@@ -133,7 +136,8 @@ async function runCycle(startedAt = new Date().toISOString()) {
       const startedAt = Date.now();
 
       try {
-        const collectedOffers = dedupeOffers(await collectShopApi(target));
+        const collection = await collectShopApi(target);
+        const collectedOffers = dedupeOffers(collection.offers);
         const status = collectedOffers.length ? "success" : "failed";
         const message = collectedOffers.length
           ? `Edge collector found ${collectedOffers.length} offers.`
@@ -141,6 +145,8 @@ async function runCycle(startedAt = new Date().toISOString()) {
 
         await postCrawlRun(target, status, message, collectedOffers, {
           durationMs: Date.now() - startedAt,
+          fullSnapshot: status === "success" && collection.fullSnapshot,
+          partialReason: collection.partialReason || null,
         });
 
         if (status === "success") {
@@ -211,11 +217,16 @@ async function fetchTasks(options = {}) {
 }
 
 async function collectShopApi(target) {
-  const tokens = await discoverShopTokens(target);
+  const discovery = await discoverShopTokens(target);
+  const tokens = discovery.tokens;
   const offers = [];
+  const partialReasons = [];
 
   if (!tokens.length) {
     throw new Error("No shop token found. Need /shop/<token> URL or existing /item/<goods_key> URL.");
+  }
+  if (discovery.capped) {
+    partialReasons.push(`Token discovery reached ${MAX_DISCOVERED_TOKENS} tokens; snapshot may be incomplete.`);
   }
 
   for (const token of tokens) {
@@ -242,7 +253,7 @@ async function collectShopApi(target) {
         : [];
 
     for (const categoryId of categoryIds) {
-      for (let page = 1; page <= 10; page += 1) {
+      for (let page = 1; page <= MAX_CATEGORY_PAGES; page += 1) {
         await delay(config.pageDelayMs);
         const listPayload = await postJson(
           `${target.baseUrl}/shopApi/Shop/goodsList`,
@@ -258,6 +269,9 @@ async function collectShopApi(target) {
         );
         const items = Array.isArray(listPayload.data?.list) ? listPayload.data.list : [];
         if (!items.length) break;
+        if (page === MAX_CATEGORY_PAGES && items.length >= 100) {
+          partialReasons.push(`Category ${categoryId} reached page cap ${MAX_CATEGORY_PAGES}.`);
+        }
 
         for (const item of items) {
           const title = cleanText(item.name);
@@ -293,11 +307,16 @@ async function collectShopApi(target) {
     }
   }
 
-  return offers;
+  return {
+    offers,
+    fullSnapshot: partialReasons.length === 0,
+    partialReason: partialReasons.join(" "),
+  };
 }
 
 async function discoverShopTokens(target) {
   const tokens = new Set();
+  let capped = false;
   const entryToken = shopTokenFromUrl(target.sourceUrl);
   if (entryToken) tokens.add(entryToken);
 
@@ -314,10 +333,16 @@ async function discoverShopTokens(target) {
 
     const token = payload?.data?.user?.token;
     if (token) tokens.add(String(token));
-    if (tokens.size >= 3) break;
+    if (tokens.size >= MAX_DISCOVERED_TOKENS) {
+      capped = true;
+      break;
+    }
   }
 
-  return Array.from(tokens);
+  return {
+    tokens: Array.from(tokens),
+    capped,
+  };
 }
 
 async function postCrawlRun(target, status, message, offers, extraDetails = {}) {
@@ -341,7 +366,7 @@ async function postCrawlRun(target, status, message, offers, extraDetails = {}) 
         version: VERSION,
         family: config.family,
       },
-      fullSnapshot: status === "success",
+      fullSnapshot: false,
       ...extraDetails,
     },
   };

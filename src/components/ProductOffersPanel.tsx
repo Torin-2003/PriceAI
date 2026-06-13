@@ -29,6 +29,7 @@ type ProductOffersResponse = {
 
 const OFFER_PAGE_SIZE = 80;
 const PRODUCT_OFFERS_CACHE_TTL_MS = 2 * 60 * 1000;
+const PRODUCT_OFFERS_MEMORY_CACHE_LIMIT = 40;
 const TELEGRAM_COMMUNITY_URL = "https://t.me/priceaicc";
 const productOffersMemoryCache = new Map<string, ProductOffersResponse>();
 
@@ -65,6 +66,8 @@ export function ProductOffersPanel({
   const offerExcludeQueryKey = offerExcludeQuery.trim();
   const initialFilterKey = normalizedInitialFilterTags.join(",");
   const initialCacheKey = productOffersCacheKey(productId, 0, normalizedInitialFilterTags, normalizedInitialQuery, normalizedInitialExcludeQuery);
+  const activeCacheKey = productOffersCacheKey(productId, 0, selectedFilterTags, offerQueryKey, offerExcludeQueryKey);
+  const activeCacheKeyRef = useRef(activeCacheKey);
   const cachedInitialData = newestGeneratedDataset(productOffersMemoryCache.get(initialCacheKey), initialData);
   const [data, setData] = useState<ProductOffersResponse | null>(cachedInitialData);
   const [loading, setLoading] = useState(!cachedInitialData);
@@ -72,9 +75,36 @@ export function ProductOffersPanel({
   const [error, setError] = useState<string | null>(null);
   const [feedbackOffer, setFeedbackOffer] = useState<RawOffer | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const isDesktop = useMediaQuery("(min-width: 768px)");
 
   useEffect(() => {
-    const filterTags = parseOfferFilterTags(selectedFilterTags);
+    activeCacheKeyRef.current = activeCacheKey;
+  }, [activeCacheKey]);
+
+  useEffect(() => {
+    const urlFilters = readOfferFiltersFromUrl();
+    if (!urlFilters) return;
+
+    const nextFilterTags = parseOfferFilterTags(urlFilters.tags);
+    const nextQuery = normalizeOfferSearchQuery(urlFilters.query);
+    const nextExcludeQuery = normalizeOfferSearchQuery(urlFilters.excludeQuery, 160);
+    const hasUrlFilters = nextFilterTags.length > 0 || Boolean(nextQuery || nextExcludeQuery);
+    if (!hasUrlFilters) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      setSelectedFilterTags(nextFilterTags);
+      setQueryInput(nextQuery);
+      setExcludeInput(nextExcludeQuery);
+      setOfferQuery(nextQuery);
+      setOfferExcludeQuery(nextExcludeQuery);
+      setSearchOpen(true);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
+  useEffect(() => {
+    const filterTags = parseOfferFilterTags(selectedFilterKey);
     const query = normalizeOfferSearchQuery(offerQuery);
     const excludeQuery = normalizeOfferSearchQuery(offerExcludeQuery, 160);
     const cacheKey = productOffersCacheKey(productId, 0, filterTags, query, excludeQuery);
@@ -93,7 +123,7 @@ export function ProductOffersPanel({
       );
 
       if (cachedData) {
-        productOffersMemoryCache.set(cacheKey, cachedData);
+        rememberProductOffers(cacheKey, cachedData);
         writeSessionCache(cacheKey, cachedData);
         setData(cachedData);
         setLoading(false);
@@ -103,6 +133,7 @@ export function ProductOffersPanel({
       } else {
         setLoading(true);
       }
+      setPaging(false);
 
       const timeout = createTimeoutSignal();
       cancelRefresh = timeout.cancel;
@@ -111,7 +142,7 @@ export function ProductOffersPanel({
         const nextData = await fetchProductOfferPage(productId, 0, filterTags, query, excludeQuery, timeout.signal);
         if (!active) return;
         const latestData = newestGeneratedDataset(nextData, productOffersMemoryCache.get(cacheKey)) ?? nextData;
-        productOffersMemoryCache.set(cacheKey, latestData);
+        rememberProductOffers(cacheKey, latestData);
         writeSessionCache(cacheKey, latestData);
         setData(latestData);
         setError(null);
@@ -144,7 +175,6 @@ export function ProductOffersPanel({
     offerQuery,
     productId,
     selectedFilterKey,
-    selectedFilterTags,
   ]);
 
   const offers = data?.offers ?? [];
@@ -158,13 +188,16 @@ export function ProductOffersPanel({
     const filterTags = parseOfferFilterTags(selectedFilterTags);
     const query = normalizeOfferSearchQuery(offerQuery);
     const excludeQuery = normalizeOfferSearchQuery(offerExcludeQuery, 160);
+    const requestCacheKey = productOffersCacheKey(productId, 0, filterTags, query, excludeQuery);
 
     setPaging(true);
     setError(null);
 
     try {
       const nextPage = await fetchProductOfferPage(productId, offers.length, filterTags, query, excludeQuery);
+      if (activeCacheKeyRef.current !== requestCacheKey) return;
       setData((current) => {
+        if (activeCacheKeyRef.current !== requestCacheKey) return current;
         if (!current) return nextPage;
 
         const seen = new Set(current.offers.map((offer) => offer.id));
@@ -178,15 +211,16 @@ export function ProductOffersPanel({
         };
 
         const cacheKey = productOffersCacheKey(productId, 0, filterTags, query, excludeQuery);
-        productOffersMemoryCache.set(cacheKey, mergedData);
+        rememberProductOffers(cacheKey, mergedData);
         writeSessionCache(cacheKey, mergedData);
 
         return mergedData;
       });
     } catch (currentError) {
+      if (activeCacheKeyRef.current !== requestCacheKey) return;
       setError(currentError instanceof Error ? currentError.message : "报价加载失败");
     } finally {
-      setPaging(false);
+      if (activeCacheKeyRef.current === requestCacheKey) setPaging(false);
     }
   }, [data, offerExcludeQuery, offerQuery, offers.length, paging, productId, selectedFilterTags, total]);
 
@@ -211,12 +245,10 @@ export function ProductOffersPanel({
   }, [hasMore, loadMoreOffers]);
 
   const handleToggleFilterTag = useCallback((tagId: OfferFilterTagId) => {
-    setSelectedFilterTags((current) => {
-      const nextTags = toggleOfferFilterTag(current, tagId);
-      syncOfferFiltersToUrl(nextTags, offerQuery, offerExcludeQuery);
-      return nextTags;
-    });
-  }, [offerExcludeQuery, offerQuery]);
+    const nextTags = toggleOfferFilterTag(selectedFilterTags, tagId);
+    setSelectedFilterTags(nextTags);
+    syncOfferFiltersToUrl(nextTags, offerQuery, offerExcludeQuery);
+  }, [offerExcludeQuery, offerQuery, selectedFilterTags]);
 
   const handleSearchSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -246,7 +278,7 @@ export function ProductOffersPanel({
     );
   }
 
-  if (error) {
+  if (error && !data) {
     return (
       <div className="mt-6 rounded-lg bg-[#fff7e8] px-5 py-4 text-sm font-medium text-[#6a4b16]">
         {error}
@@ -258,6 +290,9 @@ export function ProductOffersPanel({
     <>
       {data?.degraded ? (
         <DegradedBanner message={data.message} />
+      ) : null}
+      {error ? (
+        <InlineErrorBanner message={error} />
       ) : null}
       <OfferFilterBar
         facets={filterFacets}
@@ -277,14 +312,15 @@ export function ProductOffersPanel({
       {loading ? (
         <OfferTableSkeleton count={Math.min(Math.max(total, 3), 6)} />
       ) : offers.length ? (
-        <>
-          <OfferTable offers={offers} onFeedback={setFeedbackOffer} />
+        isDesktop === false ? (
           <section className="mt-5 grid gap-3 md:hidden">
             {offers.map((offer, index) => (
               <OfferListItem key={offerRowKey(offer, index)} offer={offer} onFeedback={setFeedbackOffer} />
             ))}
           </section>
-        </>
+        ) : (
+          <OfferTable offers={offers} onFeedback={setFeedbackOffer} />
+        )
       ) : (
         <EmptyOfferFilterState onClear={clearOfferFilters} />
       )}
@@ -317,6 +353,14 @@ function DegradedBanner({ message }: { message?: string | null }) {
   return (
     <div className="mt-6 rounded-lg bg-[#fff2ef] px-5 py-4 text-sm text-[#7b2f26] ring-1 ring-[#efd0ca]">
       {message || "真实报价数据暂时不可用，请稍后刷新。"}
+    </div>
+  );
+}
+
+function InlineErrorBanner({ message }: { message: string }) {
+  return (
+    <div className="mt-4 rounded-lg bg-[#fff7e8] px-4 py-3 text-sm font-medium text-[#6a4b16] ring-1 ring-[#efdfbd]">
+      {message}。已保留当前报价，可稍后重试或切换筛选条件。
     </div>
   );
 }
@@ -355,8 +399,30 @@ function productOffersCacheKey(
   return `priceai:product-offers:v6:${productId}:${offset}:${OFFER_PAGE_SIZE}:${filterTags.join(",") || "all"}:${query || "none"}:${excludeQuery || "none"}`;
 }
 
+function rememberProductOffers(cacheKey: string, value: ProductOffersResponse) {
+  productOffersMemoryCache.delete(cacheKey);
+  productOffersMemoryCache.set(cacheKey, value);
+
+  while (productOffersMemoryCache.size > PRODUCT_OFFERS_MEMORY_CACHE_LIMIT) {
+    const oldestKey = productOffersMemoryCache.keys().next().value;
+    if (!oldestKey) break;
+    productOffersMemoryCache.delete(oldestKey);
+  }
+}
+
 function normalizeOfferSearchQuery(value: string, limit = 80): string {
   return value.trim().slice(0, limit);
+}
+
+function readOfferFiltersFromUrl(): { tags: string | null; query: string; excludeQuery: string } | null {
+  if (typeof window === "undefined") return null;
+
+  const params = new URL(window.location.href).searchParams;
+  return {
+    tags: params.get("tags"),
+    query: params.get("q") || "",
+    excludeQuery: params.get("exclude") || "",
+  };
 }
 
 function syncOfferFiltersToUrl(filterTags: OfferFilterTagId[], query: string, excludeQuery: string) {
@@ -643,53 +709,19 @@ function TableHead({ children, className = "" }: { children: React.ReactNode; cl
 
 function OfferSourceTitle({ title, mode }: { title: string; mode: "table" | "card" }) {
   const [expanded, setExpanded] = useState(false);
-  const [canExpand, setCanExpand] = useState(false);
-  const titleRef = useRef<HTMLElement | null>(null);
-  const setTitleNode = useCallback((node: HTMLElement | null) => {
-    titleRef.current = node;
-  }, []);
-
-  useEffect(() => {
-    if (expanded) return;
-
-    const node = titleRef.current;
-    if (!node) {
-      setCanExpand(false);
-      return;
-    }
-
-    let frame = 0;
-    const measure = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        setCanExpand(node.scrollHeight > node.clientHeight + 1);
-      });
-    };
-
-    measure();
-
-    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    resizeObserver?.observe(node);
-    window.addEventListener("resize", measure);
-
-    return () => {
-      cancelAnimationFrame(frame);
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [canExpand, expanded, mode, title]);
+  const canExpand = title.length > (mode === "table" ? 42 : 34);
 
   if (!canExpand) {
     if (mode === "table") {
       return (
-        <span ref={setTitleNode} className="block line-clamp-2 leading-6 text-[#2d3435]" aria-label={`原始商品名：${title}`}>
+        <span className="block line-clamp-2 leading-6 text-[#2d3435]" aria-label={`原始商品名：${title}`}>
           {title}
         </span>
       );
     }
 
     return (
-      <p ref={setTitleNode} className="mt-1 line-clamp-2 text-sm leading-6 text-[#5a6061]">
+      <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#5a6061]">
         {title}
       </p>
     );
@@ -704,7 +736,7 @@ function OfferSourceTitle({ title, mode }: { title: string; mode: "table" | "car
         aria-label={`${expanded ? "收起" : "展开"}原始商品名：${title}`}
         className="group/title block w-full rounded-md text-left text-[#2d3435] transition hover:text-[#202829] focus:outline-none focus:ring-2 focus:ring-[#adb3b4]/30"
       >
-        <span ref={setTitleNode} className={expanded ? "block whitespace-normal break-words leading-6" : "line-clamp-2 leading-6"}>
+        <span className={expanded ? "block whitespace-normal break-words leading-6" : "line-clamp-2 leading-6"}>
           {title}
         </span>
         <span className={`mt-1 items-center gap-1 text-xs font-semibold text-[#47657a] ${
@@ -725,7 +757,7 @@ function OfferSourceTitle({ title, mode }: { title: string; mode: "table" | "car
       aria-label={`${expanded ? "收起" : "展开"}原始商品名：${title}`}
       className="mt-1 block w-full rounded-md text-left text-sm leading-6 text-[#5a6061] transition hover:text-[#2d3435] focus:outline-none focus:ring-2 focus:ring-[#adb3b4]/30"
     >
-      <span ref={setTitleNode} className={expanded ? "block" : "line-clamp-2"}>{title}</span>
+      <span className={expanded ? "block" : "line-clamp-2"}>{title}</span>
       <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-[#47657a]">
         {expanded ? "收起" : "展开完整名称"}
         {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
@@ -750,6 +782,22 @@ function OfferRelativeTime({ value }: { value: string | null | undefined }) {
   const mounted = useClientHydrated();
 
   return <span suppressHydrationWarning>{mounted ? formatRelativeTime(value) : formatDateMinute(value)}</span>;
+}
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(query);
+    const updateMatches = () => setMatches(mediaQuery.matches);
+
+    updateMatches();
+    mediaQuery.addEventListener("change", updateMatches);
+
+    return () => mediaQuery.removeEventListener("change", updateMatches);
+  }, [query]);
+
+  return matches;
 }
 
 function useClientHydrated(): boolean {
@@ -865,6 +913,22 @@ export function OfferFeedbackDialog({
   const [contact, setContact] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const titleId = "offer-feedback-dialog-title";
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -913,15 +977,21 @@ export function OfferFeedbackDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#202829]/35 px-4 py-4 sm:items-center">
-      <div className="max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-5 shadow-[0_24px_80px_rgba(32,40,41,0.22)]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-5 shadow-[0_24px_80px_rgba(32,40,41,0.22)]"
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="font-serif text-xl font-semibold text-[#202829]">反馈报价问题</h3>
+            <h3 id={titleId} className="font-serif text-xl font-semibold text-[#202829]">反馈报价问题</h3>
             <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#5a6061]">{offer.sourceTitle}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
+            aria-label="关闭反馈弹窗"
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#adb3b4]/25 text-[#5a6061] transition hover:bg-[#f2f4f4]"
           >
             <X size={16} />

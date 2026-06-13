@@ -30,34 +30,12 @@ export async function GET() {
   }
 
   try {
-    const [latestSuccessResult, latestRunResult] = await Promise.all([
-      supabase
-        .from("crawl_runs")
-        .select("finished_at,started_at")
-        .eq("status", "success")
-        .order("finished_at", { ascending: false, nullsFirst: false })
-        .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from("crawl_runs")
-        .select("status,finished_at,started_at")
-        .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]);
+    const { error } = await supabase
+      .from("sources")
+      .select("id", { head: true })
+      .limit(1);
 
-    if (latestSuccessResult.error) throw latestSuccessResult.error;
-    if (latestRunResult.error) throw latestRunResult.error;
-
-    const latestSuccessfulCrawlAt =
-      latestSuccessResult.data?.finished_at ||
-      latestSuccessResult.data?.started_at ||
-      null;
-    const latestCrawlAt =
-      latestRunResult.data?.finished_at ||
-      latestRunResult.data?.started_at ||
-      null;
+    if (error) throw error;
 
     return NextResponse.json({
       ok: true,
@@ -65,9 +43,9 @@ export async function GET() {
       generatedAt,
       supabaseConfigured,
       supabaseReachable: true,
-      latestSuccessfulCrawlAt,
-      latestCrawlAt,
-      latestCrawlStatus: latestRunResult.data?.status || null,
+      latestSuccessfulCrawlAt: null,
+      latestCrawlAt: null,
+      latestCrawlStatus: null,
       message: null,
     });
   } catch (error) {

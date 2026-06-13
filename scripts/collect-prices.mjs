@@ -189,6 +189,7 @@ export async function runPriceCollection(options = {}) {
 
 async function collectOneTarget(target, options, logger, lockOwner, familyState, writeQueue = null) {
   const startedAt = Date.now();
+  const collectionStartedAt = new Date(startedAt).toISOString();
   const skipped = (message) => ({
     sourceId: target.sourceId,
     source: target.sourceName,
@@ -229,6 +230,7 @@ async function collectOneTarget(target, options, logger, lockOwner, familyState,
 
   try {
     const collection = await collectTargetWithRetries(target, options, logger);
+    const collectedAt = new Date().toISOString();
     const offers = collection.offers;
     const status = offers.length ? "success" : "failed";
     const message = offers.length
@@ -239,6 +241,8 @@ async function collectOneTarget(target, options, logger, lockOwner, familyState,
 
     if (options.post) {
       const posted = await postCrawlLogBatched(target, offers, status, message, options, {
+        collectionStartedAt,
+        collectedAt,
         attempts: collection.attempts,
         maxAttempts: collection.maxAttempts,
       }, writeQueue);
@@ -265,6 +269,7 @@ async function collectOneTarget(target, options, logger, lockOwner, familyState,
       ms: Date.now() - startedAt,
     };
   } catch (error) {
+    const collectedAt = new Date().toISOString();
     const message = errorMessage(error);
     const attempts = Array.isArray(error?.attempts) ? error.attempts : [];
     logger?.error(`Failed: ${message}`);
@@ -272,6 +277,8 @@ async function collectOneTarget(target, options, logger, lockOwner, familyState,
 
     if (options.post) {
       await postCrawlLog(target, [], "failed", message, options, {
+        collectionStartedAt,
+        collectedAt,
         attempts,
         maxAttempts: maxAttemptsFor(options),
       }).catch((postError) => {
@@ -1685,7 +1692,8 @@ async function postCrawlLog(target, offers, status, message, options = {}, detai
 async function postCrawlLogBatched(target, offers, status, message, options = {}, details = {}, writeQueue = null) {
   const runs = crawlLogPayloadsFor(target, offers, status, message, options, details);
 
-  if (writeQueue) {
+  const canQueue = runs.every((run) => run.status === "success" || run.status === "partial");
+  if (writeQueue && canQueue) {
     writeQueue.enqueue(runs, { sourceId: target.sourceId, sourceName: target.sourceName });
     return { ok: true, queued: true, successCount: offers.length };
   }
@@ -1710,6 +1718,7 @@ async function postSkippedCrawlLog(target, skip, options = {}, writeQueue = null
   if (!options.post) return;
 
   await postCrawlLogBatched(target, [], "skipped", skip.message, options, {
+    collectedAt: new Date().toISOString(),
     skip: {
       reason: skip.reason || "family_protection",
       family: skip.family || null,
@@ -1717,7 +1726,7 @@ async function postSkippedCrawlLog(target, skip, options = {}, writeQueue = null
       limit: skip.limit ?? null,
       startedCount: skip.startedCount ?? null,
     },
-  }, writeQueue).catch((error) => {
+  }, null).catch((error) => {
     logger?.error(`Failed to post skipped log: ${errorMessage(error)}`);
   });
 }

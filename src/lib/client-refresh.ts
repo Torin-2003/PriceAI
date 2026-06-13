@@ -1,6 +1,6 @@
 "use client";
 
-const DEFAULT_STALE_AFTER_MS = 2 * 60 * 1000;
+const DEFAULT_STALE_AFTER_MS = 30 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 4_000;
 
 type GeneratedDataset = {

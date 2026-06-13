@@ -1,3 +1,6 @@
+import { getAdminPasswordFromRequest } from "@/lib/admin";
+import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
+import { requireAdminOrCronPassword } from "@/lib/env";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { stableId } from "@/lib/utils";
 
@@ -20,6 +23,19 @@ export async function enqueueOfficialPriceCollectionJob(
   }
 
   try {
+    const existingJob = await findExistingOfficialPriceJob(officialMode);
+    if (existingJob) {
+      return Response.json({
+        ok: true,
+        mode: officialMode,
+        skipped: true,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        job: existingJob,
+        message: "已有待处理的官方地区价采集任务，已跳过重复入队。",
+      });
+    }
+
     const row = {
       id: stableId("collection-job", "official_prices", officialMode, startedAt),
       job_type: "official_prices",
@@ -51,12 +67,13 @@ export async function enqueueOfficialPriceCollectionJob(
       job: data || row,
     });
   } catch (error) {
+    logApiError("official price job enqueue", error);
     return Response.json(
       {
         ok: false,
         startedAt,
         finishedAt: new Date().toISOString(),
-        message: error instanceof Error ? error.message : "创建官方地区价采集任务失败。",
+        message: safeApiErrorMessage(error, "创建官方地区价采集任务失败。"),
       },
       { status: 500 },
     );
@@ -70,21 +87,35 @@ export function officialModeFromRequest(request: Request): OfficialPriceJobMode 
 }
 
 function authorizeCronRequest(request: Request) {
-  const secret = process.env.CRON_SECRET;
-  const adminPassword = process.env.ADMIN_PASSWORD;
-
-  if (!secret && process.env.NODE_ENV === "production") {
+  if (!process.env.CRON_SECRET && process.env.NODE_ENV === "production") {
     return Response.json(
       { ok: false, message: "CRON_SECRET 未配置，已拒绝创建官方地区价采集任务。" },
       { status: 500 },
     );
   }
 
-  const authorization = request.headers.get("authorization");
-  if (secret && authorization === `Bearer ${secret}`) return null;
+  try {
+    requireAdminOrCronPassword(getAdminPasswordFromRequest(request));
+    return null;
+  } catch {
+    return Response.json({ ok: false, message: "无权创建官方地区价采集任务。" }, { status: 401 });
+  }
+}
 
-  const adminHeader = request.headers.get("x-admin-password");
-  if (adminPassword && adminHeader === adminPassword) return null;
+async function findExistingOfficialPriceJob(officialMode: OfficialPriceJobMode): Promise<Record<string, unknown> | null> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return null;
 
-  return Response.json({ ok: false, message: "无权创建官方地区价采集任务。" }, { status: 401 });
+  const { data, error } = await supabase
+    .from("collection_jobs")
+    .select("*")
+    .eq("job_type", "official_prices")
+    .in("status", ["pending", "running"])
+    .contains("result", { officialMode })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as Record<string, unknown> | null;
 }

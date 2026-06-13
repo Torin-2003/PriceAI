@@ -17,7 +17,6 @@ import {
   type OfficialPricesDataset,
 } from "@/lib/official-prices";
 import { getOfficialPricesDataset } from "@/lib/official-prices-db";
-import { parseOfferFilterTags } from "@/lib/offer-filter-tags";
 import { getProductSeoProfile, shouldNoIndexProduct, type ProductSeoProfile } from "@/lib/product-seo";
 import type { ExplorerProductSummary, RawOffer } from "@/lib/types";
 import { formatCurrency, formatRelativeTime } from "@/lib/utils";
@@ -87,30 +86,19 @@ const productTypeLabels: Record<string, string> = {
   工具账号: "工具账号",
   其他: "其他",
 };
-const STRUCTURED_DATA_OFFER_LIMIT = 1200;
 
 export default async function ProductDetail({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
-  const resolvedSearchParams = searchParams ? await searchParams : {};
-  const initialFilterTags = parseOfferFilterTags(resolvedSearchParams.tags);
-  const initialOfferQuery = searchParamText(resolvedSearchParams.q);
-  const initialExcludeQuery = searchParamText(resolvedSearchParams.exclude, 160);
-  const [product, initialOffers, structuredDataOffers, officialPricesDataset] = await Promise.all([
+  const [product, initialOffers, officialPricesDataset] = await Promise.all([
     getPublicProductSummary(id),
     listPublicProductOffers(id, {
       limit: 80,
       offset: 0,
-      filterTags: initialFilterTags,
-      query: initialOfferQuery,
-      excludeQuery: initialExcludeQuery,
     }),
-    listPublicProductOffers(id, { limit: STRUCTURED_DATA_OFFER_LIMIT, offset: 0 }),
     getOfficialPricesDataset(),
   ]);
 
@@ -121,7 +109,7 @@ export default async function ProductDetail({
 
   return (
     <>
-    <JsonLd data={buildProductJsonLd(product, structuredDataOffers.offers, officialReference, seoProfile)} />
+    <JsonLd data={buildProductJsonLd(product, initialOffers.offers, officialReference, seoProfile)} />
     <main className="min-h-screen bg-[#f9f9f9] text-[#2d3435]">
       <ProductDetailHeader />
 
@@ -167,9 +155,6 @@ export default async function ProductDetail({
           productName={product.displayName}
           initialCount={product.offerCount}
           initialData={initialOffers}
-          initialFilterTags={initialFilterTags}
-          initialQuery={initialOfferQuery}
-          initialExcludeQuery={initialExcludeQuery}
         />
 
         <ProductRelatedCta product={product} />
@@ -181,10 +166,6 @@ export default async function ProductDetail({
     </main>
     </>
   );
-}
-
-function searchParamText(value: string | string[] | undefined, limit = 80): string {
-  return String(Array.isArray(value) ? value[0] || "" : value || "").trim().slice(0, limit);
 }
 
 type OfficialPriceReference = {

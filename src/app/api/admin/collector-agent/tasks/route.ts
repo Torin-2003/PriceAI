@@ -1,10 +1,12 @@
 import { getAdminPasswordFromRequest } from "@/lib/admin";
+import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { requireAdminOrCronPassword } from "@/lib/env";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { z } from "zod";
 
 const DEFAULT_LIMIT = 3;
 const MAX_LIMIT = 20;
+const DEFAULT_COOLDOWN_MINUTES = 25;
 const FAMILY_HOSTS: Record<string, string[]> = {
   "liandong-shop": ["pay.ldxp.cn", "ldxp.cn"],
   ldxp: ["pay.ldxp.cn", "ldxp.cn"],
@@ -36,6 +38,7 @@ export async function GET(request: Request) {
     }
 
     const hostCandidates = familyHosts(query.family);
+    const generatedAt = new Date().toISOString();
     const staleBefore = query.staleBefore ? new Date(query.staleBefore).toISOString() : null;
     const excludedSourceIds = new Set(
       (query.excludeSourceIds || "")
@@ -64,6 +67,7 @@ export async function GET(request: Request) {
     const selectedSources = (sources || [])
       .filter((source) => source.collection_method !== "public_json")
       .filter((source) => !excludedSourceIds.has(String(source.id)))
+      .filter((source) => !sourceWithinCooldown(source.last_checked_at, generatedAt))
       .filter((source) => {
         const sourceUrl = String(source.entry_url || source.base_url || "");
         const baseUrl = String(source.base_url || deriveBaseUrl(sourceUrl) || "");
@@ -74,6 +78,7 @@ export async function GET(request: Request) {
       })
       .slice(0, query.limit);
 
+    await markSourcesDispatched(selectedSources.map((source) => String(source.id)), generatedAt);
     const rawOfferUrlsBySource = await loadRawOfferUrlsBySource(selectedSources.map((source) => String(source.id)));
     const tasks = selectedSources.map((source) => {
       const sourceUrl = String(source.entry_url || source.base_url || "");
@@ -92,7 +97,7 @@ export async function GET(request: Request) {
 
     return Response.json({
       ok: true,
-      generatedAt: new Date().toISOString(),
+      generatedAt,
       kind: query.kind,
       family: query.family,
       limit: query.limit,
@@ -100,12 +105,35 @@ export async function GET(request: Request) {
       tasks,
     });
   } catch (error) {
-    const status = error instanceof z.ZodError ? 400 : 500;
+    const status = error instanceof z.ZodError ? 400 : isUnauthorizedError(error) ? 401 : 500;
+    logApiError("collector agent tasks", error);
     return Response.json(
-      { ok: false, message: error instanceof Error ? error.message : "下发采集任务失败。" },
+      {
+        ok: false,
+        message: status === 500
+          ? "下发采集任务失败。"
+          : safeApiErrorMessage(error, "下发采集任务失败。"),
+      },
       { status },
     );
   }
+}
+
+async function markSourcesDispatched(sourceIds: string[], checkedAt: string): Promise<void> {
+  if (!sourceIds.length) return;
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return;
+
+  const { error } = await supabase
+    .from("sources")
+    .update({
+      last_checked_at: checkedAt,
+      updated_at: checkedAt,
+    })
+    .in("id", sourceIds);
+
+  if (error) throw error;
 }
 
 async function loadRawOfferUrlsBySource(sourceIds: string[]): Promise<Map<string, string[]>> {
@@ -119,6 +147,8 @@ async function loadRawOfferUrlsBySource(sourceIds: string[]): Promise<Map<string
     .from("raw_offers")
     .select("source_id,url")
     .in("source_id", sourceIds)
+    .eq("hidden", false)
+    .order("last_seen_at", { ascending: false, nullsFirst: false })
     .limit(1000);
 
   if (error) throw error;
@@ -133,6 +163,20 @@ async function loadRawOfferUrlsBySource(sourceIds: string[]): Promise<Map<string
   }
 
   return map;
+}
+
+function sourceWithinCooldown(value: unknown, nowIso: string): boolean {
+  if (!value) return false;
+
+  const checkedAt = new Date(String(value)).getTime();
+  const now = new Date(nowIso).getTime();
+  if (!Number.isFinite(checkedAt) || !Number.isFinite(now)) return false;
+
+  return now - checkedAt < DEFAULT_COOLDOWN_MINUTES * 60 * 1000;
+}
+
+function isUnauthorizedError(error: unknown): boolean {
+  return error instanceof Error && /未授权|无权|unauthorized/i.test(error.message);
 }
 
 function familyHosts(value: string): string[] | null {

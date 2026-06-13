@@ -4,7 +4,11 @@ set -euo pipefail
 ENDPOINT="${PRICEAI_ENDPOINT:-https://priceai.cc}"
 SCRIPT_URL="${PRICEAI_EDGE_COLLECTOR_SCRIPT_URL:-${ENDPOINT%/}/priceai-edge-collector.mjs}"
 TMP_DIR="${TMPDIR:-/tmp}"
-SCRIPT_PATH="$TMP_DIR/priceai-edge-collector.mjs"
+SCRIPT_PATH="$(mktemp "$TMP_DIR/priceai-edge-collector.XXXXXX.mjs")"
+cleanup() {
+  rm -f "$SCRIPT_PATH"
+}
+trap cleanup EXIT
 
 if ! command -v node >/dev/null 2>&1; then
   echo "PriceAI edge collector requires Node.js 18+." >&2
@@ -19,4 +23,4 @@ if [ "$NODE_MAJOR" -lt 18 ]; then
 fi
 
 curl -fsSL "$SCRIPT_URL" -o "$SCRIPT_PATH"
-exec node "$SCRIPT_PATH" "$@"
+node "$SCRIPT_PATH" "$@"

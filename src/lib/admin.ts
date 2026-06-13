@@ -34,6 +34,7 @@ import { normalizeStatus, parseTags, slugify, stableId } from "./utils";
 export const ADMIN_SOURCE_HIDE_REASON_PREFIX = "管理员手动下架渠道";
 export const ADMIN_OFFER_HIDE_REASON_PREFIX = "管理员手动下架报价";
 export const ADMIN_MANUAL_HIDE_REASON_PREFIX = "管理员手动下架";
+const UNCHANGED_OFFER_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1000;
 
 export type RawOfferUpsertResult = {
   receivedCount: number;
@@ -336,7 +337,7 @@ export async function upsertRawOffer(input: OfferInput & { sourceId?: string | n
 
 export async function upsertRawOffers(
   offers: OfferInput[],
-  options: { collectionMethod?: CollectionMethod } = {},
+  options: { collectionMethod?: CollectionMethod; checkedAt?: string } = {},
 ): Promise<RawOfferUpsertResult> {
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase 尚未配置，无法保存报价。");
@@ -346,7 +347,7 @@ export async function upsertRawOffers(
   const rows = [];
   const collectionMethod = options.collectionMethod || "browser";
   const sourceCache = new Map<string, Source>();
-  const checkedAt = new Date().toISOString();
+  const checkedAt = normalizedDateString(options.checkedAt) || new Date().toISOString();
 
   for (const offer of offers) {
     const sourceKey = offer.sourceId || `${offer.sourceName}|${offer.sourceUrl}|${collectionMethod}`;
@@ -414,10 +415,13 @@ export async function upsertRawOffers(
   const existingById = await getExistingOfferRowsById(rows.map((row) => String(row.id)));
   const changedRows = [];
   const unchangedRows = [];
+  const refreshRows = [];
 
   for (const row of rows) {
-    if (isRawOfferRowUnchanged(row, existingById.get(String(row.id)))) {
+    const existingRow = existingById.get(String(row.id));
+    if (isRawOfferRowUnchanged(row, existingRow)) {
       unchangedRows.push(row);
+      if (shouldRefreshUnchangedOffer(row, existingRow)) refreshRows.push(row);
     } else {
       changedRows.push(row);
     }
@@ -428,7 +432,7 @@ export async function upsertRawOffers(
     if (error) throw error;
   }
 
-  const refreshedCount = unchangedRows.length ? await refreshSeenRawOfferRows(unchangedRows) : 0;
+  const refreshedCount = refreshRows.length ? await refreshSeenRawOfferRows(refreshRows) : 0;
 
   return {
     receivedCount: rows.length,
@@ -446,7 +450,7 @@ async function getExistingOfferRowsById(ids: string[]): Promise<Map<string, Reco
   for (const idChunk of chunks(Array.from(new Set(ids)), 100)) {
     const { data, error } = await supabase
       .from("raw_offers")
-      .select("id,source_id,source_name,source_store_name,source_title,price,currency,status,url,tags,stock_count,hidden,canonical_product_id,category_slug,last_failed_at,failure_reason")
+      .select("id,source_id,source_name,source_store_name,source_title,price,currency,status,url,tags,stock_count,hidden,canonical_product_id,category_slug,last_seen_at,verified_at,updated_at,last_failed_at,failure_reason")
       .in("id", idChunk);
 
     if (error) throw error;
@@ -478,6 +482,16 @@ function isRawOfferRowUnchanged(next: Record<string, unknown>, existing?: Record
   ];
 
   return keys.every((key) => comparableValue(next[key]) === comparableValue(existing[key]));
+}
+
+function shouldRefreshUnchangedOffer(next: Record<string, unknown>, existing?: Record<string, unknown>): boolean {
+  if (!existing) return true;
+
+  const nextTime = timestampMs(next.last_seen_at || next.verified_at || next.updated_at);
+  const existingTime = timestampMs(existing.last_seen_at || existing.verified_at || existing.updated_at);
+  if (!nextTime || !existingTime) return true;
+
+  return nextTime - existingTime >= UNCHANGED_OFFER_REFRESH_INTERVAL_MS;
 }
 
 async function refreshSeenRawOfferRows(rows: Array<Record<string, unknown>>): Promise<number> {
@@ -523,6 +537,18 @@ async function refreshSeenRawOfferRows(rows: Array<Record<string, unknown>>): Pr
 
 function compactUndefined(input: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+}
+
+function timestampMs(value: unknown): number {
+  const time = new Date(String(value || "")).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function normalizedDateString(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return null;
+  return new Date(time).toISOString();
 }
 
 function comparableValue(value: unknown): string {

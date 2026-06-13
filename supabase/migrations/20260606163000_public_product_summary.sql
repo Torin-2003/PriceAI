@@ -1,5 +1,7 @@
 create index if not exists canonical_products_slug_idx on canonical_products(slug);
 
+drop function if exists get_public_product_summary(text);
+
 create or replace function get_public_product_summary(p_product_key text)
 returns table (
   id text,
