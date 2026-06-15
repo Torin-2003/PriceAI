@@ -101,6 +101,9 @@ export type ProductGroup = CanonicalProduct & {
   lowestPriceLabel: string;
   lowestPriceTone: "good" | "warn" | "info" | "muted" | "danger";
   lowestOffer: RawOffer | null;
+  warrantyLowestPrice: number | null;
+  warrantyLowestOffer: RawOffer | null;
+  warrantyOfferCount: number;
   latestSeenAt: string | null;
   anomalyFlags: string[];
 };

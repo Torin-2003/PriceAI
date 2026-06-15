@@ -53,6 +53,7 @@ export const platformPageConfigs = {
     productIds: [
       "chatgpt-free-account",
       "chatgpt-plus",
+      "chatgpt-go",
       "chatgpt-team-business",
       "chatgpt-pro-5x",
       "chatgpt-pro-20x",
@@ -82,6 +83,11 @@ export const platformPageConfigs = {
         title: "Plus",
         text: "最常见的月度会员，渠道标题里可能写直充、代充、Plus CDK、卡密、成品号、账号购买或自助开通。",
         icon: "check",
+      },
+      {
+        title: "Go",
+        text: "较低档的 ChatGPT 订阅权益，渠道里常见 Go 月卡、年卡、激活码、iOS 内购或直充。",
+        icon: "zap",
       },
       {
         title: "Pro",

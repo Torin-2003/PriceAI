@@ -101,6 +101,7 @@ function buildSuspiciousChecks(items) {
     "chatgpt-free-account",
     "chatgpt-plus",
     "chatgpt-plus-recharge",
+    "chatgpt-go",
     "chatgpt-team-business",
     "chatgpt-pro-5x",
     "chatgpt-pro-20x",
@@ -117,6 +118,32 @@ function buildSuspiciousChecks(items) {
     "grok-account",
   ]);
   const checks = [
+    {
+      key: "grok_super_maybe_account_infrastructure",
+      label: "Super Grok 中疑似普号/SSO/邮箱/API 基础设施",
+      expected: "grok-account",
+      filter: (offer) =>
+        offer.nextProductId === "super-grok" &&
+        /(普号|free|sso|长效微软邮箱|账号\s*sso|取邮件\s*api|适合\s*super)/i.test(offer.normalizedTitle) &&
+        !/(月卡|年卡|充值|直充|卡密|激活码|订阅|会员|heavy|3天号|三天号|体验卡|独享成品号)/i.test(offer.normalizedTitle),
+    },
+    {
+      key: "plus_maybe_api_transit_or_credit",
+      label: "Plus 中疑似中转/API/额度/号池",
+      expected: "openai-api-cdk",
+      filter: (offer) =>
+        offer.nextProductId === "chatgpt-plus" &&
+        /(中转\s*api|api\s*中转|中转站|中转余额|api.*额度|api.*余额|号池|总共\s*\d+\s*(刀|美元|美金)|老\s*plus\s*渠道|30天有效期)/i.test(offer.normalizedTitle) &&
+        !/(账号|成品号|首登|直登|月卡|会员|正规充值|官方|ios|内购|pix)/i.test(offer.normalizedTitle),
+    },
+    {
+      key: "other_maybe_chatgpt_go",
+      label: "其他中疑似 ChatGPT Go",
+      expected: "chatgpt-go",
+      filter: (offer) =>
+        offer.nextProductId === "other-product" &&
+        /(?:chatgpt|gpt)\s*go/i.test(offer.normalizedTitle),
+    },
     {
       key: "ai_product_maybe_standalone_verification",
       label: "订阅/账号中疑似独立接码服务",
@@ -202,6 +229,29 @@ function buildSuspiciousChecks(items) {
       filter: (offer) =>
         offer.nextProductId === "other-product" &&
         /(中转\s*api|中转api|api.*兑换码|\d+刀兑换码|codex\s*api.*\d+\s*刀\s*卡|api.*\d+\s*刀\s*卡|官方1:1|api\s*\|)/i.test(offer.normalizedTitle),
+    },
+    {
+      key: "token_non_api_review",
+      label: "Token/凭证 非 API 分类候选",
+      expected: "人工确认：账号自带凭证或 API/额度",
+      filter: (offer) =>
+        offer.nextProductId !== "openai-api-cdk" &&
+        /\btoken\b|access[_\s-]*token|refresh[_\s-]*token|令牌|凭证/i.test(offer.normalizedTitle),
+    },
+    {
+      key: "rt_api_credential_review",
+      label: "RT + API/sub2api/JSON 凭证候选",
+      expected: "人工确认：账号交付格式或 API/凭证包",
+      filter: (offer) =>
+        /(^|[^a-z])rt([^a-z]|$)|带rt|含rt|rt号|rt\s*号|rt凭证|rt\s*凭证/i.test(offer.normalizedTitle) &&
+        /(api|中转|额度|余额|号池|sub2api|sub2|cpa|json|兑换码|key|apikey)/i.test(offer.normalizedTitle),
+    },
+    {
+      key: "host_or_site_review",
+      label: "HOST/站点/镜像/中转站候选",
+      expected: "人工确认：API 中转或其他站点服务",
+      filter: (offer) =>
+        /\bhost\b|host口|host号|host池|hostname|镜像站|中转站/i.test(offer.normalizedTitle),
     },
   ];
 
@@ -332,10 +382,24 @@ async function loadCatalogModule() {
       isolatedModules: true,
       esModuleInterop: true,
     },
+  }).outputText.replace(/(["'])\.\/offer-filter-tags\1/g, "$1./offer-filter-tags.mjs$1");
+
+  const offerFilterTagsPath = path.join(repoRoot, "src", "lib", "offer-filter-tags.ts");
+  const offerFilterTagsSource = await readFile(offerFilterTagsPath, "utf8");
+  const offerFilterTagsOutput = ts.transpileModule(offerFilterTagsSource, {
+    fileName: offerFilterTagsPath,
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+      isolatedModules: true,
+      esModuleInterop: true,
+    },
   }).outputText;
 
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "priceai-catalog-audit-"));
   const tempFile = path.join(tempDir, "catalog.mjs");
+  const offerFilterTagsFile = path.join(tempDir, "offer-filter-tags.mjs");
+  await writeFile(offerFilterTagsFile, offerFilterTagsOutput, "utf8");
   await writeFile(tempFile, output, "utf8");
 
   try {

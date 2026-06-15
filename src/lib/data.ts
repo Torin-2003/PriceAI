@@ -775,6 +775,7 @@ function stripProductOffersForAdmin(product: ProductGroup): ProductGroup {
     ...product,
     offers: [],
     lowestOffer: null,
+    warrantyLowestOffer: null,
   };
 }
 
@@ -789,6 +790,9 @@ function makeEmptyProductGroup(product: CanonicalProduct): ProductGroup {
     lowestPriceLabel: "暂无价格",
     lowestPriceTone: "muted",
     lowestOffer: null,
+    warrantyLowestPrice: null,
+    warrantyLowestOffer: null,
+    warrantyOfferCount: 0,
     latestSeenAt: null,
     anomalyFlags: [],
   };
@@ -1762,6 +1766,9 @@ function mapPublicOfferProductRow(row: PublicOfferPageRow): ExplorerProductSumma
     lowestPriceLabel: "",
     lowestPriceTone: "muted",
     lowestOffer: null,
+    warrantyLowestPrice: null,
+    warrantyLowestOffer: null,
+    warrantyOfferCount: 0,
     latestSeenAt: null,
     anomalyFlags: [],
     offerSearchText: "",
@@ -1818,6 +1825,9 @@ function toExplorerProductSummary(product: DashboardData["products"][number]): E
     lowestPriceLabel: product.lowestPriceLabel,
     lowestPriceTone: product.lowestPriceTone,
     lowestOffer: product.lowestOffer,
+    warrantyLowestPrice: product.warrantyLowestPrice,
+    warrantyLowestOffer: product.warrantyLowestOffer,
+    warrantyOfferCount: product.warrantyOfferCount,
     latestSeenAt: product.latestSeenAt,
     anomalyFlags: product.anomalyFlags,
     offerSearchText: buildOfferSearchText(product.offers),
@@ -1827,6 +1837,9 @@ function toExplorerProductSummary(product: DashboardData["products"][number]): E
 function mapPublicProductSummaryRow(row: Record<string, unknown>): ExplorerProductSummary {
   const lowestOffer = row.lowest_offer && typeof row.lowest_offer === "object"
     ? mapRawOffer(row.lowest_offer as Record<string, unknown>)
+    : null;
+  const warrantyLowestOffer = row.warranty_lowest_offer && typeof row.warranty_lowest_offer === "object"
+    ? mapRawOffer(row.warranty_lowest_offer as Record<string, unknown>)
     : null;
   const inStockCount = Number(row.in_stock_count || 0);
   const outOfStockCount = Number(row.out_of_stock_count || 0);
@@ -1849,12 +1862,18 @@ function mapPublicProductSummaryRow(row: Record<string, unknown>): ExplorerProdu
     lowestPriceLabel: lowestOffer ? "有货" : "暂无有货价",
     lowestPriceTone: lowestOffer ? "good" : "muted",
     lowestOffer,
+    warrantyLowestPrice:
+      row.warranty_lowest_price === null || row.warranty_lowest_price === undefined
+        ? null
+        : Number(row.warranty_lowest_price),
+    warrantyLowestOffer,
+    warrantyOfferCount: Number(row.warranty_offer_count || 0),
     latestSeenAt: row.latest_seen_at ? String(row.latest_seen_at) : null,
     anomalyFlags: [
       ...(hasOutOfStock ? ["缺货"] : []),
       ...(!inStockCount && outOfStockCount ? ["全部缺货"] : []),
     ],
-    offerSearchText: "",
+    offerSearchText: String(row.offer_search_text || ""),
   };
 }
 

@@ -898,13 +898,14 @@ function ProductTable({
   return (
     <div className="overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
       <div className="overflow-x-auto">
-        <table className="min-w-[1040px] w-full border-collapse text-left text-sm">
+        <table className="min-w-[1160px] w-full border-collapse text-left text-sm">
           <thead className="bg-[#f2f4f4] text-[0.68rem] font-semibold text-[#5a6061]">
             <tr>
               <TableHead>标准商品</TableHead>
               <TableHead>平台</TableHead>
               <TableHead>类型</TableHead>
               <TableHead>最低价</TableHead>
+              <TableHead>质保最低价</TableHead>
               <TableHead>库存</TableHead>
               <TableHead>渠道</TableHead>
               <TableHead>最低渠道</TableHead>
@@ -950,6 +951,13 @@ function ProductTable({
                         {isAvailable ? "有货" : "缺货"}
                       </span>
                     </div>
+                  </td>
+                  <td className="px-5 py-4">
+                    <WarrantyLowestPrice
+                      product={product}
+                      returnQuery={returnQuery}
+                      mode="table"
+                    />
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-2">
@@ -1241,7 +1249,7 @@ function ProductTableSkeleton({ viewMode }: { viewMode: ViewMode }) {
             </div>
             <div className="divide-y divide-[#edf0f1]">
               {PRODUCT_SKELETON_ROWS.map((row) => (
-                <div key={row} className="grid min-h-[74px] grid-cols-[2fr_1fr_1fr_1fr_1fr] items-center gap-5 px-5 py-4">
+                <div key={row} className="grid min-h-[74px] grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] items-center gap-5 px-5 py-4">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-full bg-[#edf0f1]" />
                     <div className="space-y-2">
@@ -1249,6 +1257,7 @@ function ProductTableSkeleton({ viewMode }: { viewMode: ViewMode }) {
                       <div className="h-3 w-32 rounded-full bg-[#edf0f1]" />
                     </div>
                   </div>
+                  <div className="h-3.5 rounded-full bg-[#edf0f1]" />
                   <div className="h-3.5 rounded-full bg-[#edf0f1]" />
                   <div className="h-3.5 rounded-full bg-[#edf0f1]" />
                   <div className="h-3.5 rounded-full bg-[#edf0f1]" />
@@ -1315,6 +1324,12 @@ function ProductCard({
           </span>
         </div>
       </div>
+
+      <WarrantyLowestPrice
+        product={product}
+        returnQuery={returnQuery}
+        mode="card"
+      />
 
       <div className="mt-5 flex flex-wrap gap-2 text-xs">
         <CountBadge tone="good">有货 {product.inStockCount}</CountBadge>
@@ -1385,6 +1400,11 @@ function MobileProductCard({
           <p className="mt-1 truncate text-xs text-[#5a6061]">
             {previewOffer?.sourceStoreName || previewOffer?.sourceName || "暂无最低渠道"} · <RelativeTime value={product.latestSeenAt} />
           </p>
+          <WarrantyLowestPrice
+            product={product}
+            returnQuery={returnQuery}
+            mode="mobile"
+          />
         </div>
         <Link
           href={productHref}
@@ -1406,6 +1426,79 @@ function MobileProductCard({
         <p className="mt-3 line-clamp-1 text-xs leading-5 text-[#5a6061]">{previewOffer.sourceTitle}</p>
       ) : null}
     </article>
+  );
+}
+
+function WarrantyLowestPrice({
+  product,
+  returnQuery,
+  mode,
+}: {
+  product: ExplorerProductSummary;
+  returnQuery: string;
+  mode: "table" | "card" | "mobile";
+}) {
+  const warrantyOffer = product.warrantyLowestOffer;
+  const hasWarrantyPrice = product.warrantyLowestPrice !== null && warrantyOffer;
+  const href = `${productDetailHref(product.slug, returnQuery)}&tags=warranty_long`;
+
+  if (mode === "table") {
+    if (!hasWarrantyPrice) {
+      return (
+        <span
+          title="暂无明确长期质保报价"
+          className="text-sm font-semibold text-[#9aa2a3]"
+        >
+          -
+        </span>
+      );
+    }
+
+    return (
+      <Link
+        href={href}
+        onClick={() => trackProductDetailOpen(product)}
+        title="查看长期质保报价"
+        className="group inline-flex flex-col gap-1"
+      >
+        <span className="text-lg font-bold text-[#202829] group-hover:text-[#5e5e5e]">
+          {formatCurrency(product.warrantyLowestPrice, warrantyOffer.currency)}
+        </span>
+        <span className="w-fit rounded-full bg-[#eef3f8] px-2 py-0.5 text-[0.65rem] font-semibold text-[#47657a]">
+          质保
+        </span>
+      </Link>
+    );
+  }
+
+  if (mode === "mobile") {
+    if (!hasWarrantyPrice) return null;
+
+    return (
+      <Link
+        href={href}
+        onClick={() => trackProductDetailOpen(product)}
+        className="mt-1 inline-flex max-w-full items-center gap-1.5 text-xs font-semibold text-[#47657a]"
+      >
+        <span className="shrink-0 rounded-full bg-[#eef3f8] px-2 py-0.5">质保</span>
+        <span className="truncate">{formatCurrency(product.warrantyLowestPrice, warrantyOffer.currency)}</span>
+      </Link>
+    );
+  }
+
+  if (!hasWarrantyPrice) return null;
+
+  return (
+    <Link
+      href={href}
+      onClick={() => trackProductDetailOpen(product)}
+      className="mt-3 flex min-h-[40px] items-center justify-between gap-3 rounded-lg bg-[#eef3f8] px-4 py-2 text-sm text-[#47657a] transition hover:bg-[#e3edf5]"
+    >
+      <span className="font-semibold">质保最低价</span>
+      <span className="shrink-0 font-bold text-[#202829]">
+        {formatCurrency(product.warrantyLowestPrice, warrantyOffer.currency)}
+      </span>
+    </Link>
   );
 }
 

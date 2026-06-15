@@ -57,12 +57,18 @@ const cases = [
   ["GPT team bug 子号 (质保首登，JSON格式)", "chatgpt-team-business"],
   ["codex-api 100刀/1000刀不限时 PRO plus号池 非team free / 规格3", "openai-api-cdk"],
   ["麦门Codex API 不限时 Plus和Pro号池 非Free和Team / 50$余额兑换码", "openai-api-cdk"],
+  ["ChatGPT 蜗的AI-中转-官方plus号池-100$", "openai-api-cdk"],
+  ["1天订阅 每天额度100刀 Codex plus号池 非team free", "openai-api-cdk"],
   ["渠道7 Chatgpt Plus(质保首登) （较稳定款）目前不知道能活多久 要稳买我的team，不保codex接码", "chatgpt-plus"],
   ["ChatGPT Plus 拼车｜专属席位｜月付", "chatgpt-plus"],
-  ["ChatGPT Go 激活码 月会员自助充值｜iOS 正规充值｜自动发货", "other-product"],
+  ["ChatGPT Go 激活码 月会员自助充值｜iOS 正规充值｜自动发货", "chatgpt-go"],
+  ["【质保定阅】GPT GO直充｜印区内购", "chatgpt-go"],
+  ["【30天质保】ChatGPT GO CDK", "chatgpt-go"],
+  ["ChatGPT Go-独享-年卡", "chatgpt-go"],
   ["Steam白号", "other-product"],
   ["Super Grok 激活码 月卡", "super-grok"],
   ["Grok 普号 体验号", "grok-account"],
+  ["【普号 SSO】 Grok AI > 长效微软邮箱 > 账号 SSO > 适合Super(30刀)，API等各类业务 > 取邮件API", "grok-account"],
   ["Claude Pro 月卡 直充", "claude-pro-month"],
   ["Claude Team 1.25x 30天质保订阅", "claude-team-standard"],
   ["claude pro team标准席位 全程质保，不怕封号,额度是pro的1.25倍，目前官方翻倍随便用", "claude-team-standard"],
@@ -110,6 +116,8 @@ const cases = [
   ["余额充值：100刀【不限时间,可用claude、gemini、gpt】", "openai-api-cdk"],
   ["AI 平台 直充 10000美元额度 -Claude Opus 4.7 / Codex / Gemini", "openai-api-cdk"],
   ["【24小时有效期】每天100刀claude code", "openai-api-cdk"],
+  ["【总共50刀】30天有效期-老Plus渠道", "openai-api-cdk"],
+  ["【总共100刀】30天有效期-老Plus渠道", "openai-api-cdk"],
   ["codex api 10刀卡(支持image2.0)（无free号）", "openai-api-cdk"],
   ["codex api 50刀卡(支持image2.0)（无free号）", "openai-api-cdk"],
   ["codex api 100刀卡(支持image2.0)（无free号）", "openai-api-cdk"],
@@ -230,6 +238,19 @@ assert.equal(plusGroup.outOfStockCount, 2, "Hidden offers are removed before sto
 assert.equal(plusGroup.offerCount, 3, "Hidden offers should not be counted.");
 assert.equal(plusGroup.lowestPriceLabel, "有货", "Available lowest offer should be labelled as in stock.");
 
+const warrantyGroups = buildProductGroups([
+  makeOffer({ id: "cheap-no-warranty", title: "ChatGPT Plus 月卡 无质保", price: 45, status: "in_stock" }),
+  makeOffer({ id: "short-warranty", title: "ChatGPT Plus 月卡 7天质保", price: 55, status: "in_stock" }),
+  makeOffer({ id: "long-warranty", title: "ChatGPT Plus 月卡 30天质保", price: 80, status: "in_stock" }),
+  makeOffer({ id: "cheap-long-unavailable", title: "ChatGPT Plus 月卡 30天质保", price: 10, status: "in_stock", effectiveStatus: "unavailable" }),
+]);
+const warrantyPlusGroup = warrantyGroups.find((group) => group.id === "chatgpt-plus");
+assert.ok(warrantyPlusGroup, "ChatGPT Plus warranty group should exist.");
+assert.equal(warrantyPlusGroup.lowestOffer?.id, "cheap-no-warranty", "Regular lowest price may come from a non-warranty offer.");
+assert.equal(warrantyPlusGroup.warrantyLowestOffer?.id, "long-warranty", "Warranty lowest price should use the cheapest available long-warranty offer.");
+assert.equal(warrantyPlusGroup.warrantyLowestPrice, 80, "Warranty lowest price should be tracked separately.");
+assert.equal(warrantyPlusGroup.warrantyOfferCount, 1, "Only available long-warranty offers should be counted.");
+
 const outOnlyGroups = buildProductGroups([
   makeOffer({ id: "out-only", title: "ChatGPT Pro 20倍 官方充值", price: 200, status: "out_of_stock" }),
 ]);
@@ -322,10 +343,24 @@ async function loadCatalogModule() {
       isolatedModules: true,
       esModuleInterop: true,
     },
+  }).outputText.replace(/(["'])\.\/offer-filter-tags\1/g, "$1./offer-filter-tags.mjs$1");
+
+  const offerFilterTagsPath = path.join(repoRoot, "src", "lib", "offer-filter-tags.ts");
+  const offerFilterTagsSource = await readFile(offerFilterTagsPath, "utf8");
+  const offerFilterTagsOutput = ts.transpileModule(offerFilterTagsSource, {
+    fileName: offerFilterTagsPath,
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+      isolatedModules: true,
+      esModuleInterop: true,
+    },
   }).outputText;
 
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "priceai-catalog-test-"));
   const tempFile = path.join(tempDir, "catalog.mjs");
+  const offerFilterTagsFile = path.join(tempDir, "offer-filter-tags.mjs");
+  await writeFile(offerFilterTagsFile, offerFilterTagsOutput, "utf8");
   await writeFile(tempFile, output, "utf8");
 
   try {
