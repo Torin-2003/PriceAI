@@ -70,6 +70,7 @@ export function ProductOffersPanel({
   const activeCacheKeyRef = useRef(activeCacheKey);
   const cachedInitialData = newestGeneratedDataset(productOffersMemoryCache.get(initialCacheKey), initialData);
   const [data, setData] = useState<ProductOffersResponse | null>(cachedInitialData);
+  const [dataCacheKey, setDataCacheKey] = useState<string | null>(cachedInitialData ? initialCacheKey : null);
   const [loading, setLoading] = useState(!cachedInitialData);
   const [paging, setPaging] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +127,7 @@ export function ProductOffersPanel({
         rememberProductOffers(cacheKey, cachedData);
         writeSessionCache(cacheKey, cachedData);
         setData(cachedData);
+        setDataCacheKey(cacheKey);
         setLoading(false);
         setError(null);
 
@@ -145,6 +147,7 @@ export function ProductOffersPanel({
         rememberProductOffers(cacheKey, latestData);
         writeSessionCache(cacheKey, latestData);
         setData(latestData);
+        setDataCacheKey(cacheKey);
         setError(null);
       } catch (currentError) {
         if (!active) return;
@@ -152,7 +155,10 @@ export function ProductOffersPanel({
           if (!cachedData) setError("报价加载超时，请稍后刷新");
         } else {
           setError(currentError instanceof Error ? currentError.message : "报价加载失败");
-          if (!cachedData) setData(null);
+          if (!cachedData) {
+            setData(null);
+            setDataCacheKey(null);
+          }
         }
       } finally {
         timeout.clear();
@@ -177,18 +183,20 @@ export function ProductOffersPanel({
     selectedFilterKey,
   ]);
 
-  const offers = data?.offers ?? [];
-  const total = data?.total ?? initialCount;
-  const filterFacets = data?.filterFacets ?? initialData?.filterFacets ?? [];
-  const hasMore = Boolean(data) && offers.length < total;
+  const activeData = dataCacheKey === activeCacheKey ? data : null;
+  const offers = activeData?.offers ?? [];
+  const total = activeData?.total ?? (selectedFilterTags.length > 0 || Boolean(offerQueryKey || offerExcludeQueryKey) ? 0 : initialCount);
+  const filterFacets = activeData?.filterFacets ?? data?.filterFacets ?? initialData?.filterFacets ?? [];
+  const hasMore = Boolean(activeData) && !loading && offers.length < total;
   const activeFilters = selectedFilterTags.length > 0 || Boolean(offerQueryKey || offerExcludeQueryKey);
 
   const loadMoreOffers = useCallback(async () => {
-    if (!data || paging || offers.length >= total) return;
+    if (!activeData || loading || paging || offers.length >= total) return;
     const filterTags = parseOfferFilterTags(selectedFilterTags);
     const query = normalizeOfferSearchQuery(offerQuery);
     const excludeQuery = normalizeOfferSearchQuery(offerExcludeQuery, 160);
     const requestCacheKey = productOffersCacheKey(productId, 0, filterTags, query, excludeQuery);
+    if (dataCacheKey !== requestCacheKey) return;
 
     setPaging(true);
     setError(null);
@@ -206,7 +214,7 @@ export function ProductOffersPanel({
         const mergedData = {
           ...nextPage,
           offers: [...current.offers, ...nextOffers],
-          total: nextPage.total,
+          total: nextPage.total || current.total,
           limited: nextPage.limited,
         };
 
@@ -222,7 +230,7 @@ export function ProductOffersPanel({
     } finally {
       if (activeCacheKeyRef.current === requestCacheKey) setPaging(false);
     }
-  }, [data, offerExcludeQuery, offerQuery, offers.length, paging, productId, selectedFilterTags, total]);
+  }, [activeData, dataCacheKey, loading, offerExcludeQuery, offerQuery, offers.length, paging, productId, selectedFilterTags, total]);
 
   useEffect(() => {
     if (!hasMore) return;
@@ -288,8 +296,8 @@ export function ProductOffersPanel({
 
   return (
     <>
-      {data?.degraded ? (
-        <DegradedBanner message={data.message} />
+      {activeData?.degraded ? (
+        <DegradedBanner message={activeData.message} />
       ) : null}
       {error ? (
         <InlineErrorBanner message={error} />
@@ -299,6 +307,7 @@ export function ProductOffersPanel({
         selectedTags={selectedFilterTags}
         total={total}
         active={activeFilters}
+        pending={loading || !activeData}
         excludeInput={excludeInput}
         queryInput={queryInput}
         searchOpen={searchOpen}
@@ -309,7 +318,7 @@ export function ProductOffersPanel({
         onSearchSubmit={handleSearchSubmit}
         onToggle={handleToggleFilterTag}
       />
-      {loading ? (
+      {loading || !activeData ? (
         <OfferTableSkeleton count={Math.min(Math.max(total, 3), 6)} />
       ) : offers.length ? (
         isDesktop === false ? (
@@ -455,6 +464,7 @@ function OfferFilterBar({
   selectedTags,
   total,
   active,
+  pending,
   excludeInput,
   queryInput,
   searchOpen,
@@ -469,6 +479,7 @@ function OfferFilterBar({
   selectedTags: OfferFilterTagId[];
   total: number;
   active: boolean;
+  pending: boolean;
   excludeInput: string;
   queryInput: string;
   searchOpen: boolean;
@@ -507,7 +518,7 @@ function OfferFilterBar({
           );
         })}
         {active ? (
-          <span className="text-xs text-[#7a8587]">当前 {total} 条</span>
+          <span className="text-xs text-[#7a8587]">{pending ? "正在加载" : `当前 ${total} 条`}</span>
         ) : null}
       </div>
       <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
