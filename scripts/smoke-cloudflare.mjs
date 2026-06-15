@@ -129,7 +129,7 @@ for (const check of checks) {
   }
 }
 
-await validateNextStaticCss(baseUrl);
+await validateNextStaticAssets(baseUrl);
 
 if (failures > 0) {
   console.error(`Cloudflare smoke check failed: ${failures} check(s).`);
@@ -194,9 +194,10 @@ function validateOffersJson(data) {
   return failures;
 }
 
-async function validateNextStaticCss(baseUrl) {
+async function validateNextStaticAssets(baseUrl) {
   const pageUrl = new URL("/", baseUrl);
   const startedAt = Date.now();
+  const strictCache = !isLocalhostBaseUrl(baseUrl);
 
   try {
     const response = await fetch(pageUrl, {
@@ -205,47 +206,69 @@ async function validateNextStaticCss(baseUrl) {
       },
     });
     const html = await response.text();
-    const cssPaths = [
-      ...new Set([...html.matchAll(/\/_next\/static\/css\/[^"'<>\\s]+\.css(?:\?[^"'<>\\s]*)?/g)].map((match) => match[0])),
+    const assetGroups = [
+      {
+        label: "static-css",
+        paths: [
+          ...new Set(
+            [...html.matchAll(/\/_next\/static\/css\/[^"'<>\\s]+\.css(?:\?[^"'<>\\s]*)?/g)].map((match) => match[0]),
+          ),
+        ],
+      },
+      {
+        label: "static-js",
+        paths: [
+          ...new Set(
+            [...html.matchAll(/\/_next\/static\/chunks\/[^"'<>\\s]+\.js(?:\?[^"'<>\\s]*)?/g)].map((match) => match[0]),
+          ),
+        ],
+      },
     ];
 
-    if (cssPaths.length === 0) {
-      failures += 1;
-      console.log(`fail static-css missing ${pageUrl.pathname}`);
-      return;
+    for (const group of assetGroups) {
+      if (group.paths.length === 0) {
+        failures += 1;
+        console.log(`fail ${group.label} missing ${pageUrl.pathname}`);
+        continue;
+      }
+
+      for (const assetPath of group.paths) {
+        const assetUrl = new URL(assetPath, baseUrl);
+        const assetStartedAt = Date.now();
+        const assetResponse = await fetch(assetUrl, {
+          headers: {
+            "user-agent": "PriceAI Cloudflare smoke check",
+          },
+        });
+        const body = await assetResponse.arrayBuffer();
+        const cacheControl = assetResponse.headers.get("cache-control") || "";
+        const cacheOk = !strictCache || (/\bmax-age=31536000\b/i.test(cacheControl) && /\bimmutable\b/i.test(cacheControl));
+        const ok = assetResponse.status === 200 && cacheOk;
+
+        if (!ok) failures += 1;
+
+        console.log(
+          [
+            ok ? "ok" : "fail",
+            group.label,
+            assetResponse.status,
+            `${body.byteLength}B`,
+            `${Date.now() - assetStartedAt}ms`,
+            assetUrl.pathname,
+            `cache=${cacheControl || "missing"}`,
+          ].join(" "),
+        );
+      }
     }
 
-    for (const cssPath of cssPaths) {
-      const cssUrl = new URL(cssPath, baseUrl);
-      const assetStartedAt = Date.now();
-      const assetResponse = await fetch(cssUrl, {
-        headers: {
-          "user-agent": "PriceAI Cloudflare smoke check",
-        },
-      });
-      const body = await assetResponse.arrayBuffer();
-      const cacheControl = assetResponse.headers.get("cache-control") || "";
-      const cacheOk = /\bmax-age=31536000\b/i.test(cacheControl) && /\bimmutable\b/i.test(cacheControl);
-      const ok = assetResponse.status === 200 && cacheOk;
-
-      if (!ok) failures += 1;
-
-      console.log(
-        [
-          ok ? "ok" : "fail",
-          "static-css",
-          assetResponse.status,
-          `${body.byteLength}B`,
-          `${Date.now() - assetStartedAt}ms`,
-          cssUrl.pathname,
-          `cache=${cacheControl || "missing"}`,
-        ].join(" "),
-      );
-    }
-
-    console.log(`ok static-css-page ${Date.now() - startedAt}ms ${pageUrl.pathname}`);
+    console.log(`ok static-assets-page ${Date.now() - startedAt}ms ${pageUrl.pathname}`);
   } catch (error) {
     failures += 1;
-    console.log(`fail static-css error ${pageUrl.pathname} ${error instanceof Error ? error.message : String(error)}`);
+    console.log(`fail static-assets error ${pageUrl.pathname} ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+function isLocalhostBaseUrl(baseUrl) {
+  const { hostname } = new URL(baseUrl);
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 }
