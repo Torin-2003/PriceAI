@@ -129,6 +129,8 @@ for (const check of checks) {
   }
 }
 
+await validateNextStaticCss(baseUrl);
+
 if (failures > 0) {
   console.error(`Cloudflare smoke check failed: ${failures} check(s).`);
   process.exitCode = 1;
@@ -190,4 +192,60 @@ function validateOffersJson(data) {
   if (data?.degraded !== false) failures.push("degraded!=false");
   if (!Number.isFinite(data?.total) || data.total < 100) failures.push("total<100");
   return failures;
+}
+
+async function validateNextStaticCss(baseUrl) {
+  const pageUrl = new URL("/", baseUrl);
+  const startedAt = Date.now();
+
+  try {
+    const response = await fetch(pageUrl, {
+      headers: {
+        "user-agent": "PriceAI Cloudflare smoke check",
+      },
+    });
+    const html = await response.text();
+    const cssPaths = [
+      ...new Set([...html.matchAll(/\/_next\/static\/css\/[^"'<>\\s]+\.css(?:\?[^"'<>\\s]*)?/g)].map((match) => match[0])),
+    ];
+
+    if (cssPaths.length === 0) {
+      failures += 1;
+      console.log(`fail static-css missing ${pageUrl.pathname}`);
+      return;
+    }
+
+    for (const cssPath of cssPaths) {
+      const cssUrl = new URL(cssPath, baseUrl);
+      const assetStartedAt = Date.now();
+      const assetResponse = await fetch(cssUrl, {
+        headers: {
+          "user-agent": "PriceAI Cloudflare smoke check",
+        },
+      });
+      const body = await assetResponse.arrayBuffer();
+      const cacheControl = assetResponse.headers.get("cache-control") || "";
+      const cacheOk = /\bmax-age=31536000\b/i.test(cacheControl) && /\bimmutable\b/i.test(cacheControl);
+      const ok = assetResponse.status === 200 && cacheOk;
+
+      if (!ok) failures += 1;
+
+      console.log(
+        [
+          ok ? "ok" : "fail",
+          "static-css",
+          assetResponse.status,
+          `${body.byteLength}B`,
+          `${Date.now() - assetStartedAt}ms`,
+          cssUrl.pathname,
+          `cache=${cacheControl || "missing"}`,
+        ].join(" "),
+      );
+    }
+
+    console.log(`ok static-css-page ${Date.now() - startedAt}ms ${pageUrl.pathname}`);
+  } catch (error) {
+    failures += 1;
+    console.log(`fail static-css error ${pageUrl.pathname} ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
