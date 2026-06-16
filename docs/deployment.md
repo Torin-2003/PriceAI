@@ -30,7 +30,7 @@ npm run deploy:production -- --check
 npm run deploy:production -- --local
 ```
 
-不要默认运行 `vercel deploy --prod --yes`。Vercel 只作为显式回滚目标；如果必须回滚到 Vercel，应先确认 `priceai.cc` / `www.priceai.cc` 的 Cloudflare route、Vercel alias、cron owner 和 `COLLECT_PRICES_URL` 切换方案。
+不要默认运行 `vercel deploy --prod --yes`。旧 Vercel 项目已删除；如果必须回滚到 Vercel，应先重建 Vercel 项目，并确认 `priceai.cc` / `www.priceai.cc` 的 Cloudflare route、Vercel alias、cron owner 和 `COLLECT_PRICES_URL` 切换方案。
 
 Cloudflare / GitHub Actions 生产环境需要维护：
 

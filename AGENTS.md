@@ -13,7 +13,7 @@
 npm run deploy:production
 ```
 
-这个命令默认触发 `.github/workflows/deploy-cloudflare-worker.yml`，通过 GitHub secrets 部署到 Cloudflare。不要默认运行 `vercel deploy --prod --yes`；Vercel 仅作为显式回滚目标，除非用户明确要求回滚或排查 Vercel。
+这个命令默认触发 `.github/workflows/deploy-cloudflare-worker.yml`，通过 GitHub secrets 部署到 Cloudflare。不要默认运行 `vercel deploy --prod --yes`；旧 Vercel 项目已删除，除非用户明确要求重建 Vercel 回滚环境或排查历史 Vercel 记录。
 
 部署前如果只想检查当前生产目标和本机环境，运行：
 

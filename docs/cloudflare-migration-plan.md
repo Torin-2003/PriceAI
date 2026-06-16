@@ -237,7 +237,7 @@ npm run deploy:production
 
 切换前准备：
 
-1. Vercel 曾作为短期回滚目标；生产主域 alias 和 Git 自动部署已在清理阶段移除。
+1. Vercel 曾作为短期回滚目标；清理阶段已移除生产主域 alias、断开 Git 自动部署，并删除旧 Vercel 项目。
 2. Cloudflare 测试域名全部验收通过。
 3. GitHub Actions / VPS 采集任务仍指向当前生产域名。
 4. 准备切换窗口，避免采集或后台修改高峰。
@@ -296,7 +296,7 @@ curl -sS -o /tmp/health.json -w '%{http_code} %{size_download} %{time_total}\n' 
 7. 增加手动 GitHub Actions 部署 workflow。
 8. 安排主域名切换窗口。
 9. 切 `priceai.cc` / `www.priceai.cc`。
-10. 连续观察 24-72 小时后，再清理旧 Vercel 账号依赖：已移除主域 alias、断开 Git 自动部署，并从仓库删除 `vercel.json`。
+10. 连续观察 24-72 小时后，再清理旧 Vercel 账号依赖：已移除主域 alias、断开 Git 自动部署、删除旧 Vercel 项目，并从仓库删除 `vercel.json`。
 
 ## 当前下一步
 
