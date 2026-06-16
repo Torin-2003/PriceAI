@@ -758,7 +758,7 @@ export function buildProductGroups(
     product.inStockCount = product.offers.filter(isAvailable).length;
     product.outOfStockCount = Math.max(0, product.offers.length - product.inStockCount);
     const displayLowestOffer = getDisplayLowestOffer(product.offers, { excludeSharedAccess: true });
-    const warrantyLowestOffer = getDisplayLowestOffer(product.offers.filter(isLongWarrantyOffer), { excludeSharedAccess: false });
+    const warrantyLowestOffer = getDisplayLowestOffer(product.offers.filter(isLongWarrantyOffer), { excludeSharedAccess: true });
     const priceMeta = getOfferPriceMeta(displayLowestOffer);
 
     product.lowestOffer = displayLowestOffer;

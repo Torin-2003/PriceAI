@@ -536,6 +536,7 @@ as $$
     from offers
     where offers.is_public_available = true
       and offers.public_offer_filter_tags @> array['warranty_long']::text[]
+      and not (offers.public_offer_filter_tags @> array['shared_access']::text[])
   ),
   stats as (
     select

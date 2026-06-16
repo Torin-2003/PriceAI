@@ -256,13 +256,14 @@ const warrantyGroups = buildProductGroups([
   makeOffer({ id: "short-warranty", title: "ChatGPT Plus 月卡 7天质保", price: 55, status: "in_stock" }),
   makeOffer({ id: "long-warranty", title: "ChatGPT Plus 月卡 30天质保", price: 80, status: "in_stock" }),
   makeOffer({ id: "cheap-long-unavailable", title: "ChatGPT Plus 月卡 30天质保", price: 10, status: "in_stock", effectiveStatus: "unavailable" }),
+  makeOffer({ id: "cheap-long-shared", title: "ChatGPT Plus 月卡 拼车套餐[3人车] 质保不掉订阅", price: 60, status: "in_stock" }),
 ]);
 const warrantyPlusGroup = warrantyGroups.find((group) => group.id === "chatgpt-plus");
 assert.ok(warrantyPlusGroup, "ChatGPT Plus warranty group should exist.");
 assert.equal(warrantyPlusGroup.lowestOffer?.id, "cheap-no-warranty", "Regular lowest price may come from a non-warranty offer.");
-assert.equal(warrantyPlusGroup.warrantyLowestOffer?.id, "long-warranty", "Warranty lowest price should use the cheapest available long-warranty offer.");
+assert.equal(warrantyPlusGroup.warrantyLowestOffer?.id, "long-warranty", "Warranty lowest price should use the cheapest available non-shared long-warranty offer.");
 assert.equal(warrantyPlusGroup.warrantyLowestPrice, 80, "Warranty lowest price should be tracked separately.");
-assert.equal(warrantyPlusGroup.warrantyOfferCount, 1, "Only available long-warranty offers should be counted.");
+assert.equal(warrantyPlusGroup.warrantyOfferCount, 2, "Available long-warranty offers should be counted even when shared-access offers do not drive the displayed warranty price.");
 
 const sharedAccessGroups = buildProductGroups([
   makeOffer({ id: "cheap-people-car", title: "Claude Pro-三人车", price: 50, status: "in_stock" }),
