@@ -67,6 +67,7 @@ jobs:
 
           mkdir -p supabase/.temp
           printf '%s' "$PROJECT_REF" > supabase/.temp/project-ref
+          supabase link --project-ref "$PROJECT_REF" --yes
           supabase db push --yes
 
       - run: npm run lint
