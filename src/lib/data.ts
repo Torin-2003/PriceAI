@@ -39,6 +39,7 @@ import type {
   Source,
   SourceOfferStats,
 } from "./types";
+import { publicOfferDedupeKey } from "./utils";
 
 const PUBLIC_OFFER_LIMIT = 1200;
 const SUPABASE_PAGE_SIZE = 1000;
@@ -1426,9 +1427,9 @@ async function loadPublicProductOffers(
     };
   }
 
-  const productOffers = publicData.offers
+  const productOffers = dedupePublicOffers(publicData.offers
     .filter((offer) => resolveOfferProduct(offer, products).id === product.id)
-    .sort(comparePublicOffers);
+    .sort(comparePublicOffers));
   const offers = productOffers
     .filter((offer) => offerMatchesFilterTags(offer, filterTags))
     .filter((offer) => offerMatchesProductOfferQuery(offer, query))
@@ -1597,7 +1598,7 @@ export async function listPublicOffers(filters: OfferListFilters = {}) {
   const limit = Math.min(Math.max(filters.limit || 80, 1), PUBLIC_OFFER_LIMIT);
   const offset = Math.max(filters.offset || 0, 0);
 
-  let rows = publicData.offers
+  let rows = dedupePublicOffers(publicData.offers)
     .filter((offer) => !offer.hidden)
     .map((offer) => {
       const product = resolveExplorerProduct(offer, productGroups);
@@ -1987,6 +1988,45 @@ function offerTimestamp(offer: RawOffer): string | null | undefined {
 
 function sourceLabel(offer: RawOffer): string {
   return offer.sourceStoreName || offer.sourceName || "未记录渠道";
+}
+
+function dedupePublicOffers(offers: RawOffer[]): RawOffer[] {
+  const selected = new Map<string, RawOffer>();
+
+  for (const offer of offers) {
+    const key = publicOfferDedupeKey(offer);
+    const existing = selected.get(key);
+    if (!existing || comparePublicOfferKeepPriority(offer, existing) < 0) {
+      selected.set(key, offer);
+    }
+  }
+
+  return Array.from(selected.values());
+}
+
+function comparePublicOfferKeepPriority(a: RawOffer, b: RawOffer): number {
+  const availableDelta = Number(isOfferAvailableForPublicList(b)) - Number(isOfferAvailableForPublicList(a));
+  if (availableDelta !== 0) return availableDelta;
+
+  const priorityDelta = (b.sourcePriority ?? 0) - (a.sourcePriority ?? 0);
+  if (priorityDelta !== 0) return priorityDelta;
+
+  const confidenceDelta = (b.confidence ?? 0) - (a.confidence ?? 0);
+  if (confidenceDelta !== 0) return confidenceDelta;
+
+  const timestampDelta = compareText(offerTimestamp(b) || "", offerTimestamp(a) || "");
+  if (timestampDelta !== 0) return timestampDelta;
+
+  const sourceDelta = compareText(sourceLabel(a), sourceLabel(b));
+  if (sourceDelta !== 0) return sourceDelta;
+
+  const titleDelta = compareText(a.sourceTitle, b.sourceTitle);
+  if (titleDelta !== 0) return titleDelta;
+
+  const urlDelta = compareText(a.url, b.url);
+  if (urlDelta !== 0) return urlDelta;
+
+  return compareText(a.id, b.id);
 }
 
 export function mapSource(row: Record<string, unknown>): Source {

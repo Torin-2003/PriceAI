@@ -29,7 +29,7 @@ import type {
   Source,
   SubmissionStatus,
 } from "./types";
-import { normalizeStatus, parseTags, slugify, stableId } from "./utils";
+import { normalizeStatus, parseTags, slugify, stableId, stableOfferInputId } from "./utils";
 
 export const ADMIN_SOURCE_HIDE_REASON_PREFIX = "管理员手动下架渠道";
 export const ADMIN_OFFER_HIDE_REASON_PREFIX = "管理员手动下架报价";
@@ -703,7 +703,7 @@ async function ensureCanonicalProductsOnce(supabase: NonNullable<ReturnType<type
 }
 
 export function rawOfferInputId(offer: Pick<OfferInput, "sourceName" | "sourceStoreName" | "sourceTitle" | "url">): string {
-  return stableId(offer.sourceName, offer.sourceStoreName, offer.sourceTitle, offer.url);
+  return stableOfferInputId(offer);
 }
 
 export async function recordSourceCollectionResult(input: {
