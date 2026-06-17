@@ -11,8 +11,8 @@ export function GuideResponsiveTable({ children }: { children: ReactNode }) {
 
   return (
     <div className="my-8">
-      <div className="hidden overflow-x-auto border-y border-[#dfe4e5] md:block">
-        <table className="w-full min-w-[680px] border-collapse text-left text-sm [&_tbody]:divide-y [&_tbody]:divide-[#dfe4e5] [&_td]:px-3 [&_td]:py-3 [&_td]:align-top [&_td]:leading-7 [&_td]:text-[#5a6061] [&_th]:border-b [&_th]:border-[#dfe4e5] [&_th]:px-3 [&_th]:py-3 [&_th]:font-semibold [&_thead]:bg-[#f2f4f4] [&_thead]:text-[#202829]">
+      <div className="hidden overflow-x-auto border-y border-[var(--color-border)] md:block">
+        <table className="w-full min-w-[680px] border-collapse text-left text-sm [&_tbody]:divide-y [&_tbody]:divide-[var(--color-border)] [&_td]:px-3 [&_td]:py-3 [&_td]:align-top [&_td]:leading-7 [&_td]:text-[var(--color-text-muted)] [&_th]:border-b [&_th]:border-[var(--color-border)] [&_th]:px-3 [&_th]:py-3 [&_th]:font-semibold [&_thead]:bg-[var(--color-surface)] [&_thead]:text-[var(--color-text-primary)]">
           {children}
         </table>
       </div>
@@ -23,15 +23,15 @@ export function GuideResponsiveTable({ children }: { children: ReactNode }) {
           const details = row.cells.slice(1);
 
           return (
-            <section key={rowIndex} className="rounded-md border border-[#dfe4e5] bg-[#f8f8f8] p-4">
-              <h3 className="text-sm font-semibold leading-6 text-[#202829]">{title}</h3>
+            <section key={rowIndex} className="rounded-md border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
+              <h3 className="text-sm font-semibold leading-6 text-[var(--color-text-primary)]">{title}</h3>
               <dl className="mt-3 space-y-3">
                 {details.map((cell, cellIndex) => (
                   <div key={cellIndex}>
-                    <dt className="text-[11px] font-bold text-[#7a8182]">
+                    <dt className="text-[11px] font-bold text-[var(--color-text-soft)]">
                       {headers[cellIndex + 1] || `说明 ${cellIndex + 1}`}
                     </dt>
-                    <dd className="mt-1 text-sm leading-7 text-[#5a6061]">{cell}</dd>
+                    <dd className="mt-1 text-sm leading-7 text-[var(--color-text-muted)]">{cell}</dd>
                   </div>
                 ))}
               </dl>
