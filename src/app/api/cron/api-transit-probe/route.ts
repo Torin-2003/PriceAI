@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import probeProfiles from "../../../../../config/api-transit-probes.json";
 import { probeApiTransitStations } from "../../../../../scripts/probe-api-transit.mjs";
 import { getAdminPasswordFromRequest } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
@@ -32,6 +33,7 @@ async function runApiTransitProbe(request: Request) {
 
   try {
     const result = await probeApiTransitStations({
+      profiles: probeProfiles,
       station,
       post: true,
       dbCredentials: true,

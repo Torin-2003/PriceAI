@@ -86,7 +86,7 @@ if (isCli()) {
 export async function probeApiTransitStations(options = {}) {
   options = normalizeOptions(options);
   const startedAt = new Date().toISOString();
-  const profiles = selectProfiles(loadProbeProfiles(), options);
+  const profiles = selectProfiles(options.profiles || loadProbeProfiles(), options);
   const supabase = getSupabaseClient();
   const stationIds = profiles.map((profile) => profile.stationId);
   const dbOfferModels = supabase ? await listOfferModels(supabase, stationIds) : new Map();
