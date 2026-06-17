@@ -18,11 +18,19 @@ const credentialSchema = z.object({
   budgetLimit: z.string().trim().max(200).optional().nullable(),
   expiresAt: z.string().trim().max(80).optional().nullable(),
   allowedModels: z.array(z.string().trim().max(80)).max(30).optional(),
+  allowedGroups: z.array(z.string().trim().max(120)).max(30).optional(),
+  groupName: z.string().trim().max(120).optional().nullable(),
+  groupId: z.string().trim().max(120).optional().nullable(),
+  accountPool: z.string().trim().max(120).optional().nullable(),
+  family: z.string().trim().max(40).optional().nullable(),
+  standardModel: z.string().trim().max(120).optional().nullable(),
+  rawModelName: z.string().trim().max(160).optional().nullable(),
   notes: z.string().trim().max(500).optional().nullable(),
 }).optional();
 
 const schema = z.object({
   type: z.enum(["user", "merchant"]).default("user"),
+  stationId: z.string().trim().max(120).optional().nullable(),
   url: z.string().url().max(2048),
   name: z.string().trim().max(200).optional().nullable(),
   apiBaseUrl: z.string().url().max(2048).optional().nullable(),
@@ -48,6 +56,7 @@ export async function POST(request: Request) {
     const accessMode = getSubmissionAccessMode(payload);
     const result = await createTransitSubmission({
       type: payload.type,
+      stationId: payload.stationId ?? null,
       url: payload.url,
       name: payload.name ?? null,
       apiBaseUrl: payload.apiBaseUrl ?? null,
@@ -64,6 +73,7 @@ export async function POST(request: Request) {
       await createTransitCredential({
         ...credential,
         submissionId: result.id,
+        stationId: payload.stationId ?? null,
         submitterIp: getClientIp(request),
       });
     }
@@ -121,6 +131,13 @@ function normalizeCredential(payload: z.infer<typeof schema>) {
     budgetLimit: credentials.budgetLimit ?? null,
     expiresAt: credentials.expiresAt ?? null,
     allowedModels: credentials.allowedModels || payload.models || [],
+    allowedGroups: credentials.allowedGroups || [],
+    groupName: credentials.groupName ?? null,
+    groupId: credentials.groupId ?? null,
+    accountPool: credentials.accountPool ?? null,
+    family: credentials.family ?? null,
+    standardModel: credentials.standardModel ?? null,
+    rawModelName: credentials.rawModelName ?? null,
     notes: credentials.notes ?? null,
     apiKey: credentials.apiKey ?? null,
     loginUrl: credentials.loginUrl ?? null,
@@ -132,6 +149,7 @@ function normalizeCredential(payload: z.infer<typeof schema>) {
 function buildSafeMeta(payload: z.infer<typeof schema>): Record<string, unknown> {
   const meta = { ...(payload.meta || {}) };
   const accessMode = getSubmissionAccessMode(payload);
+  if (payload.stationId) meta.stationId = payload.stationId;
   meta.accessMode = accessMode;
 
   if (payload.credentials && payload.credentials.accessMode !== "public_only") {
@@ -140,6 +158,13 @@ function buildSafeMeta(payload: z.infer<typeof schema>): Record<string, unknown>
     meta.credentialBudgetLimit = payload.credentials.budgetLimit || null;
     meta.credentialExpiresAt = payload.credentials.expiresAt || null;
     meta.credentialAllowedModels = payload.credentials.allowedModels || payload.models || [];
+    meta.credentialAllowedGroups = payload.credentials.allowedGroups || [];
+    meta.credentialGroupName = payload.credentials.groupName || null;
+    meta.credentialGroupId = payload.credentials.groupId || null;
+    meta.credentialAccountPool = payload.credentials.accountPool || null;
+    meta.credentialFamily = payload.credentials.family || null;
+    meta.credentialStandardModel = payload.credentials.standardModel || null;
+    meta.credentialRawModelName = payload.credentials.rawModelName || null;
     meta.credentialSafetyConfirmed = Boolean(payload.credentials.safetyConfirmed);
   }
 

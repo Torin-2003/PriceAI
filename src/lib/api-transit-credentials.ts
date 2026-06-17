@@ -14,6 +14,13 @@ export type TransitCredentialInput = {
   budgetLimit?: string | null;
   expiresAt?: string | null;
   allowedModels?: string[];
+  allowedGroups?: string[];
+  groupName?: string | null;
+  groupId?: string | number | null;
+  accountPool?: string | null;
+  family?: string | null;
+  standardModel?: string | null;
+  rawModelName?: string | null;
   notes?: string | null;
   apiKey?: string | null;
   loginUrl?: string | null;
@@ -72,6 +79,13 @@ function buildSecretPayload(input: TransitCredentialInput) {
       budget_limit: cleanText(input.budgetLimit),
       expires_at: cleanText(input.expiresAt),
       allowed_models: cleanList(input.allowedModels),
+      allowed_groups: cleanList(input.allowedGroups),
+      group_name: cleanText(input.groupName),
+      group_id: cleanText(input.groupId),
+      account_pool: cleanText(input.accountPool),
+      family: cleanText(input.family),
+      standard_model: cleanText(input.standardModel),
+      raw_model_name: cleanText(input.rawModelName),
       notes: cleanText(input.notes),
     };
   }
@@ -84,6 +98,13 @@ function buildSecretPayload(input: TransitCredentialInput) {
     budget_limit: cleanText(input.budgetLimit),
     expires_at: cleanText(input.expiresAt),
     allowed_models: cleanList(input.allowedModels),
+    allowed_groups: cleanList(input.allowedGroups),
+    group_name: cleanText(input.groupName),
+    group_id: cleanText(input.groupId),
+    account_pool: cleanText(input.accountPool),
+    family: cleanText(input.family),
+    standard_model: cleanText(input.standardModel),
+    raw_model_name: cleanText(input.rawModelName),
     notes: cleanText(input.notes),
   };
 }
@@ -95,6 +116,13 @@ function buildCredentialMeta(input: TransitCredentialInput) {
     budget_limit: cleanText(input.budgetLimit),
     expires_at: cleanText(input.expiresAt),
     allowed_models: cleanList(input.allowedModels),
+    allowed_groups: cleanList(input.allowedGroups),
+    group_name: cleanText(input.groupName),
+    group_id: cleanText(input.groupId),
+    account_pool: cleanText(input.accountPool),
+    family: cleanText(input.family),
+    standard_model: cleanText(input.standardModel),
+    raw_model_name: cleanText(input.rawModelName),
     login_host: loginHost,
     has_api_key: input.accessMode === "test_key",
     has_test_account: input.accessMode === "test_account",
@@ -143,7 +171,7 @@ function cleanRequired(value: string | null | undefined, message: string): strin
   return text;
 }
 
-function cleanText(value: string | null | undefined): string | null {
+function cleanText(value: string | number | null | undefined): string | null {
   const text = String(value || "").trim();
   return text ? text : null;
 }

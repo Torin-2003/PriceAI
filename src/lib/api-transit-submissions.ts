@@ -8,6 +8,7 @@ export type TransitSubmissionAccessMode = "public_only" | "test_key" | "test_acc
 
 export type CreateTransitSubmissionInput = {
   type: TransitSubmissionType;
+  stationId?: string | null;
   url: string;
   name?: string | null;
   apiBaseUrl?: string | null;
@@ -43,6 +44,7 @@ export async function createTransitSubmission(input: CreateTransitSubmissionInpu
     parse_status: "pending",
     probe_status: inferProbeStatus(input),
     review_status: "pending",
+    station_id: cleanText(input.stationId),
     submitter_ip: input.submitterIp || null,
   });
 

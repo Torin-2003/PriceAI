@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { existsSync, readFileSync } from "node:fs";
+import { webcrypto } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
@@ -87,7 +88,12 @@ export async function probeApiTransitStations(options = {}) {
   const startedAt = new Date().toISOString();
   const profiles = selectProfiles(loadProbeProfiles(), options);
   const supabase = getSupabaseClient();
-  const dbOfferModels = supabase ? await listOfferModels(supabase, profiles.map((profile) => profile.stationId)) : new Map();
+  const stationIds = profiles.map((profile) => profile.stationId);
+  const dbOfferModels = supabase ? await listOfferModels(supabase, stationIds) : new Map();
+  const dbCredentials =
+    supabase && options.dbCredentials
+      ? await listCredentialApiKeys(supabase, stationIds)
+      : emptyCredentialStore();
   const runs = [];
   const rollups = [];
   const skipped = [];
@@ -98,16 +104,22 @@ export async function probeApiTransitStations(options = {}) {
       continue;
     }
 
-    const apiKey = options.env?.[profile.apiKeyEnv] || envValue(profile.apiKeyEnv);
+    const envApiKey = options.env?.[profile.apiKeyEnv] || envValue(profile.apiKeyEnv);
+    const credential = envApiKey
+      ? { apiKey: envApiKey, source: "env", credentialId: null }
+      : selectCredentialForProfile(dbCredentials, profile);
+    const apiKey = credential?.apiKey || "";
     if (!apiKey) {
-      skipped.push(buildSkippedProfile(profile, "missing_api_key"));
+      skipped.push(buildSkippedProfile(profile, dbCredentials.unavailableReason || "missing_api_key"));
       continue;
     }
 
     const run = await probeProfile(profile, {
       apiKey,
+      credentialSource: credential.source,
+      credentialId: credential.credentialId,
       offerModels: dbOfferModels.get(profile.stationId) || [],
-      targetLimit: options.targetLimit,
+      targetLimit: profile.targetLimit || options.targetLimit,
       skipCompletions: options.skipCompletions,
       timeoutMs: options.timeoutMs,
     });
@@ -117,6 +129,7 @@ export async function probeApiTransitStations(options = {}) {
     if ((options.post || options.db) && !options.dryRun) {
       if (!supabase) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for --post/--db.");
       await upsertRows(supabase, "api_transit_detection_runs", [run.row], { onConflict: "id" });
+      if (credential.credentialId) await markCredentialUsed(supabase, credential.credentialId);
       rollups.push(await refreshAvailabilityRollup(supabase, profile.stationId));
     }
   }
@@ -150,6 +163,7 @@ async function probeProfile(profile, options) {
     offerModels: options.offerModels,
     availableModels,
     targetLimit: options.targetLimit,
+    targetPriority: profile.targetPriority,
   });
 
   const targetResults = [];
@@ -159,6 +173,9 @@ async function probeProfile(profile, options) {
         targetResults.push({
           family: target.family,
           standardModel: target.standardModel,
+          groupName: target.groupName || null,
+          accountPool: target.accountPool || null,
+          channelType: target.channelType || null,
           configuredModelId: null,
           ok: false,
           skipped: true,
@@ -191,7 +208,7 @@ async function probeProfile(profile, options) {
 
   const finishedAt = new Date().toISOString();
   const row = {
-    id: stableId("api-transit-probe-run", profile.stationId, startedAt),
+    id: stableId("api-transit-probe-run", profile.profileId || profile.stationId, startedAt),
     station_id: profile.stationId,
     run_type: "api_probe",
     status,
@@ -215,7 +232,10 @@ async function probeProfile(profile, options) {
     },
     logs: {
       protocol: profile.protocol,
+      profileId: profile.profileId || null,
       apiKeyEnv: profile.apiKeyEnv,
+      credentialSource: options.credentialSource || "env",
+      credentialId: options.credentialId || null,
       selectedTargets: targets,
       targetLimit: options.targetLimit,
       skipCompletions: Boolean(options.skipCompletions),
@@ -278,6 +298,9 @@ async function probeCompletion(profile, baseUrl, target, options) {
     return {
       family: target.family,
       standardModel: target.standardModel,
+      groupName: target.groupName || null,
+      accountPool: target.accountPool || null,
+      channelType: target.channelType || null,
       configuredModelId: target.modelId,
       ok: true,
       skipped: false,
@@ -291,6 +314,9 @@ async function probeCompletion(profile, baseUrl, target, options) {
     return {
       family: target.family,
       standardModel: target.standardModel,
+      groupName: target.groupName || null,
+      accountPool: target.accountPool || null,
+      channelType: target.channelType || null,
       configuredModelId: target.modelId,
       ok: false,
       skipped: false,
@@ -305,22 +331,36 @@ async function probeCompletion(profile, baseUrl, target, options) {
 
 function selectProbeTargets(input) {
   const configuredTargets = normalizeConfiguredTargets(input.configuredTargets);
+  const targetPriority = stringValue(input.targetPriority);
+  const priorityTargets =
+    targetPriority === "latest_highest_available" || targetPriority === "last_available"
+      ? configuredTargets.toReversed()
+      : configuredTargets;
   const dbTargets = normalizeDbTargets(input.offerModels);
-  const merged = [...configuredTargets, ...dbTargets, ...defaultTargets];
-  const byStandardModel = new Map();
+  const merged = [...priorityTargets, ...dbTargets, ...defaultTargets];
+  const byTargetKey = new Map();
 
   for (const target of merged) {
-    if (!target.standardModel || byStandardModel.has(target.standardModel)) continue;
-    byStandardModel.set(target.standardModel, {
+    const key = probeTargetKey(target);
+    if (!target.standardModel || byTargetKey.has(key)) continue;
+    byTargetKey.set(key, {
       family: target.family,
       standardModel: target.standardModel,
+      groupName: target.groupName || null,
+      accountPool: target.accountPool || null,
+      channelType: target.channelType || null,
       modelId: matchAvailableModel(input.availableModels, target),
       candidates: target.candidates || [],
       keywords: target.keywords || [],
     });
   }
 
-  return Array.from(byStandardModel.values()).slice(0, input.targetLimit || DEFAULT_TARGET_LIMIT);
+  const targets = Array.from(byTargetKey.values());
+  const orderedTargets = input.availableModels?.length
+    ? [...targets.filter((target) => target.modelId), ...targets.filter((target) => !target.modelId)]
+    : targets;
+
+  return orderedTargets.slice(0, input.targetLimit || DEFAULT_TARGET_LIMIT);
 }
 
 function normalizeConfiguredTargets(targets) {
@@ -329,6 +369,9 @@ function normalizeConfiguredTargets(targets) {
     .map((target) => ({
       family: normalizeFamily(target.family || target.standardModel),
       standardModel: String(target.standardModel || ""),
+      groupName: stringValue(target.groupName || target.group_name),
+      accountPool: stringValue(target.accountPool || target.account_pool),
+      channelType: stringValue(target.channelType || target.channel_type),
       candidates: stringArray(target.candidates || target.modelIds),
       keywords: stringArray(target.keywords),
     }))
@@ -341,10 +384,21 @@ function normalizeDbTargets(offerModels) {
     .map((offer) => ({
       family: normalizeFamily(offer.family || offer.standard_model || offer.standardModel),
       standardModel: String(offer.standard_model || offer.standardModel || ""),
+      groupName: stringValue(offer.group_name || offer.groupName),
+      accountPool: stringValue(offer.account_pool || offer.accountPool),
+      channelType: stringValue(offer.channel_type || offer.channelType),
       candidates: stringArray([offer.raw_model_name, offer.rawModelName]),
       keywords: keywordsForStandardModel(offer.standard_model || offer.standardModel),
     }))
     .filter((target) => target.family && target.standardModel);
+}
+
+function probeTargetKey(target) {
+  return [
+    normalizeLooseToken(target.family),
+    normalizeLooseToken(target.standardModel),
+    normalizeLooseToken(target.groupName || target.accountPool || target.channelType || "default"),
+  ].join("|");
 }
 
 function matchAvailableModel(availableModels, target) {
@@ -445,38 +499,57 @@ function authHeaders(profile, apiKey) {
 
 async function refreshAvailabilityRollup(supabase, stationId) {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const { data, error } = await supabase
+  const [runsResult, offersResult] = await Promise.all([
+    supabase
     .from("api_transit_detection_runs")
     .select("started_at,finished_at,raw_snapshot")
     .eq("station_id", stationId)
     .eq("run_type", "api_probe")
     .gte("started_at", since)
     .order("started_at", { ascending: false })
-    .limit(300);
+      .limit(300),
+    supabase
+      .from("api_transit_offers")
+      .select("standard_model,group_name,status")
+      .eq("station_id", stationId)
+      .in("status", ["active", "needs_review"]),
+  ]);
 
-  if (error) throw error;
+  if (runsResult.error) throw runsResult.error;
+  if (offersResult.error) throw offersResult.error;
 
   const stationSamples = [];
-  const samplesByModel = new Map();
+  const samplesByOfferKey = new Map();
+  const legacySamplesByModel = new Map();
+  const offerRows = dbRows(offersResult.data);
+  const offerGroupsByModel = groupOfferRowsByModel(offerRows);
   let lastCheckedAt = null;
 
-  for (const row of dbRows(data)) {
+  for (const row of dbRows(runsResult.data)) {
     const checkedAt = stringValue(row.finished_at || row.started_at);
     if (checkedAt && (!lastCheckedAt || checkedAt > lastCheckedAt)) lastCheckedAt = checkedAt;
 
     const snapshot = row.raw_snapshot && typeof row.raw_snapshot === "object" ? row.raw_snapshot : {};
     const targetResults = Array.isArray(snapshot.targetResults) ? snapshot.targetResults : [];
-    const attemptedTargets = targetResults.filter((item) => item && typeof item === "object" && !item.skipped);
+    const targetSamples = targetResults.filter(isTargetAvailabilitySample);
 
-    if (attemptedTargets.length) {
-      for (const item of attemptedTargets) {
+    if (targetSamples.length) {
+      for (const item of targetSamples) {
         const sample = { ok: Boolean(item.ok), checkedAt };
         stationSamples.push(sample);
         const standardModel = stringValue(item.standardModel);
         if (!standardModel) continue;
-        const existing = samplesByModel.get(standardModel) || [];
+        const groupName = stringValue(item.groupName);
+        if (!groupName) {
+          const existing = legacySamplesByModel.get(standardModel) || [];
+          existing.push(sample);
+          legacySamplesByModel.set(standardModel, existing);
+          continue;
+        }
+        const key = offerAvailabilityKey(standardModel, groupName);
+        const existing = samplesByOfferKey.get(key) || [];
         existing.push(sample);
-        samplesByModel.set(standardModel, existing);
+        samplesByOfferKey.set(key, existing);
       }
       continue;
     }
@@ -498,20 +571,31 @@ async function refreshAvailabilityRollup(supabase, stationId) {
     .eq("id", stationId);
 
   const offerRollups = [];
-  for (const [standardModel, samples] of samplesByModel.entries()) {
+  for (const offer of offerRows) {
+    const standardModel = stringValue(offer.standard_model);
+    const groupName = stringValue(offer.group_name);
+    if (!standardModel) continue;
+
+    const key = offerAvailabilityKey(standardModel, groupName);
+    const samples =
+      samplesByOfferKey.get(key) ||
+      legacySamplesForOffer(legacySamplesByModel, offerGroupsByModel, standardModel) ||
+      [];
     const availability = summarizeSamples(samples);
-    const { error: offerError } = await supabase
+    let query = supabase
       .from("api_transit_offers")
       .update({
         availability_seven_day_rate: availability.rate,
         availability_seven_day_samples: availability.samples,
-        availability_last_checked_at: lastCheckedAt,
-        availability_note: availabilityNote(standardModel, availability),
+        availability_last_checked_at: availability.samples ? lastCheckedAt : null,
+        availability_note: availabilityNote(targetGroupLabel(standardModel, groupName), availability),
       })
       .eq("station_id", stationId)
       .eq("standard_model", standardModel);
+    query = groupName ? query.eq("group_name", groupName) : query.is("group_name", null);
+    const { error: offerError } = await query;
     if (offerError) throw offerError;
-    offerRollups.push({ standardModel, ...availability });
+    offerRollups.push({ standardModel, groupName: groupName || null, ...availability });
   }
 
   return {
@@ -520,6 +604,10 @@ async function refreshAvailabilityRollup(supabase, stationId) {
     offers: offerRollups,
     lastCheckedAt,
   };
+}
+
+function isTargetAvailabilitySample(item) {
+  return item && typeof item === "object" && typeof item.ok === "boolean";
 }
 
 function summarizeSamples(samples) {
@@ -537,6 +625,32 @@ function availabilityNote(label, availability) {
   return `PriceAI API Key 探测：近 7 日 ${label} ${availability.success}/${availability.samples} 个样本成功。`;
 }
 
+function groupOfferRowsByModel(offerRows) {
+  const output = new Map();
+  for (const offer of offerRows) {
+    const standardModel = stringValue(offer.standard_model);
+    if (!standardModel) continue;
+    const groups = output.get(standardModel) || new Set();
+    groups.add(stringValue(offer.group_name) || "default");
+    output.set(standardModel, groups);
+  }
+  return output;
+}
+
+function offerAvailabilityKey(standardModel, groupName) {
+  return `${normalizeLooseToken(standardModel)}|${normalizeLooseToken(groupName || "default")}`;
+}
+
+function legacySamplesForOffer(legacySamplesByModel, offerGroupsByModel, standardModel) {
+  const groups = offerGroupsByModel.get(standardModel);
+  if (groups && groups.size > 1) return null;
+  return legacySamplesByModel.get(standardModel) || null;
+}
+
+function targetGroupLabel(standardModel, groupName) {
+  return groupName ? `${groupName} / ${standardModel}` : standardModel;
+}
+
 async function listOfferModels(supabase, stationIds) {
   const output = new Map();
   const ids = stationIds.filter(Boolean);
@@ -544,7 +658,7 @@ async function listOfferModels(supabase, stationIds) {
 
   const { data, error } = await supabase
     .from("api_transit_offers")
-    .select("station_id,family,standard_model,raw_model_name,status")
+    .select("station_id,family,standard_model,raw_model_name,group_name,account_pool,channel_type,status")
     .in("station_id", ids)
     .in("status", ["active", "needs_review"]);
 
@@ -559,6 +673,180 @@ async function listOfferModels(supabase, stationIds) {
   }
 
   return output;
+}
+
+async function listCredentialApiKeys(supabase, stationIds) {
+  const output = emptyCredentialStore();
+  const ids = Array.from(new Set(stationIds.filter(Boolean)));
+  if (!ids.length) return output;
+
+  const { data, error } = await supabase
+    .from("api_transit_credentials")
+    .select("id,station_id,credential_type,status,encrypted_payload,credential_meta,expires_at,created_at")
+    .in("station_id", ids)
+    .eq("credential_type", "test_key")
+    .in("status", ["submitted", "ready"])
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    if (error.code === "PGRST205" || String(error.message || "").includes("api_transit_credentials")) {
+      output.unavailableReason = "credential_table_missing";
+      return output;
+    }
+    throw error;
+  }
+
+  const secret = envValue("API_TRANSIT_CREDENTIAL_ENCRYPTION_KEY");
+  if (!secret) {
+    output.unavailableReason = "missing_credential_encryption_key";
+    return output;
+  }
+
+  for (const row of dbRows(data)) {
+    if (isExpired(row.expires_at)) continue;
+    const stationId = stringValue(row.station_id);
+    if (!stationId) continue;
+
+    const payload = await decryptCredentialPayload(row.encrypted_payload, secret).catch(() => null);
+    const apiKey = stringValue(payload?.api_key);
+    if (!apiKey) continue;
+
+    const meta = row.credential_meta && typeof row.credential_meta === "object" ? row.credential_meta : {};
+    const items = output.byStation.get(stationId) || [];
+    items.push({
+      credentialId: stringValue(row.id) || null,
+      apiKey,
+      allowedModels: stringArray(payload?.allowed_models || meta.allowed_models),
+      allowedGroups: stringArray(payload?.allowed_groups || meta.allowed_groups),
+      groupName: stringValue(payload?.group_name || meta.group_name),
+      groupId: stringValue(payload?.group_id || meta.group_id),
+      accountPool: stringValue(payload?.account_pool || meta.account_pool),
+      family: stringValue(payload?.family || meta.family),
+      createdAt: stringValue(row.created_at),
+    });
+    output.byStation.set(stationId, items);
+  }
+
+  return output;
+}
+
+function emptyCredentialStore() {
+  return {
+    byStation: new Map(),
+    unavailableReason: null,
+  };
+}
+
+function selectCredentialForProfile(store, profile) {
+  const credentials = store.byStation.get(profile.stationId) || [];
+  if (!credentials.length) return null;
+
+  const exact = credentials.find((credential) => credentialMatchesProfile(credential, profile));
+  const selected = exact || (profileRequiresSpecificCredential(profile) ? null : credentials[0]);
+  if (!selected) return null;
+  return {
+    apiKey: selected.apiKey,
+    credentialId: selected.credentialId,
+    source: "database",
+  };
+}
+
+function credentialMatchesProfile(credential, profile) {
+  if (!credentialGroupMatchesProfile(credential, profile)) return false;
+  if (!credential.allowedModels.length) return true;
+
+  const profileTokens = [
+    profile.profileId,
+    profile.stationId,
+    profile.apiKeyEnv,
+    profile.groupName,
+    profile.groupId,
+    profile.accountPool,
+    ...(Array.isArray(profile.targets) ? profile.targets.flatMap((target) => [
+      target.family,
+      target.standardModel,
+      target.groupName,
+      target.groupId,
+      target.accountPool,
+      ...(target.candidates || []),
+      ...(target.keywords || []),
+    ]) : []),
+  ].map(normalizeLooseToken).filter(Boolean);
+
+  return credential.allowedModels.some((allowed) => {
+    const token = normalizeLooseToken(allowed);
+    if (!token) return false;
+    return profileTokens.some((profileToken) => looseTokenMatches(profileToken, token));
+  });
+}
+
+function credentialGroupMatchesProfile(credential, profile) {
+  const profileGroupTokens = [
+    profile.groupName,
+    profile.groupId,
+    profile.accountPool,
+    ...(Array.isArray(profile.targets)
+      ? profile.targets.flatMap((target) => [target.groupName, target.groupId, target.accountPool])
+      : []),
+  ].map(normalizeLooseToken).filter(Boolean);
+
+  if (!profileGroupTokens.length) return true;
+
+  const credentialGroupTokens = [
+    credential.groupName,
+    credential.groupId,
+    credential.accountPool,
+    ...credential.allowedGroups,
+  ].map(normalizeLooseToken).filter(Boolean);
+
+  if (!credentialGroupTokens.length) return false;
+  return profileGroupTokens.some((profileToken) =>
+    credentialGroupTokens.some((credentialToken) => looseTokenMatches(profileToken, credentialToken)),
+  );
+}
+
+function profileRequiresSpecificCredential(profile) {
+  return Boolean(
+    profile.groupName ||
+      profile.groupId ||
+      profile.accountPool ||
+      (Array.isArray(profile.targets) &&
+        profile.targets.some((target) => target.groupName || target.groupId || target.accountPool)),
+  );
+}
+
+async function decryptCredentialPayload(encryptedPayload, secret) {
+  if (!encryptedPayload || typeof encryptedPayload !== "object") return null;
+  if (encryptedPayload.alg !== "AES-GCM") return null;
+
+  const cryptoApi = globalThis.crypto || webcrypto;
+  if (!cryptoApi?.subtle) return null;
+
+  const encoder = new TextEncoder();
+  const keyMaterial = await cryptoApi.subtle.digest("SHA-256", encoder.encode(secret));
+  const key = await cryptoApi.subtle.importKey("raw", keyMaterial, { name: "AES-GCM" }, false, ["decrypt"]);
+  const iv = base64ToBytes(encryptedPayload.iv);
+  const ciphertext = base64ToBytes(encryptedPayload.ciphertext);
+  const decrypted = await cryptoApi.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+  return JSON.parse(new TextDecoder().decode(decrypted));
+}
+
+async function markCredentialUsed(supabase, credentialId) {
+  const { error } = await supabase
+    .from("api_transit_credentials")
+    .update({ last_used_at: new Date().toISOString(), failure_message: null })
+    .eq("id", credentialId);
+  if (error && error.code !== "PGRST205") throw error;
+}
+
+function isExpired(value) {
+  if (!value) return false;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) && timestamp <= Date.now();
+}
+
+function base64ToBytes(value) {
+  return Uint8Array.from(Buffer.from(String(value || ""), "base64"));
 }
 
 async function upsertRows(supabase, table, rows, options = {}) {
@@ -686,9 +974,11 @@ function runStatus(input) {
 
 function buildSkippedProfile(profile, reason) {
   return {
+    profileId: profile.profileId || null,
     stationId: profile.stationId,
     apiBaseUrl: profile.apiBaseUrl,
     apiKeyEnv: profile.apiKeyEnv,
+    groupName: profile.groupName || null,
     reason,
   };
 }
@@ -714,6 +1004,17 @@ function normalizeFamily(value) {
 
 function normalizeModelId(value) {
   return String(value || "").toLowerCase().replace(/[_\s]+/g, "-");
+}
+
+function normalizeLooseToken(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function looseTokenMatches(left, right) {
+  return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
 }
 
 function dbRows(value) {
@@ -783,6 +1084,7 @@ function normalizeOptions(options) {
     dryRun: truthyOption(options.dryRun ?? options["dry-run"]),
     post: truthyOption(options.post),
     db: truthyOption(options.db),
+    dbCredentials: !truthyOption(options.noDbCredentials ?? options["no-db-credentials"]),
     verbose: truthyOption(options.verbose),
     skipCompletions: truthyOption(options.skipCompletions ?? options["skip-completions"]),
     timeoutMs: positiveInteger(options.timeoutMs ?? options.timeout, DEFAULT_TIMEOUT_MS),

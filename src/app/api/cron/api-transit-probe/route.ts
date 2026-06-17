@@ -34,6 +34,7 @@ async function runApiTransitProbe(request: Request) {
     const result = await probeApiTransitStations({
       station,
       post: true,
+      dbCredentials: true,
       targetLimit: url.searchParams.get("targetLimit") || undefined,
       skipCompletions: url.searchParams.get("skipCompletions") || undefined,
       timeoutMs: url.searchParams.get("timeoutMs") || undefined,
