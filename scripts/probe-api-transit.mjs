@@ -801,7 +801,7 @@ function credentialGroupMatchesProfile(credential, profile) {
 
   if (!credentialGroupTokens.length) return false;
   return profileGroupTokens.some((profileToken) =>
-    credentialGroupTokens.some((credentialToken) => looseTokenMatches(profileToken, credentialToken)),
+    credentialGroupTokens.some((credentialToken) => groupTokenMatches(profileToken, credentialToken)),
   );
 }
 
@@ -1015,6 +1015,10 @@ function normalizeLooseToken(value) {
 
 function looseTokenMatches(left, right) {
   return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
+}
+
+function groupTokenMatches(left, right) {
+  return Boolean(left && right && left === right);
 }
 
 function dbRows(value) {
