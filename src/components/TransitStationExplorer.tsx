@@ -60,7 +60,9 @@ const POOL_OPTIONS: { value: TransitAccountPool | "all"; label: string }[] = [
 
 const SORT_OPTIONS: { value: TransitSortKey; label: string }[] = [
   { value: "overall", label: "综合排序" },
-  { value: "rate", label: "倍率从低到高" },
+  { value: "rate", label: "最低倍率" },
+  { value: "claude_rate", label: "Claude 倍率" },
+  { value: "gpt_rate", label: "GPT 倍率" },
   { value: "stability", label: "稳定性优先" },
 ];
 
@@ -98,7 +100,7 @@ export default function TransitStationExplorer({ stations }: Props) {
     coerceParam(searchParams.get("pool"), POOL_OPTIONS.map((item) => item.value), "all")
   );
   const [sortBy, setSortBy] = useState<TransitSortKey>(
-    coerceParam(searchParams.get("sort"), ["overall", "rate", "stability"] as const, "overall")
+    coerceParam(searchParams.get("sort"), ["overall", "rate", "claude_rate", "gpt_rate", "stability"] as const, "overall")
   );
 
   useEffect(() => {
@@ -190,10 +192,10 @@ export default function TransitStationExplorer({ stations }: Props) {
             placeholder="搜索站点名称、描述..."
             className="flex-1 xl:max-w-[460px]"
           />
-          <div className="flex min-w-0 items-center gap-2 overflow-x-auto scrollbar-none xl:ml-auto">
+          <div className="flex min-w-0 items-center gap-2 overflow-x-auto scrollbar-none">
             <label className="relative inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-[#e4e9ea] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#dde4e5]">
               <ArrowUpDown className="h-4 w-4 shrink-0" />
-              <span className="pointer-events-none min-w-[5.5em]">{sortLabel(sortBy)}</span>
+              <span className="pointer-events-none min-w-[5.25em]">{sortLabel(sortBy)}</span>
               <select
                 aria-label="排序"
                 value={sortBy}
@@ -210,7 +212,7 @@ export default function TransitStationExplorer({ stations }: Props) {
             <button
               type="button"
               onClick={() => setShowFilters((value) => !value)}
-              className={`inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-semibold transition-colors ${
+              className={`inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-semibold transition-colors ${
                 showFilters || activeFilterCount > 0
                   ? "bg-[#2d3435] text-[#f8f8f8]"
                   : "bg-white text-[#5a6061] ring-1 ring-[#adb3b4]/15 hover:bg-[#fbfcfc]"

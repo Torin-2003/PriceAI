@@ -25,7 +25,7 @@ const sourceChannelPriority: TransitChannelType[] = [
   "undisclosed",
 ];
 
-export type TransitSortKey = "overall" | "rate" | "stability";
+export type TransitSortKey = "overall" | "rate" | "claude_rate" | "gpt_rate" | "stability";
 
 export const ALLOWED_RETURN_KEYS = [
   "q",
@@ -438,6 +438,26 @@ export function compareStations(
 
     if (sortBy === "rate") {
       return (
+        compareNullableNumber(a.bestCombinedRate, b.bestCombinedRate, "asc") ||
+        compareNullableNumber(a.stabilityRate, b.stabilityRate, "desc") ||
+        b.stabilitySamples - a.stabilitySamples ||
+        new Date(right.lastUpdatedAt).getTime() - new Date(left.lastUpdatedAt).getTime()
+      );
+    }
+
+    if (sortBy === "claude_rate") {
+      return (
+        compareNullableNumber(a.claude.combinedRateMin, b.claude.combinedRateMin, "asc") ||
+        compareNullableNumber(a.bestCombinedRate, b.bestCombinedRate, "asc") ||
+        compareNullableNumber(a.stabilityRate, b.stabilityRate, "desc") ||
+        b.stabilitySamples - a.stabilitySamples ||
+        new Date(right.lastUpdatedAt).getTime() - new Date(left.lastUpdatedAt).getTime()
+      );
+    }
+
+    if (sortBy === "gpt_rate") {
+      return (
+        compareNullableNumber(a.gpt.combinedRateMin, b.gpt.combinedRateMin, "asc") ||
         compareNullableNumber(a.bestCombinedRate, b.bestCombinedRate, "asc") ||
         compareNullableNumber(a.stabilityRate, b.stabilityRate, "desc") ||
         b.stabilitySamples - a.stabilitySamples ||

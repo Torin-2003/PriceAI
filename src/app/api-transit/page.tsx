@@ -57,7 +57,7 @@ export default async function ApiTransitPage() {
       <main className="mx-auto max-w-[1500px] px-5 py-7 pb-20">
         <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-[900px]">
-            <h1 className="text-[32px] font-semibold leading-[1.18] text-[#202829] sm:text-[36px]">
+            <h1 className="min-w-0 font-serif text-2xl font-semibold tracking-normal text-[#202829] md:text-4xl">
               API 中转站价格榜
             </h1>
             <p className="mt-2.5 max-w-[860px] text-sm leading-[1.8] text-[#5a6061]">
