@@ -41,6 +41,8 @@ type ApiProviderMatchCandidate = {
 
 const API_MODEL_CACHE_TTL_MS = 30_000;
 const PUBLIC_API_MODEL_READ_TIMEOUT_MS = 2_500;
+const PUBLIC_API_MODEL_BUILD_READ_TIMEOUT_MS = 15_000;
+const NEXT_PRODUCTION_BUILD_PHASE = "phase-production-build";
 
 let apiModelCache: { expiresAt: number; value: ApiModelDataset } | null = null;
 let apiModelPromise: Promise<ApiModelDataset> | null = null;
@@ -440,7 +442,13 @@ async function readApiModelDataset(): Promise<ApiModelDataset> {
 }
 
 function publicApiModelReadSignal(): AbortSignal {
-  return AbortSignal.timeout(PUBLIC_API_MODEL_READ_TIMEOUT_MS);
+  return AbortSignal.timeout(publicApiModelReadTimeoutMs());
+}
+
+function publicApiModelReadTimeoutMs(): number {
+  return process.env.NEXT_PHASE === NEXT_PRODUCTION_BUILD_PHASE
+    ? PUBLIC_API_MODEL_BUILD_READ_TIMEOUT_MS
+    : PUBLIC_API_MODEL_READ_TIMEOUT_MS;
 }
 
 function buildStaticApiModelAdminData({

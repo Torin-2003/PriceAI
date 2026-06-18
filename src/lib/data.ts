@@ -49,6 +49,8 @@ const PUBLIC_DATA_CACHE_TTL_MS = 120_000;
 const EXPLORER_DATA_CACHE_TTL_MS = 120_000;
 const PRODUCT_OFFERS_CACHE_TTL_MS = 120_000;
 const PUBLIC_SUPABASE_READ_TIMEOUT_MS = 2_500;
+const PUBLIC_SUPABASE_BUILD_READ_TIMEOUT_MS = 15_000;
+const NEXT_PRODUCTION_BUILD_PHASE = "phase-production-build";
 const DASHBOARD_DATA_CACHE_TTL_MS = 30_000;
 const ADMIN_DATA_CACHE_TTL_MS = 120_000;
 const ADMIN_OFFER_SAMPLE_LIMIT = 80;
@@ -770,7 +772,13 @@ function errorMessage(error: unknown): string {
 }
 
 function publicSupabaseReadSignal(): AbortSignal {
-  return AbortSignal.timeout(PUBLIC_SUPABASE_READ_TIMEOUT_MS);
+  return AbortSignal.timeout(publicSupabaseReadTimeoutMs());
+}
+
+function publicSupabaseReadTimeoutMs(): number {
+  return process.env.NEXT_PHASE === NEXT_PRODUCTION_BUILD_PHASE
+    ? PUBLIC_SUPABASE_BUILD_READ_TIMEOUT_MS
+    : PUBLIC_SUPABASE_READ_TIMEOUT_MS;
 }
 
 function preferStalePublicOfferData(staleValue: PublicOfferData | null, value: PublicOfferData): PublicOfferData {

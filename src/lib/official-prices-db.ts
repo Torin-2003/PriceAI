@@ -38,6 +38,8 @@ type OfficialRegionConfigRow = {
 
 const OFFICIAL_PRICE_CACHE_TTL_MS = 30_000;
 const PUBLIC_OFFICIAL_PRICE_READ_TIMEOUT_MS = 2_500;
+const PUBLIC_OFFICIAL_PRICE_BUILD_READ_TIMEOUT_MS = 15_000;
+const NEXT_PRODUCTION_BUILD_PHASE = "phase-production-build";
 
 let officialPriceCache: { expiresAt: number; value: OfficialPricesDataset } | null = null;
 let officialPricePromise: Promise<OfficialPricesDataset> | null = null;
@@ -414,7 +416,13 @@ async function readFxSummary(rows: OfficialPriceRow[]): Promise<OfficialPriceFxS
 }
 
 function publicOfficialPriceReadSignal(): AbortSignal {
-  return AbortSignal.timeout(PUBLIC_OFFICIAL_PRICE_READ_TIMEOUT_MS);
+  return AbortSignal.timeout(publicOfficialPriceReadTimeoutMs());
+}
+
+function publicOfficialPriceReadTimeoutMs(): number {
+  return process.env.NEXT_PHASE === NEXT_PRODUCTION_BUILD_PHASE
+    ? PUBLIC_OFFICIAL_PRICE_BUILD_READ_TIMEOUT_MS
+    : PUBLIC_OFFICIAL_PRICE_READ_TIMEOUT_MS;
 }
 
 function dbRows(value: unknown): DbRow[] {
