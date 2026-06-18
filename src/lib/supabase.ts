@@ -5,15 +5,11 @@ import { getRuntimeEnv } from "@/lib/runtime-env";
 
 const SUPABASE_DB_TIMEOUT_MS = 8_000;
 const SUPABASE_CIRCUIT_BREAKER_COOLDOWN_MS = 60_000;
-const NEXT_PRODUCTION_BUILD_PHASE = "phase-production-build";
-const ALLOW_SUPABASE_DURING_BUILD_ENV = "PRICEAI_ALLOW_SUPABASE_DURING_BUILD";
 
 let serverClient: SupabaseClient | null = null;
 let supabaseUnavailableUntil = 0;
 
 export function getSupabaseServerClient(): SupabaseClient | null {
-  if (shouldSkipSupabaseDuringBuild()) return null;
-
   const url = getRuntimeEnv("NEXT_PUBLIC_SUPABASE_URL");
   const key = getRuntimeEnv("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -35,11 +31,6 @@ export function getSupabaseServerClient(): SupabaseClient | null {
   }
 
   return serverClient;
-}
-
-function shouldSkipSupabaseDuringBuild(): boolean {
-  if (process.env.NEXT_PHASE !== NEXT_PRODUCTION_BUILD_PHASE) return false;
-  return getRuntimeEnv(ALLOW_SUPABASE_DURING_BUILD_ENV) !== "1";
 }
 
 async function supabaseFetchWithCircuitBreaker(
