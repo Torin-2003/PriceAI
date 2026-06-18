@@ -15,7 +15,7 @@ const envPath = path.join(repoRoot, ".env.local");
 const DEFAULT_TIMEOUT_MS = 20000;
 const DEFAULT_TARGET_LIMIT = 4;
 const MAX_MODELS_SNAPSHOT = 200;
-const AVAILABILITY_ROLLUP_RUN_LIMIT = 80;
+const AVAILABILITY_SAMPLE_LOOKBACK_LIMIT = 2000;
 const userAgent = "Mozilla/5.0 PriceAI/1.0 APITransitProbe";
 let cachedFileEnv = null;
 
@@ -130,6 +130,7 @@ export async function probeApiTransitStations(options = {}) {
     if ((options.post || options.db) && !options.dryRun) {
       if (!supabase) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for --post/--db.");
       await upsertRows(supabase, "api_transit_detection_runs", [run.row], { onConflict: "id" });
+      await upsertAvailabilitySamples(supabase, run);
       if (credential.credentialId) await markCredentialUsed(supabase, credential.credentialId);
       rollups.push(await refreshAvailabilityRollup(supabase, profile.stationId));
     }
@@ -243,7 +244,7 @@ async function probeProfile(profile, options) {
     },
   };
 
-  return {
+  const output = {
     stationId: profile.stationId,
     status,
     modelCount: row.model_count,
@@ -253,6 +254,14 @@ async function probeProfile(profile, options) {
     finishedAt,
     row,
   };
+  output.availabilitySamples = availabilitySamplesFromProbe({
+    runId: row.id,
+    stationId: profile.stationId,
+    modelList,
+    targetResults,
+    checkedAt: finishedAt || startedAt,
+  });
+  return output;
 }
 
 async function probeModelList(profile, baseUrl, options) {
@@ -500,15 +509,14 @@ function authHeaders(profile, apiKey) {
 
 async function refreshAvailabilityRollup(supabase, stationId) {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const [runsResult, offersResult] = await Promise.all([
+  const [samplesResult, offersResult] = await Promise.all([
     supabase
-    .from("api_transit_detection_runs")
-    .select("started_at,finished_at,raw_snapshot")
-    .eq("station_id", stationId)
-    .eq("run_type", "api_probe")
-    .gte("started_at", since)
-    .order("started_at", { ascending: false })
-      .limit(AVAILABILITY_ROLLUP_RUN_LIMIT),
+      .from("api_transit_availability_samples")
+      .select("scope,standard_model,group_name,ok,checked_at")
+      .eq("station_id", stationId)
+      .gte("checked_at", since)
+      .order("checked_at", { ascending: false })
+      .limit(AVAILABILITY_SAMPLE_LOOKBACK_LIMIT),
     supabase
       .from("api_transit_offers")
       .select("standard_model,group_name,status")
@@ -516,7 +524,7 @@ async function refreshAvailabilityRollup(supabase, stationId) {
       .in("status", ["active", "needs_review"]),
   ]);
 
-  if (runsResult.error) throw runsResult.error;
+  if (samplesResult.error) throw samplesResult.error;
   if (offersResult.error) throw offersResult.error;
 
   const stationSamples = [];
@@ -526,41 +534,35 @@ async function refreshAvailabilityRollup(supabase, stationId) {
   const offerGroupsByModel = groupOfferRowsByModel(offerRows);
   let lastCheckedAt = null;
 
-  for (const row of dbRows(runsResult.data)) {
-    const checkedAt = stringValue(row.finished_at || row.started_at);
+  for (const row of dbRows(samplesResult.data)) {
+    const checkedAt = stringValue(row.checked_at);
     if (checkedAt && (!lastCheckedAt || checkedAt > lastCheckedAt)) lastCheckedAt = checkedAt;
+    const sample = { ok: Boolean(row.ok), checkedAt };
+    const scope = stringValue(row.scope);
 
-    const snapshot = row.raw_snapshot && typeof row.raw_snapshot === "object" ? row.raw_snapshot : {};
-    const targetResults = Array.isArray(snapshot.targetResults) ? snapshot.targetResults : [];
-    const targetSamples = targetResults.filter(isTargetAvailabilitySample);
-
-    if (targetSamples.length) {
-      for (const item of targetSamples) {
-        const sample = { ok: Boolean(item.ok), checkedAt };
-        stationSamples.push(sample);
-        const standardModel = stringValue(item.standardModel);
-        if (!standardModel) continue;
-        const groupName = stringValue(item.groupName);
-        if (!groupName) {
-          const existing = legacySamplesByModel.get(standardModel) || [];
-          existing.push(sample);
-          legacySamplesByModel.set(standardModel, existing);
-          continue;
-        }
-        const key = offerAvailabilityKey(standardModel, groupName);
-        const existing = samplesByOfferKey.get(key) || [];
-        existing.push(sample);
-        samplesByOfferKey.set(key, existing);
-      }
+    if (scope === "station") {
+      stationSamples.push(sample);
       continue;
     }
 
-    const modelList = snapshot.modelList && typeof snapshot.modelList === "object" ? snapshot.modelList : null;
-    if (modelList) stationSamples.push({ ok: Boolean(modelList.ok), checkedAt });
+    if (scope !== "offer") continue;
+    const standardModel = stringValue(row.standard_model);
+    if (!standardModel) continue;
+    const groupName = stringValue(row.group_name);
+    if (!groupName) {
+      const existing = legacySamplesByModel.get(standardModel) || [];
+      existing.push(sample);
+      legacySamplesByModel.set(standardModel, existing);
+      continue;
+    }
+    const key = offerAvailabilityKey(standardModel, groupName);
+    const existing = samplesByOfferKey.get(key) || [];
+    existing.push(sample);
+    samplesByOfferKey.set(key, existing);
   }
 
   const stationAvailability = summarizeSamples(stationSamples);
-  await supabase
+  const { error: stationError } = await supabase
     .from("api_transit_stations")
     .update({
       availability_seven_day_rate: stationAvailability.rate,
@@ -570,6 +572,7 @@ async function refreshAvailabilityRollup(supabase, stationId) {
       last_updated_at: new Date().toISOString(),
     })
     .eq("id", stationId);
+  if (stationError) throw stationError;
 
   const offerRollups = [];
   for (const offer of offerRows) {
@@ -607,10 +610,6 @@ async function refreshAvailabilityRollup(supabase, stationId) {
   };
 }
 
-function isTargetAvailabilitySample(item) {
-  return item && typeof item === "object" && typeof item.ok === "boolean";
-}
-
 function summarizeSamples(samples) {
   const valid = samples.filter((sample) => sample && typeof sample.ok === "boolean");
   const success = valid.filter((sample) => sample.ok).length;
@@ -619,6 +618,109 @@ function summarizeSamples(samples) {
     samples: valid.length,
     success,
   };
+}
+
+async function upsertAvailabilitySamples(supabase, run) {
+  const samples = run.availabilitySamples || [];
+  if (!samples.length) return;
+  await upsertRows(supabase, "api_transit_availability_samples", samples, { onConflict: "id" });
+  await pruneAvailabilitySamples(supabase, run.stationId);
+}
+
+async function pruneAvailabilitySamples(supabase, stationId) {
+  const cutoff = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+  const { error } = await supabase
+    .from("api_transit_availability_samples")
+    .delete()
+    .eq("station_id", stationId)
+    .lt("checked_at", cutoff);
+  if (error) throw error;
+}
+
+function availabilitySamplesFromProbe({ runId, stationId, modelList, targetResults, checkedAt }) {
+  const normalizedCheckedAt = stringValue(checkedAt) || new Date().toISOString();
+  const targetSamples = Array.isArray(targetResults)
+    ? targetResults.filter(isAvailabilitySample)
+    : [];
+  const samples = [];
+
+  if (targetSamples.length) {
+    targetSamples.forEach((item, index) => {
+      const standardModel = stringValue(item.standardModel);
+      const groupName = stringValue(item.groupName);
+      const targetCheckedAt = stringValue(item.checkedAt) || normalizedCheckedAt;
+      samples.push(availabilitySampleRow({
+        runId,
+        stationId,
+        scope: "station",
+        standardModel,
+        groupName,
+        ok: Boolean(item.ok),
+        checkedAt: targetCheckedAt,
+        index,
+      }));
+      if (!standardModel) return;
+      samples.push(availabilitySampleRow({
+        runId,
+        stationId,
+        scope: "offer",
+        standardModel,
+        groupName,
+        ok: Boolean(item.ok),
+        checkedAt: targetCheckedAt,
+        index,
+      }));
+    });
+    return samples;
+  }
+
+  if (modelList && typeof modelList.ok === "boolean") {
+    samples.push(availabilitySampleRow({
+      runId,
+      stationId,
+      scope: "station",
+      standardModel: null,
+      groupName: null,
+      ok: Boolean(modelList.ok),
+      checkedAt: normalizedCheckedAt,
+      index: 0,
+    }));
+  }
+
+  return samples;
+}
+
+function availabilitySampleRow(input) {
+  const stationId = stringValue(input.stationId);
+  const runId = stringValue(input.runId);
+  const checkedAt = stringValue(input.checkedAt) || new Date().toISOString();
+  const standardModel = stringValue(input.standardModel) || null;
+  const groupName = stringValue(input.groupName) || null;
+  const scope = input.scope === "offer" ? "offer" : "station";
+
+  return {
+    id: stableId(
+      "api-transit-availability-sample",
+      runId,
+      stationId,
+      scope,
+      standardModel || "station",
+      groupName || "default",
+      checkedAt,
+      String(input.index || 0),
+    ),
+    run_id: runId,
+    station_id: stationId,
+    scope,
+    standard_model: standardModel,
+    group_name: groupName,
+    ok: Boolean(input.ok),
+    checked_at: checkedAt,
+  };
+}
+
+function isAvailabilitySample(item) {
+  return item && typeof item === "object" && typeof item.ok === "boolean";
 }
 
 function availabilityNote(label, availability) {

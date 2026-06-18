@@ -67,9 +67,16 @@ assert(!/select\(\s*["'`]\*,\s*api_transit_stations\(name\)["'`]\s*\)/.test(tran
 assert(/ADMIN_LATEST_RUN_SCAN_LIMIT/.test(transitAdminText), "src/lib/api-transit-admin.ts: latest-run lookup must keep a bounded scan limit.");
 
 const probeText = read("scripts/probe-api-transit.mjs");
-const rollupLimit = Number(probeText.match(/AVAILABILITY_ROLLUP_RUN_LIMIT\s*=\s*(\d+)/)?.[1] || Number.NaN);
-assert(Number.isFinite(rollupLimit), "scripts/probe-api-transit.mjs: availability rollup limit must be explicit.");
-assert(rollupLimit <= 100, `scripts/probe-api-transit.mjs: availability rollup limit is ${rollupLimit}; keep it <= 100.`);
+assert(/api_transit_availability_samples/.test(probeText), "scripts/probe-api-transit.mjs: availability rollup must use structured sample rows.");
+assert(
+  !/\.from\(\s*["'`]api_transit_detection_runs["'`]\s*\)[\s\S]{0,500}\.select\([\s\S]{0,120}raw_snapshot/.test(probeText),
+  "scripts/probe-api-transit.mjs: availability rollup must not read historical raw snapshots.",
+);
+assert(/AVAILABILITY_SAMPLE_LOOKBACK_LIMIT\s*=\s*2000/.test(probeText), "scripts/probe-api-transit.mjs: structured availability sample lookup must stay bounded.");
+
+const transitSamplesMigration = read("supabase/migrations/20260618134500_api_transit_availability_samples.sql");
+assert(/create table if not exists api_transit_availability_samples/.test(transitSamplesMigration), "api transit availability sample migration must create the structured sample table.");
+assert(/checked_at desc/.test(transitSamplesMigration), "api transit availability sample migration must index station time lookups.");
 
 const smokeText = read("scripts/smoke-cloudflare.mjs");
 assert(/SMOKE_FETCH_TIMEOUT_MS/.test(smokeText), "scripts/smoke-cloudflare.mjs: smoke checks must have a request timeout.");

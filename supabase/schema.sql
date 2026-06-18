@@ -1473,6 +1473,18 @@ create table if not exists api_transit_detection_runs (
   logs jsonb not null default '{}'::jsonb
 );
 
+create table if not exists api_transit_availability_samples (
+  id text primary key,
+  run_id text not null references api_transit_detection_runs(id) on delete cascade,
+  station_id text not null references api_transit_stations(id) on delete cascade,
+  scope text not null check (scope in ('station', 'offer')),
+  standard_model text,
+  group_name text,
+  ok boolean not null,
+  checked_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists api_transit_feedback (
   id text primary key,
   station_id text references api_transit_stations(id) on delete set null,
@@ -1503,6 +1515,8 @@ create index if not exists api_transit_credentials_submission_id_idx on api_tran
 create index if not exists api_transit_credentials_status_idx on api_transit_credentials(status, created_at desc);
 create index if not exists api_transit_detection_runs_started_at_idx on api_transit_detection_runs(started_at desc);
 create index if not exists api_transit_detection_runs_station_id_idx on api_transit_detection_runs(station_id);
+create index if not exists api_transit_availability_samples_station_time_idx on api_transit_availability_samples(station_id, checked_at desc);
+create index if not exists api_transit_availability_samples_offer_time_idx on api_transit_availability_samples(station_id, scope, standard_model, group_name, checked_at desc);
 create index if not exists api_transit_feedback_status_idx on api_transit_feedback(status, created_at desc);
 
 drop trigger if exists api_transit_stations_set_updated_at on api_transit_stations;
@@ -1530,4 +1544,5 @@ alter table api_transit_offers enable row level security;
 alter table api_transit_submissions enable row level security;
 alter table api_transit_credentials enable row level security;
 alter table api_transit_detection_runs enable row level security;
+alter table api_transit_availability_samples enable row level security;
 alter table api_transit_feedback enable row level security;
