@@ -2,8 +2,8 @@
 
 PriceAI 是 AI 订阅与模型 API 的获取成本雷达，面向中文用户整理 AI 订阅渠道、官方订阅地区价和模型 API 获取入口。
 
-Website: https://priceai.cc
-GitHub: https://github.com/physics-dimension/PriceAI
+Website: [https://priceai.cc](https://priceai.cc)
+GitHub: [physics-dimension/PriceAI](https://github.com/physics-dimension/PriceAI)
 
 ## What PriceAI Covers
 
@@ -14,26 +14,26 @@ GitHub: https://github.com/physics-dimension/PriceAI
 
 ## Important Pages
 
-- Home: https://priceai.cc/
-- About: https://priceai.cc/about
-- Official subscription prices: https://priceai.cc/official-prices
-- API model radar: https://priceai.cc/api-models
-- ChatGPT platform page: https://priceai.cc/platforms/chatgpt
-- Gemini platform page: https://priceai.cc/platforms/gemini
-- Claude platform page: https://priceai.cc/platforms/claude
-- API/CDK platform page: https://priceai.cc/platforms/api
-- AI subscription guide index: https://priceai.cc/guides
-- ChatGPT subscription guide: https://priceai.cc/guides/chatgpt-subscription-options
-- AI subscription price layers guide: https://priceai.cc/guides/why-ai-subscription-prices-differ
-- Official AI subscription self-service guide: https://priceai.cc/guides/how-to-subscribe-ai-officially
-- Apple ID AI subscription guide: https://priceai.cc/guides/apple-id-ai-subscription
-- Google Play AI subscription guide: https://priceai.cc/guides/google-play-ai-subscription
-- AI subscription payment card guide: https://priceai.cc/guides/visa-card-for-ai-subscription
-- AI subscription gift card guide: https://priceai.cc/guides/ai-subscription-gift-card
-- AI subscription regional price risk guide: https://priceai.cc/guides/ai-subscription-region-price-risks
-- AI subscription card shop trust guide: https://priceai.cc/guides/are-ai-subscription-card-shops-reliable
-- Product detail pages: https://priceai.cc/products/
-- Sitemap: https://priceai.cc/sitemap.xml
+- [Home](https://priceai.cc/)
+- [About](https://priceai.cc/about)
+- [Official subscription prices](https://priceai.cc/official-prices)
+- [API model radar](https://priceai.cc/api-models)
+- [ChatGPT platform page](https://priceai.cc/platforms/chatgpt)
+- [Gemini platform page](https://priceai.cc/platforms/gemini)
+- [Claude platform page](https://priceai.cc/platforms/claude)
+- [API/CDK platform page](https://priceai.cc/platforms/api)
+- [AI subscription guide index](https://priceai.cc/guides)
+- [ChatGPT subscription guide](https://priceai.cc/guides/chatgpt-subscription-options)
+- [AI subscription price layers guide](https://priceai.cc/guides/why-ai-subscription-prices-differ)
+- [Official AI subscription self-service guide](https://priceai.cc/guides/how-to-subscribe-ai-officially)
+- [Apple ID AI subscription guide](https://priceai.cc/guides/apple-id-ai-subscription)
+- [Google Play AI subscription guide](https://priceai.cc/guides/google-play-ai-subscription)
+- [AI subscription payment card guide](https://priceai.cc/guides/visa-card-for-ai-subscription)
+- [AI subscription gift card guide](https://priceai.cc/guides/ai-subscription-gift-card)
+- [AI subscription regional price risk guide](https://priceai.cc/guides/ai-subscription-region-price-risks)
+- [AI subscription card shop trust guide](https://priceai.cc/guides/are-ai-subscription-card-shops-reliable)
+- [Product detail pages](https://priceai.cc/products/)
+- [Sitemap](https://priceai.cc/sitemap.xml)
 
 ## Data Boundary
 
