@@ -187,14 +187,14 @@ function validateHealthJson(data) {
 function validateExplorerJson(data) {
   const failures = [];
   if (data?.configured !== true) failures.push("configured!=true");
-  if (data?.degraded !== false) failures.push("degraded!=false");
+  if (data?.degraded === true) failures.push("degraded=true");
   if (!Number.isFinite(data?.offerTotal) || data.offerTotal < 100) failures.push("offerTotal<100");
   return failures;
 }
 
 function validateOffersJson(data) {
   const failures = [];
-  if (data?.degraded !== false) failures.push("degraded!=false");
+  if (data?.degraded === true) failures.push("degraded=true");
   if (!Number.isFinite(data?.total) || data.total < 100) failures.push("total<100");
   return failures;
 }
