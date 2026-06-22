@@ -109,5 +109,29 @@
     "channelTypes": ["first_party_pool", "reseller", "mixed"],
     "accountPools": ["mixed", "undisclosed"],
     "summary": "站长通过 PriceAI 表单提交，公开 New API 价格接口可读取；渠道包含自建号池、二级分销和混合渠道，需继续接入测试 Key 做可用性监测。"
+  },
+  {
+    "id": "longshang-pro",
+    "name": "LONGSHANG 龍殤",
+    "websiteUrl": "https://longshang.pro/",
+    "apiBaseUrl": "https://api.longshang.pro/v1",
+    "pricingUrl": "https://longshang.pro/pricing",
+    "pricingEndpointUrl": "https://api.longshang.pro/api/pricing",
+    "collectorKind": "new_api_pricing",
+    "channelTypes": ["first_party_pool", "reseller", "mixed"],
+    "accountPools": ["pro", "plus", "team", "mixed"],
+    "summary": "站长提交，公开 New API 价格接口可读取；提交说明包含低价、普通、高级渠道分组倍率，需继续用测试 Key 校验可用性和换算口径。"
+  },
+  {
+    "id": "api-aifoxspa-com",
+    "name": "aifox",
+    "websiteUrl": "https://api.aifoxspa.com/",
+    "apiBaseUrl": "https://api.aifoxspa.com/v1",
+    "pricingUrl": "https://pay.ldxp.cn/item/bvajcj",
+    "pricingEndpointUrl": "https://api.aifoxspa.com/api/pricing",
+    "collectorKind": "new_api_pricing",
+    "channelTypes": ["undisclosed"],
+    "accountPools": ["plus"],
+    "summary": "站长提交，公开 New API 价格接口可读取；提交说明包含 GPT Plus 0.30x 和 0.5R=1$ 口径，需继续用测试 Key 校验可用性。"
   }
 ]

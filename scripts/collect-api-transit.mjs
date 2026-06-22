@@ -495,15 +495,10 @@ async function postRows(rows, options) {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for --post/--db.");
 
-  const stations = rows.stations.map((station) => ({
-    ...station,
-    published: Boolean(options.publish),
-    data_status: options.publish ? "verified" : station.data_status,
-  }));
-  const offers = rows.offers.map((offer) => ({
-    ...offer,
-    status: options.publish ? "active" : offer.status,
-  }));
+  const existingStations = await readExistingStations(supabase, rows.stations.map((station) => station.id));
+  const stations = rows.stations.map((station) => mergeStationForRefresh(station, existingStations.get(station.id), options));
+  const existingOffers = await readExistingOffers(supabase, rows.offers.map((offer) => offer.id));
+  const offers = rows.offers.map((offer) => mergeOfferForRefresh(offer, existingOffers.get(offer.id), options));
 
   await upsertRows(supabase, "api_transit_stations", stations, { onConflict: "id" });
   await upsertRows(supabase, "api_transit_offers", offers, { onConflict: "id" });
@@ -513,6 +508,90 @@ async function postRows(rows, options) {
     ...plan,
     skipped: false,
     message: options.publish ? "API 中转公开价格已写入并发布。" : "API 中转公开价格已写入待审核队列。",
+  };
+}
+
+async function readExistingOffers(supabase, offerIds) {
+  const ids = uniqueText(offerIds).filter(Boolean);
+  const byId = new Map();
+  for (const chunk of chunks(ids, 300)) {
+    if (!chunk.length) continue;
+    const { data, error } = await supabase
+      .from("api_transit_offers")
+      .select("id,status,created_at")
+      .in("id", chunk);
+    if (error) throw error;
+    for (const row of data || []) byId.set(row.id, row);
+  }
+  return byId;
+}
+
+function mergeOfferForRefresh(offer, existing, options) {
+  return {
+    ...offer,
+    status: options.publish ? "active" : existing?.status || offer.status,
+    created_at: existing?.created_at || offer.created_at,
+  };
+}
+
+async function readExistingStations(supabase, stationIds) {
+  const ids = uniqueText(stationIds).filter(Boolean);
+  const byId = new Map();
+  for (const chunk of chunks(ids, 300)) {
+    if (!chunk.length) continue;
+    const { data, error } = await supabase
+      .from("api_transit_stations")
+      .select(
+        [
+          "id",
+          "source_type",
+          "commercial_relation",
+          "summary",
+          "payment_methods",
+          "minimum_top_up",
+          "balance_expiry",
+          "support_channels",
+          "refund_policy",
+          "data_status",
+          "commercial_offers",
+          "verification_events",
+          "published",
+          "admin_note",
+          "created_at",
+        ].join(","),
+      )
+      .in("id", chunk);
+    if (error) throw error;
+    for (const row of data || []) byId.set(row.id, row);
+  }
+  return byId;
+}
+
+function mergeStationForRefresh(station, existing, options) {
+  if (!existing) {
+    return {
+      ...station,
+      published: Boolean(options.publish),
+      data_status: options.publish ? "verified" : station.data_status,
+    };
+  }
+
+  return {
+    ...station,
+    source_type: existing.source_type || station.source_type,
+    commercial_relation: existing.commercial_relation || station.commercial_relation,
+    summary: existing.summary || station.summary,
+    payment_methods: Array.isArray(existing.payment_methods) ? existing.payment_methods : station.payment_methods,
+    minimum_top_up: existing.minimum_top_up ?? station.minimum_top_up,
+    balance_expiry: existing.balance_expiry ?? station.balance_expiry,
+    support_channels: Array.isArray(existing.support_channels) ? existing.support_channels : station.support_channels,
+    refund_policy: existing.refund_policy ?? station.refund_policy,
+    data_status: options.publish ? "verified" : existing.data_status || station.data_status,
+    commercial_offers: existing.commercial_offers ?? station.commercial_offers,
+    verification_events: existing.verification_events ?? station.verification_events,
+    published: options.publish ? true : Boolean(existing.published),
+    admin_note: existing.admin_note || station.admin_note,
+    created_at: existing.created_at || station.created_at,
   };
 }
 
@@ -623,6 +702,16 @@ function optionList(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value.flatMap(optionList);
   return String(value).split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function uniqueText(values) {
+  return Array.from(
+    new Set(
+      (values || [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 function numberValue(value) {

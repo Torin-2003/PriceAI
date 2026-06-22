@@ -71,7 +71,11 @@ export async function importSub2ApiTransit(options = {}) {
   options = normalizeOptions(options);
   const startedAt = new Date().toISOString();
   const source = normalizeSource(options);
-  const auth = await login(source, options);
+  const accountCredential = await resolveLoginCredential(source, options);
+  const auth = await login(source, options, accountCredential);
+  if (options.saveAccountCredential && accountCredential.source !== "database") {
+    await saveAccountCredential(source, accountCredential, startedAt, options);
+  }
   const groups = await fetchGroups(source, auth, options);
   const selectedTargets = selectTargetGroups(groups);
   const keys = await fetchKeys(source, auth, options);
@@ -143,16 +147,11 @@ function normalizeSource(options) {
   };
 }
 
-async function login(source, options) {
-  const fileEnv = readEnvFile(envPath);
-  const email = options.email || process.env.SUB2API_EMAIL || fileEnv.SUB2API_EMAIL;
-  const password = options.password || process.env.SUB2API_PASSWORD || fileEnv.SUB2API_PASSWORD;
-  if (!email || !password) throw new Error("Missing --email/--password or SUB2API_EMAIL/SUB2API_PASSWORD.");
-
+async function login(source, options, credential) {
   const response = await fetchJson(`${source.apiV1BaseUrl}/auth/login`, {
     method: "POST",
     timeoutMs: options.timeoutMs,
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email: credential.email, password: credential.password }),
   });
   const token =
     response.json?.data?.token ||
@@ -163,6 +162,142 @@ async function login(source, options) {
   if (!token && !cookie) throw new Error(`${source.name} login did not return an auth token or session cookie.`);
 
   return { token, cookie };
+}
+
+async function resolveLoginCredential(source, options) {
+  const fileEnv = readEnvFile(envPath);
+  const email = options.email || process.env.SUB2API_EMAIL || fileEnv.SUB2API_EMAIL;
+  const password = options.password || process.env.SUB2API_PASSWORD || fileEnv.SUB2API_PASSWORD;
+  if (email && password) {
+    return {
+      source: "runtime",
+      email: String(email),
+      password: String(password),
+      loginUrl: options.loginUrl || options["login-url"] || source.dashboardUrl,
+    };
+  }
+
+  const stored = await readStoredAccountCredential(source, options);
+  if (stored) return stored;
+
+  throw new Error("Missing --email/--password, SUB2API_EMAIL/SUB2API_PASSWORD, or stored test_account credential.");
+}
+
+async function readStoredAccountCredential(source, options) {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("api_transit_credentials")
+    .select("id,encrypted_payload,credential_meta,expires_at,created_at")
+    .eq("station_id", source.id)
+    .eq("credential_type", "test_account")
+    .in("status", ["ready", "submitted"])
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  if (error) {
+    if (error.code === "PGRST205" || String(error.message || "").includes("api_transit_credentials")) return null;
+    throw error;
+  }
+
+  const secret = credentialEncryptionSecret(options);
+  for (const row of data || []) {
+    if (isExpired(row.expires_at)) continue;
+    const payload = await decryptCredentialPayload(row.encrypted_payload, secret).catch(() => null);
+    const username = stringValue(payload?.username);
+    const password = stringValue(payload?.password);
+    if (!username || !password) continue;
+    return {
+      source: "database",
+      credentialId: row.id,
+      email: username,
+      password,
+      loginUrl: stringValue(payload?.login_url) || source.dashboardUrl,
+    };
+  }
+
+  return null;
+}
+
+async function saveAccountCredential(source, credential, collectedAt, options) {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for saving account credential.");
+
+  const secret = credentialEncryptionSecret(options);
+  const submissionId = stableId("api-transit-account-submission", source.id);
+  const credentialType = "test_account";
+  const loginUrl = credential.loginUrl || source.dashboardUrl;
+  const meta = {
+    accessMode: credentialType,
+    access_mode: credentialType,
+    credentialStatus: "ready",
+    credentialType,
+    stationId: source.id,
+    login_host: safeHost(loginUrl),
+    has_api_key: false,
+    has_test_account: true,
+    source: "sub2api_account_saved",
+    collected_at: collectedAt,
+  };
+
+  await upsertRows(
+    supabase,
+    "api_transit_submissions",
+    [
+      {
+        id: submissionId,
+        submission_type: "merchant",
+        submitted_url: source.websiteUrl,
+        submitted_name: source.name,
+        api_base_url: source.apiBaseUrl,
+        pricing_url: source.dashboardUrl,
+        contact: null,
+        notes: "Sub2API 测试账号凭据，仅用于 PriceAI 分组倍率刷新与低频抽样。",
+        submitted_models: [],
+        submitted_meta: {
+          ...meta,
+          credentialLoginHost: meta.login_host,
+        },
+        parse_status: "parsed",
+        probe_status: "needs_login",
+        review_status: "approved",
+        station_id: source.id,
+        admin_note: "已保存加密测试账号凭据；不在后台明文展示。",
+      },
+    ],
+    { onConflict: "id" },
+  );
+
+  await upsertRows(
+    supabase,
+    "api_transit_credentials",
+    [
+      {
+        id: stableId("api-transit-credential", submissionId, credentialType),
+        submission_id: submissionId,
+        station_id: source.id,
+        credential_type: credentialType,
+        status: "ready",
+        encrypted_payload: await encryptCredentialPayload(
+          {
+            type: credentialType,
+            login_url: loginUrl,
+            username: credential.email,
+            password: credential.password,
+            notes: `Sub2API ${source.name} 测试账号，仅用于 PriceAI 分组倍率刷新。`,
+          },
+          secret,
+        ),
+        credential_meta: meta,
+        expires_at: null,
+        last_used_at: null,
+        failure_message: null,
+        submitter_ip: null,
+      },
+    ],
+    { onConflict: "id" },
+  );
 }
 
 async function fetchGroups(source, auth, options) {
@@ -381,8 +516,10 @@ async function probeCompletion(source, apiKey, model, options) {
 function buildRows(source, groups, selectedTargets, keyResults, probeResults, collectedAt, options) {
   const attempted = probeResults.filter((result) => result.groupId);
   const okCount = attempted.filter((result) => result.ok).length;
-  const status = attempted.length && okCount === attempted.length ? "success" : okCount ? "partial" : "failed";
-  const collectionError = probeResults
+  const groupCount = groups.length;
+  const pricingStatus = groupCount ? "success" : "failed";
+  const probeStatus = attempted.length && okCount === attempted.length ? "success" : okCount ? "partial" : "failed";
+  const probeNote = probeResults
     .filter((result) => !result.ok)
     .map((result) => `${result.standardModel}: ${result.error || "probe_failed"}`)
     .join("；") || null;
@@ -396,7 +533,7 @@ function buildRows(source, groups, selectedTargets, keyResults, probeResults, co
     website_url: source.websiteUrl,
     api_base_url: source.apiBaseUrl,
     pricing_url: source.dashboardUrl,
-    status: okCount ? (okCount === attempted.length ? "active" : "limited") : "unknown",
+    status: groupCount ? "active" : "unknown",
     source_type: "manual_collected",
     commercial_relation: "none",
     summary: `通过 Sub2API 登录态分组接口抓取 ${groups.length} 个活跃分组，并按 PriceAI 准入抽样只测试 GPT 5.5 与 Claude Opus 4.8。`,
@@ -407,9 +544,9 @@ function buildRows(source, groups, selectedTargets, keyResults, probeResults, co
     balance_expiry: null,
     support_channels: ["官网后台"],
     refund_policy: null,
-    risk_labels: status === "success" ? ["insufficient_samples"] : ["insufficient_samples", "pending_feedback"],
-    usage_advice: okCount ? "try_small" : "pending",
-    data_status: okCount ? "verified" : "pending_review",
+    risk_labels: groupCount ? ["insufficient_samples"] : ["insufficient_samples", "pending_feedback"],
+    usage_advice: groupCount ? "try_small" : "pending",
+    data_status: groupCount ? "verified" : "pending_review",
     availability_seven_day_rate: attempted.length ? okCount / attempted.length : null,
     availability_seven_day_samples: attempted.length,
     availability_last_checked_at: collectedAt,
@@ -418,29 +555,27 @@ function buildRows(source, groups, selectedTargets, keyResults, probeResults, co
     feedback_verified_risk_count: 0,
     feedback_merchant_responded_count: 0,
     feedback_main_themes: [],
-    feedback_public_notes: collectionError,
+    feedback_public_notes: null,
     collector_kind: "sub2api_account",
     pricing_endpoint_url: `${source.apiV1BaseUrl}/groups/available`,
-    collection_status: status,
-    collection_error: collectionError,
+    collection_status: pricingStatus,
+    collection_error: groupCount ? null : probeNote,
     last_collected_at: collectedAt,
     last_updated_at: collectedAt,
     published: Boolean(options.publish),
     admin_note: `Sub2API 登录抓取 ${groups.length} 个分组，创建 ${keyResults.filter((result) => result.created).length} 个测试 Key，${okCount}/${attempted.length} 个目标模型通过。`,
   };
 
-  const offers = probeResults
-    .filter((result) => result.groupId && typeof result.multiplier === "number" && Number.isFinite(result.multiplier))
-    .map((result) => buildOfferRow(source, result, collectedAt));
+  const offers = buildOfferRows(source, groups, probeResults, collectedAt);
 
   const run = {
     id: stableId("api-transit-sub2api-run", source.id, collectedAt),
     station_id: source.id,
     run_type: "api_probe",
-    status,
+    status: probeStatus,
     model_count: groups.length,
     offer_count: offers.length,
-    error_message: collectionError,
+    error_message: probeNote,
     source_url: `${source.apiV1BaseUrl}/groups/available`,
     started_at: collectedAt,
     finished_at: new Date().toISOString(),
@@ -590,6 +725,92 @@ function buildOfferRow(source, result, collectedAt) {
         attempts: result.attempts,
       },
     },
+    created_at: collectedAt,
+  };
+}
+
+function buildOfferRows(source, groups, probeResults, collectedAt) {
+  const rows = [];
+  const groupsById = new Map(groups.filter((group) => group.id !== null).map((group) => [Number(group.id), group]));
+  const seen = new Set();
+
+  for (const result of probeResults) {
+    if (!result.groupId || typeof result.multiplier !== "number" || !Number.isFinite(result.multiplier)) continue;
+    const row = buildOfferRow(source, result, collectedAt);
+    rows.push(row);
+    seen.add(row.id);
+  }
+
+  for (const group of groupsById.values()) {
+    if (typeof group.multiplier !== "number" || !Number.isFinite(group.multiplier)) continue;
+    const fallback = buildUnprobedOfferRow(source, group, collectedAt);
+    if (seen.has(fallback.id)) continue;
+    rows.push(fallback);
+    seen.add(fallback.id);
+  }
+
+  return rows;
+}
+
+function buildUnprobedOfferRow(source, group, collectedAt) {
+  const model = representativeModelForGroup(group);
+  const multiplier = round(group.multiplier, 6);
+  return {
+    id: stableId("api-transit-offer", source.id, model.standardModel, group.id),
+    station_id: source.id,
+    family: model.family,
+    standard_model: model.standardModel,
+    raw_model_name: model.rawModelName,
+    group_name: group.name,
+    recharge_ratio: DEFAULT_RECHARGE_RATIO,
+    model_multiplier: multiplier,
+    input_price: multiplier,
+    output_price: multiplier,
+    cache_read_price: multiplier,
+    cache_write_price: multiplier,
+    currency: "CNY",
+    account_pool: inferAccountPool(group.name),
+    channel_type: inferChannelType(`${group.name} ${group.platform}`),
+    price_source: "Sub2API 登录分组接口",
+    source_url: source.dashboardUrl,
+    availability_seven_day_rate: null,
+    availability_seven_day_samples: 0,
+    availability_last_checked_at: null,
+    availability_note: "已通过登录态分组接口刷新倍率；暂未用测试 Key 抽样。",
+    last_verified_at: collectedAt,
+    status: "active",
+    raw_payload: {
+      group: {
+        id: group.id,
+        name: group.name,
+        platform: group.platform,
+        multiplier,
+        updatedAt: group.updatedAt,
+      },
+      probe: {
+        ok: null,
+        skipped: true,
+        reason: "group_multiplier_only",
+      },
+    },
+    created_at: collectedAt,
+  };
+}
+
+function representativeModelForGroup(group) {
+  const text = `${group.name} ${group.platform}`.toLowerCase();
+  if (/anthropic|claude|cc|max|kiro/.test(text)) {
+    return {
+      family: "claude",
+      standardModel: "Claude Opus 4.8",
+      rawModelName: "claude-opus-4-8",
+    };
+  }
+
+  return {
+    family: "gpt",
+    standardModel: "GPT 5.5",
+    rawModelName: "gpt-5.5",
   };
 }
 
@@ -716,14 +937,19 @@ async function postRows(rows, options) {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for --post/--db.");
 
-  await upsertRows(supabase, "api_transit_stations", rows.stations, { onConflict: "id" });
+  const existingStations = await readExistingStations(supabase, rows.stations.map((station) => station.id));
+  const stations = rows.stations.map((station) => mergeStationForRefresh(station, existingStations.get(station.id), options));
+  const existingOffers = await readExistingOffers(supabase, rows.offers.map((offer) => offer.id));
+  const offers = rows.offers.map((offer) => mergeOfferForRefresh(offer, existingOffers.get(offer.id), options));
+
+  await upsertRows(supabase, "api_transit_stations", stations, { onConflict: "id" });
   if (rows.credentialSubmissions?.length) {
     await upsertRows(supabase, "api_transit_submissions", rows.credentialSubmissions, { onConflict: "id" });
   }
   if (rows.credentials?.length) {
     await upsertRows(supabase, "api_transit_credentials", rows.credentials, { onConflict: "id" });
   }
-  await upsertRows(supabase, "api_transit_offers", rows.offers, { onConflict: "id" });
+  await upsertRows(supabase, "api_transit_offers", offers, { onConflict: "id" });
   await upsertRows(supabase, "api_transit_detection_runs", rows.runs, { onConflict: "id" });
 
   return {
@@ -731,6 +957,107 @@ async function postRows(rows, options) {
     skipped: false,
     message: options.publish ? "Sub2API 中转数据已写入并发布。" : "Sub2API 中转数据已写入待审核队列。",
   };
+}
+
+async function readExistingOffers(supabase, offerIds) {
+  const ids = uniqueText(offerIds).filter(Boolean);
+  const byId = new Map();
+  for (const chunk of chunks(ids, 300)) {
+    if (!chunk.length) continue;
+    const { data, error } = await supabase
+      .from("api_transit_offers")
+      .select("id,status,created_at")
+      .in("id", chunk);
+    if (error) throw error;
+    for (const row of data || []) byId.set(row.id, row);
+  }
+  return byId;
+}
+
+function mergeOfferForRefresh(offer, existing, options) {
+  return {
+    ...offer,
+    status: options.publish ? offer.status : existing?.status || offer.status,
+    created_at: existing?.created_at || offer.created_at,
+  };
+}
+
+async function readExistingStations(supabase, stationIds) {
+  const ids = uniqueText(stationIds).filter(Boolean);
+  const byId = new Map();
+  for (const chunk of chunks(ids, 300)) {
+    if (!chunk.length) continue;
+    const { data, error } = await supabase
+      .from("api_transit_stations")
+      .select(
+        [
+          "id",
+          "source_type",
+          "commercial_relation",
+          "summary",
+          "payment_methods",
+          "minimum_top_up",
+          "balance_expiry",
+          "support_channels",
+          "refund_policy",
+          "data_status",
+          "usage_advice",
+          "risk_labels",
+          "commercial_offers",
+          "verification_events",
+          "published",
+          "admin_note",
+          "created_at",
+        ].join(","),
+      )
+      .in("id", chunk);
+    if (error) throw error;
+    for (const row of data || []) byId.set(row.id, row);
+  }
+  return byId;
+}
+
+function mergeStationForRefresh(station, existing, options) {
+  if (!existing) {
+    return {
+      ...station,
+      published: Boolean(options.publish),
+      data_status: options.publish ? "verified" : station.data_status,
+    };
+  }
+
+  return {
+    ...station,
+    source_type: existing.source_type || station.source_type,
+    commercial_relation: existing.commercial_relation || station.commercial_relation,
+    summary: existing.summary || station.summary,
+    payment_methods: Array.isArray(existing.payment_methods) ? existing.payment_methods : station.payment_methods,
+    minimum_top_up: existing.minimum_top_up ?? station.minimum_top_up,
+    balance_expiry: existing.balance_expiry ?? station.balance_expiry,
+    support_channels: Array.isArray(existing.support_channels) ? existing.support_channels : station.support_channels,
+    refund_policy: existing.refund_policy ?? station.refund_policy,
+    data_status: options.publish ? "verified" : existing.data_status || station.data_status,
+    usage_advice: options.publish ? station.usage_advice : existing.usage_advice || station.usage_advice,
+    risk_labels: options.publish
+      ? station.risk_labels
+      : Array.isArray(existing.risk_labels)
+        ? existing.risk_labels
+        : station.risk_labels,
+    commercial_offers: existing.commercial_offers ?? station.commercial_offers,
+    verification_events: existing.verification_events ?? station.verification_events,
+    published: options.publish ? true : Boolean(existing.published),
+    admin_note: appendRefreshNote(existing.admin_note, station.admin_note),
+    created_at: existing.created_at || station.created_at,
+  };
+}
+
+function appendRefreshNote(existingNote, refreshNote) {
+  const existing = String(existingNote || "").trim();
+  const refresh = String(refreshNote || "").trim();
+  if (!existing) return refresh || null;
+  if (!refresh || existing.includes(refresh)) return existing;
+  const withoutPrior = existing.replace(/\n\n\[最近采集刷新\]\n[\s\S]*$/, "");
+  return `${withoutPrior}\n\n[最近采集刷新]\n${refresh}`;
 }
 
 async function upsertRows(supabase, table, rows, options = {}) {
@@ -776,6 +1103,22 @@ async function encryptCredentialPayload(payload, secret) {
   };
 }
 
+async function decryptCredentialPayload(encryptedPayload, secret) {
+  if (!encryptedPayload || typeof encryptedPayload !== "object") return null;
+  if (encryptedPayload.alg !== "AES-GCM") return null;
+
+  const cryptoApi = globalThis.crypto || webcrypto;
+  if (!cryptoApi?.subtle) return null;
+
+  const encoder = new TextEncoder();
+  const keyMaterial = await cryptoApi.subtle.digest("SHA-256", encoder.encode(secret));
+  const key = await cryptoApi.subtle.importKey("raw", keyMaterial, { name: "AES-GCM" }, false, ["decrypt"]);
+  const iv = base64ToBytes(encryptedPayload.iv);
+  const ciphertext = base64ToBytes(encryptedPayload.ciphertext);
+  const decrypted = await cryptoApi.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+  return JSON.parse(new TextDecoder().decode(decrypted));
+}
+
 function credentialEncryptionSecret(options) {
   const env = readEnvFile(envPath);
   const secret =
@@ -792,6 +1135,10 @@ function credentialEncryptionSecret(options) {
 
 function bytesToBase64(bytes) {
   return Buffer.from(bytes).toString("base64");
+}
+
+function base64ToBytes(value) {
+  return Uint8Array.from(Buffer.from(String(value || ""), "base64"));
 }
 
 function authHeaders(auth) {
@@ -921,6 +1268,7 @@ function normalizeOptions(options) {
     verbose: truthyOption(options.verbose),
     ensureKeys: truthyOption(options.ensureKeys ?? options["ensure-keys"]),
     postCredentials: truthyOption(options.postCredentials ?? options["post-credentials"]),
+    saveAccountCredential: truthyOption(options.saveAccountCredential ?? options["save-account-credential"]),
     timeoutMs: Number(options.timeoutMs || options["timeout-ms"] || DEFAULT_TIMEOUT_MS),
   };
 }
@@ -984,6 +1332,24 @@ function unquote(value) {
   return value;
 }
 
+function stringValue(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isExpired(value) {
+  if (!value) return false;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) && timestamp <= Date.now();
+}
+
+function safeHost(value) {
+  try {
+    return new URL(String(value || "")).hostname;
+  } catch {
+    return null;
+  }
+}
+
 function numberValue(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value === "string" && value.trim()) {
@@ -1004,6 +1370,16 @@ function round(value, digits) {
 
 function unique(values) {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+function uniqueText(values) {
+  return Array.from(
+    new Set(
+      (values || [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 function chunks(items, size) {
