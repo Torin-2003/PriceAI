@@ -337,3 +337,40 @@ WAF / Rate Limit 配置过严可能误伤正常用户。
 - `/api/offers` 与 `/api/products/[id]/offers` 共用同一套公开分页参数解析。
 - 服务层保留硬上限兜底，避免绕过 Route Handler 后重新放大。
 - 性能 guard 增加防回归检查，阻止公开 API 回到 `1200` 行批量页。
+
+本次生产验证：
+
+- `https://priceai.cc/api/offers?limit=80` 返回 `200`，`rows=80`，约 `73.8KB`。
+- `https://priceai.cc/api/products/chatgpt-plus/offers?limit=80` 返回 `200`，`offers=80`，约 `73.9KB`。
+- `https://priceai.cc/api/offers?limit=1200` 返回 `400`，`code=limit_too_large`。
+- `https://priceai.cc/api/products/chatgpt-plus/offers?limit=1200` 返回 `400`，`code=limit_too_large`。
+- GitHub Actions Cloudflare 部署 run：`https://github.com/physics-dimension/PriceAI/actions/runs/28012439896`。
+
+### 2026-06-23：O0-1 Workers CPU 采样脚本
+
+新增只读分析脚本：
+
+```bash
+npm run analyze:workers-tail -- --file /tmp/priceai-wrangler-tail.jsonl
+npm run analyze:workers-tail -- --file /tmp/priceai-wrangler-tail.jsonl --json
+```
+
+建议采样命令：
+
+```bash
+node_modules/.bin/wrangler tail priceai-cloudflare-poc --format json --sampling-rate 0.99 > /tmp/priceai-wrangler-tail.jsonl
+```
+
+脚本会按请求类型、路径、方法类型和来源聚合 `cpuTime` / `wallTime`，用于持续验证 `/api/explorer`、`/api/offers`、`/api/products/[id]/offers` 是否仍是 Top CPU 来源。
+
+### 2026-06-23：C1-4 Cloudflare 路径限流权限状态
+
+当前本机 Wrangler OAuth token 能读取 Worker / tail，但读取 Cloudflare Zone Rulesets、legacy firewall rules、rate limits API 时返回 `403 Authentication error`。因此暂不直接改线上 WAF / Rate Limit。
+
+待具备 Cloudflare dashboard 或带 `Zone WAF` / `Rulesets` 写权限的 API Token 后，建议规则：
+
+- 匹配路径：`/api/explorer`、`/api/offers`、`/api/products/*/offers`。
+- 排除：`user-agent` 包含 `PriceAI Cloudflare smoke check`，以及后台、cron、health 路径。
+- 第一阶段动作：log / managed challenge，观察 24 小时。
+- 第二阶段动作：对同 IP 高频公开 API 请求做 429 或 challenge。
+- 不建议一开始按国家或浏览器大面积封禁，避免误伤正常用户。
