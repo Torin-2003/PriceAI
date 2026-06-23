@@ -97,6 +97,7 @@ const cases = [
   ["教育邮箱 .edu", "education-email"],
   ["域名邮箱 企业邮箱", "email-account"],
   ["iCloud邮箱---iCloud隐私邮箱，发货形式为邮箱----取码url---plus源头", "email-account"],
+  ["iCloud邮箱plus成品号，质保首登，支持登录网页，支持登录codex", "chatgpt-plus"],
   ["长效【微软邮箱交付】GPT账号（白号）FREE普通号含access_token", "chatgpt-free-account"],
   ["OpenAI ChatGPT 手机接码", "openai-phone-verification"],
   ["ChatGPT Codex-日本 接码自助卡密", "openai-phone-verification"],

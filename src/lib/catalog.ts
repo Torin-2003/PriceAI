@@ -1481,7 +1481,17 @@ function isPureEmail(value: string): boolean {
   if (!explicitEmail) return false;
   if (matches(value, ["跑gemini", "跑 gemini", "失败的号", "包gcp", "带gcp"])) return true;
   if (
-    matches(value, ["plus 成品", "plus 会员", "plus 账号", "plus 已接码", "直接登录codex"]) &&
+    matches(value, [
+      "plus 成品",
+      "plus成品",
+      "plus 会员",
+      "plus会员",
+      "plus 账号",
+      "plus账号",
+      "plus 已接码",
+      "plus已接码",
+      "直接登录codex",
+    ]) &&
     !isICloudStandaloneEmailProduct(value)
   ) {
     return false;
@@ -1519,7 +1529,6 @@ function classifyPureEmail(value: string): string {
 
 function isICloudStandaloneEmailProduct(value: string): boolean {
   if (!matches(value, ["icloud", "icloud邮箱", "icloud 邮箱"])) return false;
-  if (matches(value, ["成品号", "账号", "账户", "会员", "月卡", "订阅", "直登", "账密"])) return false;
 
   return matches(value, ["隐私邮箱", "发货形式为邮箱", "开plus", "开 plus", "绑定专用", "取码url", "取码 url", "plus源头", "plus 源头"]);
 }

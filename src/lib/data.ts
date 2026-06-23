@@ -3,7 +3,7 @@ import "server-only";
 import { ADMIN_MANUAL_HIDE_REASON_PREFIX, listOfferFeedback, listSiteFeedback, listSubmissions } from "./admin";
 import { notifyOperationalIssue } from "./alerts";
 import { getApiTransitAdminData, getEmptyApiTransitAdminData } from "./api-transit-admin";
-import { buildProductGroups, canonicalCatalog, comparePlatformOrder, isSharedAccessOffer, publicCatalogProducts, resolveOfferProduct } from "./catalog";
+import { buildProductGroups, canonicalCatalog, classifyOffer, comparePlatformOrder, isSharedAccessOffer, publicCatalogProducts, resolveOfferProduct } from "./catalog";
 import { isSupabaseConfigured } from "./env";
 import { getApiModelAdminData } from "./api-models-db";
 import { normalizeCollectorKind } from "./collector-registry";
@@ -1830,12 +1830,18 @@ async function listPublicOffersFromDatabase(filters: OfferListFilters = {}) {
   const rows = ((data || []) as unknown as PublicOfferPageRow[]);
   const total = rows.length ? Number(rows[0].total_count || rows.length) : 0;
   const offers = await attachSourceCollectorKinds(rows.map((row) => mapRawOffer(row)));
+  const products = publicCatalogProducts(canonicalCatalog)
+    .map(makeEmptyProductGroup)
+    .map(toExplorerProductSummary);
 
   return {
-    rows: rows.map((row, index) => ({
-      offer: compactPublicOffer(offers[index] || mapRawOffer(row)),
-      product: compactPublicProduct(mapPublicOfferProductRow(row)),
-    })),
+    rows: rows.map((row, index) => {
+      const offer = offers[index] || mapRawOffer(row);
+      return {
+        offer: compactPublicOffer(offer),
+        product: compactPublicProduct(resolveExplorerProduct(offer, products)),
+      };
+    }),
     total,
     limited: total > offset + limit,
     generatedAt: new Date().toISOString(),
@@ -2041,33 +2047,6 @@ function compactPublicProduct(product: ExplorerProductSummary): CanonicalProduct
     summary: product.summary,
     aliases: [],
     updatedAt: product.updatedAt,
-  };
-}
-
-function mapPublicOfferProductRow(row: PublicOfferPageRow): ExplorerProductSummary {
-  return {
-    id: String(row.product_id || row.canonical_product_id || "other-product"),
-    slug: String(row.product_slug || row.product_id || row.canonical_product_id || "other-product"),
-    displayName: String(row.product_display_name || row.product_slug || row.product_id || "其他商品"),
-    platform: String(row.product_platform || row.category_slug || "其他"),
-    productType: String(row.product_type || "其他"),
-    spec: String(row.product_spec || ""),
-    summary: String(row.product_summary || ""),
-    aliases: [],
-    updatedAt: row.product_updated_at ? String(row.product_updated_at) : null,
-    offerCount: Number(row.total_count || 0),
-    inStockCount: 0,
-    outOfStockCount: 0,
-    lowestPrice: null,
-    lowestPriceLabel: "",
-    lowestPriceTone: "muted",
-    lowestOffer: null,
-    warrantyLowestPrice: null,
-    warrantyLowestOffer: null,
-    warrantyOfferCount: 0,
-    latestSeenAt: null,
-    anomalyFlags: [],
-    offerSearchText: "",
   };
 }
 
@@ -2357,12 +2336,13 @@ function normalizeSourceCollectorKind(value: unknown): Source["collectorKind"] {
 export function mapRawOffer(row: Record<string, unknown>): RawOffer {
   const sourceTitle = String(row.source_title || "");
   const tags = Array.isArray(row.tags) ? row.tags.map(String) : [];
-  const filterTags =
-    Array.isArray(row.filter_tags)
-      ? row.filter_tags.map(String)
-      : Array.isArray(row.public_filter_tags)
-        ? row.public_filter_tags.map(String)
-        : deriveOfferFilterTags({ sourceTitle, tags });
+  const price = row.price === null || row.price === undefined ? null : Number(row.price);
+  const classified = classifyOffer(sourceTitle, {
+    tags,
+    categorySlug: row.category_slug ? String(row.category_slug) : null,
+    price,
+  });
+  const filterTags = deriveOfferFilterTags({ sourceTitle, tags });
 
   return {
     id: String(row.id),
@@ -2371,7 +2351,7 @@ export function mapRawOffer(row: Record<string, unknown>): RawOffer {
     sourceStoreName: row.source_store_name ? String(row.source_store_name) : null,
     collectorKind: normalizeSourceCollectorKind(row.collector_kind),
     sourceTitle,
-    price: row.price === null || row.price === undefined ? null : Number(row.price),
+    price,
     listedPrice: row.listed_price === null || row.listed_price === undefined ? null : Number(row.listed_price),
     feeAmount: row.fee_amount === null || row.fee_amount === undefined ? null : Number(row.fee_amount),
     priceBasis: row.price_basis ? String(row.price_basis) as RawOffer["priceBasis"] : null,
@@ -2382,8 +2362,8 @@ export function mapRawOffer(row: Record<string, unknown>): RawOffer {
     filterTags,
     stockCount: row.stock_count === null || row.stock_count === undefined ? null : Number(row.stock_count),
     hidden: Boolean(row.hidden),
-    canonicalProductId: row.canonical_product_id ? String(row.canonical_product_id) : null,
-    categorySlug: row.category_slug ? String(row.category_slug) : null,
+    canonicalProductId: classified.id,
+    categorySlug: classified.platform,
     capturedAt: row.captured_at ? String(row.captured_at) : null,
     sourceUpdatedAt: row.source_updated_at ? String(row.source_updated_at) : null,
     lastSeenAt: row.last_seen_at ? String(row.last_seen_at) : null,
