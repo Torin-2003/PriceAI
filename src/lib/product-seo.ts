@@ -51,6 +51,10 @@ const productSeoProfiles: Record<string, ProductSeoProfile> = {
     metadataTitle: "API / CDK / 额度价格对比：OpenAI API、Codex API 和渠道额度",
     metadataDescription: "查看 API/CDK、OpenAI API、Codex API、余额、额度和模型中转渠道报价。",
   }),
+  "chatgpt-codex-service": profile({
+    metadataTitle: "Codex / ChatGPT 周边服务价格对比：额度重置、长链提取和服务包",
+    metadataDescription: "查看 Codex 与 ChatGPT 周边辅助服务的有货最低价、额度重置、长链提取、服务包、渠道报价和更新时间。",
+  }),
   "gemini-pro-year": profile({
     metadataTitle: "Gemini Pro 成品号价格对比：Google AI Pro 账号、年卡和渠道报价",
     metadataDescription: "查看 Gemini Pro / Google AI Pro 成品号有货最低价、账号、年卡、渠道报价和更新时间。",

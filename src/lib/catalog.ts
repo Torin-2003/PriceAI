@@ -31,6 +31,7 @@ export const productTypeOptions = [
   "订阅/会员",
   "成品账号",
   "邮箱/账号",
+  "辅助服务",
   "API额度",
   "接码/验证",
   "虚拟卡",
@@ -150,6 +151,16 @@ export const canonicalCatalog: CanonicalProduct[] = [
     spec: "API 额度 / CDK",
     summary: "通用 API、中转、余额、额度、Codex API 或 OpenAI API 商品。",
     aliases: ["api cdk", "codexapi", "codex api", "token", "中转", "余额", "额度"],
+  },
+  {
+    id: "chatgpt-codex-service",
+    slug: "chatgpt-codex-service",
+    displayName: "Codex / ChatGPT 周边服务",
+    platform: "ChatGPT",
+    productType: "辅助服务",
+    spec: "Codex / ChatGPT 辅助",
+    summary: "Codex 或 ChatGPT 的额度重置、链接提取、服务包等周边辅助服务，不含 API 额度、接码或账号会员。",
+    aliases: ["codex 重置额度", "重置额度", "长链提取", "链接提取", "服务包", "周边服务"],
   },
   {
     id: "claude-pro-month",
@@ -299,7 +310,7 @@ export const canonicalCatalog: CanonicalProduct[] = [
     productType: "邮箱/账号",
     spec: "其他邮箱",
     summary: "域名邮箱、自建邮箱、无法进一步确认类型的纯邮箱商品。",
-    aliases: ["邮箱账号", "域名邮箱", "企业邮箱", "其他邮箱"],
+    aliases: ["邮箱账号", "域名邮箱", "企业邮箱", "icloud 邮箱", "icloud 隐私邮箱", "其他邮箱"],
   },
   {
     id: "virtual-card",
@@ -563,6 +574,10 @@ function classifyOfferByTitle(
     return getCanonicalProduct(classifyOtherTool(value));
   }
 
+  if (isChatGptPeripheralService(value)) {
+    return getCanonicalProduct("chatgpt-codex-service");
+  }
+
   if (isApiProduct(value)) {
     return getCanonicalProduct("openai-api-cdk");
   }
@@ -699,6 +714,10 @@ function classifyOfferByTitle(
 
   if (isBundledVerificationAccount(value)) {
     return getCanonicalProduct("other-product");
+  }
+
+  if (isChatGptPeripheralService(value)) {
+    return getCanonicalProduct("chatgpt-codex-service");
   }
 
   if (matches(value, ["codex", "api", "cdk", "token", "额度", "中转", "余额"])) {
@@ -1182,6 +1201,9 @@ function hasAccountBundleSignal(value: string): boolean {
 function hasEmailSignal(value: string): boolean {
   return matches(value, [
     "gmail",
+    "icloud",
+    "icloud邮箱",
+    "icloud 邮箱",
     "mail邮箱",
     "邮箱",
     "谷歌邮箱",
@@ -1292,6 +1314,7 @@ function classifyOtherTool(value: string): string {
 function isTelegramProduct(value: string, contextValue = ""): boolean {
   if (matches(value, ["飞机大厨", "airplane chefs"])) return false;
   if (isTelegramContactOnly(value)) return false;
+  if (matches(value, ["grok", "supergrok", "super grok"])) return false;
   if (hasTelegramSignal(value)) return true;
   if (!contextValue || !hasTelegramSignal(contextValue)) return false;
   if (matches(value, ["esim", "e sim", "电子卡", "实体卡", "电话卡", "手机卡", "sim 卡"])) return false;
@@ -1339,6 +1362,7 @@ function isNegatedPlus(value: string): boolean {
 
 function isApiProduct(value: string): boolean {
   if (isCodexPhoneVerification(value)) return false;
+  if (isChatGptPeripheralService(value)) return false;
   if (isGooglePlayOrPixelRechargeProduct(value)) return false;
   if (isChatGptTransitOrApiCreditProduct(value)) return true;
   if (isModelApiCreditProduct(value)) return true;
@@ -1432,6 +1456,9 @@ function isZeroOrOneDollarCard(value: string): boolean {
 function isPureEmail(value: string): boolean {
   const explicitEmail = matches(value, [
     "gmail",
+    "icloud",
+    "icloud邮箱",
+    "icloud 邮箱",
     "谷歌邮箱",
     "google 邮箱",
     "google邮箱",
@@ -1453,7 +1480,12 @@ function isPureEmail(value: string): boolean {
   ]);
   if (!explicitEmail) return false;
   if (matches(value, ["跑gemini", "跑 gemini", "失败的号", "包gcp", "带gcp"])) return true;
-  if (matches(value, ["plus 成品", "plus 会员", "plus 账号", "plus 已接码", "直接登录codex"])) return false;
+  if (
+    matches(value, ["plus 成品", "plus 会员", "plus 账号", "plus 已接码", "直接登录codex"]) &&
+    !isICloudStandaloneEmailProduct(value)
+  ) {
+    return false;
+  }
 
   return !matches(value, [
     "chatgpt",
@@ -1483,6 +1515,53 @@ function classifyPureEmail(value: string): string {
   if (matches(value, ["gmail", "谷歌邮箱", "google 邮箱", "google邮箱", "google个人邮箱", "google 个人邮箱", "谷歌账号", "google 账号"])) return "gmail-account";
 
   return "email-account";
+}
+
+function isICloudStandaloneEmailProduct(value: string): boolean {
+  if (!matches(value, ["icloud", "icloud邮箱", "icloud 邮箱"])) return false;
+  if (matches(value, ["成品号", "账号", "账户", "会员", "月卡", "订阅", "直登", "账密"])) return false;
+
+  return matches(value, ["隐私邮箱", "发货形式为邮箱", "开plus", "开 plus", "绑定专用", "取码url", "取码 url", "plus源头", "plus 源头"]);
+}
+
+function isChatGptPeripheralService(value: string): boolean {
+  if (!matches(value, ["codex", "chatgpt", "gpt", "openai", "plus"])) return false;
+  const hasPeripheralSignal =
+    matches(value, ["重置额度", "额度重置", "刷新额度", "恢复额度"]) ||
+    matches(value, ["长链提取", "长链接提取", "链接提取", "提取服务", "提取服务包", "长链服务包"]) ||
+    (matches(value, ["服务包"]) && matches(value, ["长链", "提取", "codex", "chatgpt", "gpt", "plus"]));
+  if (!hasPeripheralSignal) return false;
+  if (isCodexPhoneVerification(value)) return false;
+  if (isApiProductCoreSignal(value)) return false;
+  if (matches(value, ["成品号", "账号", "账户", "账密", "月卡", "会员", "直充", "代充", "卡密", "cdk"])) {
+    return false;
+  }
+
+  return true;
+}
+
+function isApiProductCoreSignal(value: string): boolean {
+  return matches(value, [
+    "apikey",
+    "api key",
+    "api-key",
+    "codex api",
+    "openai api",
+    "chatgpt api",
+    "gpt api",
+    "中转api",
+    "中转 api",
+    "api中转",
+    "api 中转",
+    "中转余额",
+    "中转站额度",
+    "余额兑换码",
+    "api 额度",
+    "api额度",
+    "api 100刀",
+    "api 50刀",
+    "api 300刀",
+  ]);
 }
 
 function isClaudeProduct(value: string): boolean {

@@ -68,6 +68,7 @@ const cases = [
   ["Steam白号", "other-product"],
   ["Super Grok 激活码 月卡", "super-grok"],
   ["Grok 普号 体验号", "grok-account"],
+  ["Grok白号账号密码Token", "grok-account"],
   ["【普号 SSO】 Grok AI > 长效微软邮箱 > 账号 SSO > 适合Super(30刀)，API等各类业务 > 取邮件API", "grok-account"],
   ["Claude Pro 月卡 直充", "claude-pro-month"],
   ["Claude Team 1.25x 30天质保订阅", "claude-team-standard"],
@@ -95,6 +96,7 @@ const cases = [
   ["Outlook OAuth2 微软邮箱", "outlook-account"],
   ["教育邮箱 .edu", "education-email"],
   ["域名邮箱 企业邮箱", "email-account"],
+  ["iCloud邮箱---iCloud隐私邮箱，发货形式为邮箱----取码url---plus源头", "email-account"],
   ["长效【微软邮箱交付】GPT账号（白号）FREE普通号含access_token", "chatgpt-free-account"],
   ["OpenAI ChatGPT 手机接码", "openai-phone-verification"],
   ["ChatGPT Codex-日本 接码自助卡密", "openai-phone-verification"],
@@ -130,6 +132,8 @@ const cases = [
   ["美区 2-4 年谷歌邮箱 跑gemini pro 失败的号（85%带gcp）", "gmail-account"],
   ["余额充值：100刀【不限时间,可用claude、gemini、gpt】", "openai-api-cdk"],
   ["AI 平台 直充 10000美元额度 -Claude Opus 4.7 / Codex / Gemini", "openai-api-cdk"],
+  ["codex重置额度服务plus pro可用", "chatgpt-codex-service"],
+  ["GPT-Plus订阅PayPal长链提取服务-10次套餐包", "chatgpt-codex-service"],
   ["【24小时有效期】每天100刀claude code", "openai-api-cdk"],
   ["【总共50刀】30天有效期-老Plus渠道", "openai-api-cdk"],
   ["【总共100刀】30天有效期-老Plus渠道", "openai-api-cdk"],
@@ -257,16 +261,28 @@ assert.equal(plusGroup.lowestPriceLabel, "有货", "Available lowest offer shoul
 const warrantyGroups = buildProductGroups([
   makeOffer({ id: "cheap-no-warranty", title: "ChatGPT Plus 月卡 无质保", price: 45, status: "in_stock" }),
   makeOffer({ id: "short-warranty", title: "ChatGPT Plus 月卡 7天质保", price: 55, status: "in_stock" }),
+  makeOffer({ id: "boarding-warranty", title: "GPT Team 月卡Business 席位x1【质保上车】", price: 58, status: "in_stock" }),
   makeOffer({ id: "long-warranty", title: "ChatGPT Plus 月卡 30天质保", price: 80, status: "in_stock" }),
   makeOffer({ id: "cheap-long-unavailable", title: "ChatGPT Plus 月卡 30天质保", price: 10, status: "in_stock", effectiveStatus: "unavailable" }),
   makeOffer({ id: "cheap-long-shared", title: "ChatGPT Plus 月卡 拼车套餐[3人车] 质保不掉订阅", price: 60, status: "in_stock" }),
+  makeOffer({ id: "lifetime-warranty", title: "Claude Team 官方订阅 全程质保", price: 200, status: "in_stock" }),
 ]);
 const warrantyPlusGroup = warrantyGroups.find((group) => group.id === "chatgpt-plus");
 assert.ok(warrantyPlusGroup, "ChatGPT Plus warranty group should exist.");
 assert.equal(warrantyPlusGroup.lowestOffer?.id, "cheap-no-warranty", "Regular lowest price may come from a non-warranty offer.");
 assert.equal(warrantyPlusGroup.warrantyLowestOffer?.id, "long-warranty", "Warranty lowest price should use the cheapest available non-shared long-warranty offer.");
 assert.equal(warrantyPlusGroup.warrantyLowestPrice, 80, "Warranty lowest price should be tracked separately.");
-assert.equal(warrantyPlusGroup.warrantyOfferCount, 2, "Available long-warranty offers should be counted even when shared-access offers do not drive the displayed warranty price.");
+assert.equal(warrantyPlusGroup.warrantyOfferCount, 1, "Only explicit long-duration or full-course warranty offers should be counted.");
+assert.ok(
+  !warrantyPlusGroup.offers.find((offer) => offer.id === "boarding-warranty"),
+  "Team boarding warranty should not leak into the Plus warranty group.",
+);
+const warrantyTeamGroup = warrantyGroups.find((group) => group.id === "chatgpt-team-business");
+assert.ok(warrantyTeamGroup, "ChatGPT Team warranty group should exist.");
+assert.equal(warrantyTeamGroup.warrantyOfferCount, 0, "质保上车 should not count as long warranty.");
+const warrantyClaudeGroup = warrantyGroups.find((group) => group.id === "claude-team-standard");
+assert.ok(warrantyClaudeGroup, "Claude Team warranty group should exist.");
+assert.equal(warrantyClaudeGroup.warrantyOfferCount, 1, "全程质保 should still count as long warranty.");
 
 const sharedAccessGroups = buildProductGroups([
   makeOffer({ id: "cheap-people-car", title: "Claude Pro-三人车", price: 50, status: "in_stock" }),

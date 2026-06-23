@@ -430,6 +430,7 @@ async function loadCatalogModule() {
       esModuleInterop: true,
     },
   }).outputText.replace(/(["'])\.\/offer-filter-tags\1/g, "$1./offer-filter-tags.mjs$1");
+  const catalogOutput = output.replace(/(["'])\.\/trust-risk\1/g, "$1./trust-risk.mjs$1");
 
   const offerFilterTagsPath = path.join(repoRoot, "src", "lib", "offer-filter-tags.ts");
   const offerFilterTagsSource = await readFile(offerFilterTagsPath, "utf8");
@@ -443,11 +444,25 @@ async function loadCatalogModule() {
     },
   }).outputText;
 
+  const trustRiskPath = path.join(repoRoot, "src", "lib", "trust-risk.ts");
+  const trustRiskSource = (await readFile(trustRiskPath, "utf8")).replace(/import type \{[^}]+\} from "@\/lib\/types";\n?/, "");
+  const trustRiskOutput = ts.transpileModule(trustRiskSource, {
+    fileName: trustRiskPath,
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+      isolatedModules: true,
+      esModuleInterop: true,
+    },
+  }).outputText;
+
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "priceai-catalog-audit-"));
   const tempFile = path.join(tempDir, "catalog.mjs");
   const offerFilterTagsFile = path.join(tempDir, "offer-filter-tags.mjs");
+  const trustRiskFile = path.join(tempDir, "trust-risk.mjs");
   await writeFile(offerFilterTagsFile, offerFilterTagsOutput, "utf8");
-  await writeFile(tempFile, output, "utf8");
+  await writeFile(trustRiskFile, trustRiskOutput, "utf8");
+  await writeFile(tempFile, catalogOutput, "utf8");
 
   try {
     return await import(`${pathToFileURL(tempFile).href}?ts=${Date.now()}`);

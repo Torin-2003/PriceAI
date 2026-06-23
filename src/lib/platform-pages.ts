@@ -57,6 +57,7 @@ export const platformPageConfigs = {
       "chatgpt-team-business",
       "chatgpt-pro-5x",
       "chatgpt-pro-20x",
+      "chatgpt-codex-service",
     ],
     badge: "ChatGPT 平台价格页",
     title: "ChatGPT 比价与订阅渠道价格",
