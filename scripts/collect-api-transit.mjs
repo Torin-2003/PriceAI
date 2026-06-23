@@ -19,6 +19,7 @@ const DEFAULT_RECHARGE_RATIO = "1:1";
 const NEW_API_USD_UNIT_PRICE_FACTOR = 2;
 const CALLAI_PARTNER_STATUS_COLLECTORS = new Set([
   "callai_partner_status",
+  "sub2api_partner_status",
   "subway_api_partner_status",
 ]);
 const SOURCE_SKIPPED = Symbol("source_skipped");

@@ -6,7 +6,7 @@
     "apiBaseUrl": "https://sub.callai.one/v1",
     "pricingUrl": "https://sub.callai.one/partner-api/v1/status",
     "pricingEndpointUrl": "https://sub.callai.one/partner-api/v1/status",
-    "collectorKind": "subway_api_partner_status",
+    "collectorKind": "sub2api_partner_status",
     "partnerTokenEnv": "CALLAI_PARTNER_PRICEAI_TOKEN",
     "channelTypes": ["undisclosed"],
     "accountPools": ["kiro", "max", "pro"],
