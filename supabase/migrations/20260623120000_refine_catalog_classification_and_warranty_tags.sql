@@ -53,9 +53,5 @@ begin
 end;
 $$;
 
-update raw_offers
-set source_title = source_title
-where coalesce(public_filter_tags, '{}'::text[]) is distinct from priceai_public_offer_filter_tags(source_title, tags);
-
 revoke execute on function priceai_public_offer_filter_tags(text, text[]) from anon, public;
 grant execute on function priceai_public_offer_filter_tags(text, text[]) to service_role;
