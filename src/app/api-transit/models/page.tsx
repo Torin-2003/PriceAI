@@ -6,6 +6,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { TransitFamilyTabs } from "@/components/TransitFamilyTabs";
 import TransitModelExplorer from "@/components/TransitModelExplorer";
 import { JsonLd } from "@/components/JsonLd";
+import { SponsoredPlacementPreview } from "@/components/SponsoredPlacementPreview";
 
 export const metadata: Metadata = {
   title: "中转 API 模型对比",
@@ -53,6 +54,8 @@ export default async function ApiTransitModelsPage() {
             按 Claude / GPT 标准模型横向对比各中转站的充值系数、模型倍率、综合倍率和近 7 日稳定性。站点榜仍是主入口，模型页用于快速查某个模型在哪些站点更便宜。
           </p>
         </div>
+
+        <SponsoredPlacementPreview kind="apiTransitModels" className="mb-6" />
 
         <Suspense fallback={<div className="py-12 text-center text-[#5a6061]">加载中…</div>}>
           <TransitModelExplorer stations={stations} />

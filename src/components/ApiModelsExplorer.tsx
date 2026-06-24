@@ -19,6 +19,7 @@ import { ApiModelIcon } from "@/components/ApiModelIcon";
 import { CategoryTabBar, CategoryTabStrip, type CategoryTabItem } from "@/components/CategoryTabBar";
 import { CommunityPrompt } from "@/components/FeedbackLink";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SponsoredPlacementPreview } from "@/components/SponsoredPlacementPreview";
 import { listDetailHref, listDetailNavigationHref, shouldHandleListDetailClick } from "@/lib/list-return";
 import {
   apiProviderTypeLabels,
@@ -335,6 +336,8 @@ export function ApiModelsExplorer({ dataset }: { dataset: ApiModelDataset }) {
             </button>
           </div>
         </div>
+
+        <SponsoredPlacementPreview kind="apiModels" />
 
         <div className="hidden space-y-3 rounded-lg bg-[#f2f4f4] p-3 shadow-[0_18px_50px_rgba(45,52,53,0.04)] ring-1 ring-[#adb3b4]/10 md:block">
           <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">

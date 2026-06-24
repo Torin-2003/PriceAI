@@ -8,6 +8,7 @@ import { TransitFamilyTabs } from "@/components/TransitFamilyTabs";
 import TransitStationExplorer from "@/components/TransitStationExplorer";
 import { TransitSubmissionActions } from "@/components/TransitSubmissionDialog";
 import { JsonLd } from "@/components/JsonLd";
+import { SponsoredPlacementPreview } from "@/components/SponsoredPlacementPreview";
 
 export const metadata: Metadata = {
   title: "API 中转站价格榜",
@@ -73,6 +74,8 @@ export default async function ApiTransitPage() {
           </div>
           <TransitSubmissionActions className="shrink-0 lg:justify-end" />
         </div>
+
+        <SponsoredPlacementPreview kind="apiTransit" className="mb-5" />
 
         <Suspense fallback={<div className="text-center py-16 text-[#5a6061]">加载中...</div>}>
           <TransitStationExplorer stations={stations} />

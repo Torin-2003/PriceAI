@@ -15,6 +15,7 @@ import Link from "next/link";
 import { HomeUrlCleaner } from "@/components/HomeUrlCleaner";
 import { JsonLd } from "@/components/JsonLd";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SponsoredPlacementPreview } from "@/components/SponsoredPlacementPreview";
 
 export const revalidate = 3600;
 
@@ -291,6 +292,8 @@ export default function Home() {
                 );
               })}
             </div>
+
+            <SponsoredPlacementPreview kind="home" className="mx-auto mt-8 max-w-6xl" />
 
             <div className="mx-auto mt-10 max-w-6xl">
               <p className="text-center text-xs font-semibold text-[var(--color-text-soft)]">覆盖常见 AI 订阅、模型与开发者入口</p>

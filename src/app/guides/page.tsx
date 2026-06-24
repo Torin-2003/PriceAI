@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FeedbackLink } from "@/components/FeedbackLink";
 import { GuideDocsLayout } from "@/components/GuideDocsLayout";
 import { JsonLd } from "@/components/JsonLd";
+import { SponsoredPlacementPreview } from "@/components/SponsoredPlacementPreview";
 import { getGuideCategory, guideEntries } from "@/lib/guides";
 
 export const revalidate = 86400;
@@ -219,6 +220,8 @@ export default function GuidesIndexPage() {
               </div>
             </div>
           </section>
+
+          <SponsoredPlacementPreview kind="guides" className="mt-10" />
 
           <section id="next-reading" className="mt-10">
             <p className="text-xs font-semibold text-[#7a8182]">继续了解</p>
