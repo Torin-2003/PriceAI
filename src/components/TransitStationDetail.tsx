@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { DataTableHead, StatusChip } from "@/components/ComparisonUi";
 import { FeedbackDialog, transitStationFeedbackTypes } from "@/components/FeedbackLink";
-import { SponsoredPlacementPreview } from "@/components/SponsoredPlacementPreview";
 import {
   getTransitStationOutboundUrl,
   useTransitAffPreference,
@@ -258,8 +257,6 @@ export default function TransitStationDetail({ station, backHref }: Props) {
           </div>
         </div>
       </section>
-
-      <SponsoredPlacementPreview kind="transitDetail" className="mt-5" />
 
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-5">

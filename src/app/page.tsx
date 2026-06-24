@@ -203,8 +203,9 @@ export default function Home() {
                   直接看有货低价
                 </Link>
               </div>
-
             </div>
+
+            <SponsoredPlacementPreview kind="topBanner" className="mx-auto mt-8 max-w-6xl" />
 
             <div id="paths" className="mx-auto mt-10 max-w-6xl scroll-mt-28">
               <div className="mx-auto max-w-4xl text-center">
