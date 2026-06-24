@@ -65,6 +65,7 @@ assert(/readPublicApiSnapshot<ExplorerData>\(\s*["']explorer["']/.test(dataText)
 assert(/readPublicApiSnapshot<PublicOffersResult>\(\s*["']offers["']/.test(dataText), "src/lib/data.ts: default public offer list must try the shared public API snapshot before expensive source reads.");
 assert(/readPublicApiSnapshot<PublicProductOffersResult>\(\s*[\r\n\s]*["']product_offers["']/.test(dataText), "src/lib/data.ts: default product offer pages must try the shared public API snapshot before expensive source reads.");
 assert(/refreshPublicApiSnapshots/.test(dataText), "src/lib/data.ts: public API snapshot refresh must stay available for writes and manual warmup.");
+assert(!/PUBLIC_PRODUCT_OFFERS_SNAPSHOT_PRODUCT_LIMIT/.test(dataText), "src/lib/data.ts: product offer snapshots must warm all products with offers, not only a small top-N subset.");
 
 const publicApiSnapshotsText = read("src/lib/public-api-snapshots.ts");
 assert(/public_api_snapshots/.test(publicApiSnapshotsText), "src/lib/public-api-snapshots.ts: public API snapshots must use the shared snapshot table.");
@@ -90,6 +91,12 @@ assert(/OFFER_LIST_CACHE_TTL_MS\s*=\s*PRICE_DATA_CACHE_TTL_MS/.test(priceExplore
 
 const productOffersPanelText = read("src/components/ProductOffersPanel.tsx");
 assert(/PRODUCT_OFFERS_CACHE_TTL_MS\s*=\s*PRICE_DATA_CACHE_TTL_MS/.test(productOffersPanelText), "src/components/ProductOffersPanel.tsx: product offer client cache must use the shared price cache policy.");
+assert(/PRODUCT_OFFERS_REFRESH_TIMEOUT_MS\s*=\s*10_000/.test(productOffersPanelText), "src/components/ProductOffersPanel.tsx: product offer refresh timeout must tolerate slow-tail product API responses.");
+assert(/createTimeoutSignal\(PRODUCT_OFFERS_REFRESH_TIMEOUT_MS\)/.test(productOffersPanelText), "src/components/ProductOffersPanel.tsx: product offers must use the product-specific refresh timeout.");
+
+const productPageText = read("src/app/products/[id]/page.tsx");
+assert(/listPublicProductOffers/.test(productPageText), "src/app/products/[id]/page.tsx: product pages must server-prefetch the first offer page.");
+assert(/initialData=\{initialOffers\}/.test(productPageText), "src/app/products/[id]/page.tsx: product offer panel must receive server-prefetched initialData.");
 
 const publicOfferQueryText = read("src/lib/public-offer-query.ts");
 assert(/PUBLIC_OFFER_MAX_LIMIT\s*=\s*200/.test(publicOfferQueryText), "src/lib/public-offer-query.ts: public offer pages must stay capped at 200 rows or less.");

@@ -71,7 +71,6 @@ const PUBLIC_OFFERS_SNAPSHOT_LIMIT = 80;
 const PUBLIC_OFFERS_SNAPSHOT_OFFSET = 0;
 const PUBLIC_PRODUCT_OFFERS_SNAPSHOT_LIMIT = 80;
 const PUBLIC_PRODUCT_OFFERS_SNAPSHOT_OFFSET = 0;
-const PUBLIC_PRODUCT_OFFERS_SNAPSHOT_PRODUCT_LIMIT = 12;
 const RAW_OFFER_PUBLIC_SELECT_FIELDS = [
   "id",
   "source_id",
@@ -132,7 +131,7 @@ type PublicRiskFeedbackAggregate = {
 
 const DATA_UNAVAILABLE_MESSAGE = "真实报价数据暂时不可用，请稍后刷新。";
 
-type PublicProductOffersResult = {
+export type PublicProductOffersResult = {
   offers: RawOffer[];
   total: number;
   filterFacets: OfferFilterTagFacet[];
@@ -252,8 +251,7 @@ export async function refreshPublicApiSnapshots(): Promise<{
       const offerDelta = b.offerCount - a.offerCount;
       if (offerDelta !== 0) return offerDelta;
       return a.id.localeCompare(b.id);
-    })
-    .slice(0, PUBLIC_PRODUCT_OFFERS_SNAPSHOT_PRODUCT_LIMIT);
+    });
 
   const productOffers: Array<{ key: string; ok: boolean }> = [];
   for (const product of products) {

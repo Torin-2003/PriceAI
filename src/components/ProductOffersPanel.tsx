@@ -40,6 +40,7 @@ type ProductOffersResponse = {
 
 const OFFER_PAGE_SIZE = 80;
 const PRODUCT_OFFERS_CACHE_TTL_MS = PRICE_DATA_CACHE_TTL_MS;
+const PRODUCT_OFFERS_REFRESH_TIMEOUT_MS = 10_000;
 const PRODUCT_OFFERS_MEMORY_CACHE_LIMIT = 40;
 const FEEDBACK_EVIDENCE_MAX_IMAGES = 5;
 const productOffersMemoryCache = new Map<string, ProductOffersResponse>();
@@ -156,7 +157,7 @@ export function ProductOffersPanel({
       }
       setPaging(false);
 
-      const timeout = createTimeoutSignal();
+      const timeout = createTimeoutSignal(PRODUCT_OFFERS_REFRESH_TIMEOUT_MS);
       cancelRefresh = timeout.cancel;
 
       try {

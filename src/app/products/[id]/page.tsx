@@ -8,7 +8,7 @@ import { JsonLd } from "@/components/JsonLd";
 import { ProductDetailHeader, ProductReturnLink } from "@/components/ProductDetailHeader";
 import { ProductOffersPanel } from "@/components/ProductOffersPanel";
 import { publicCatalogProducts } from "@/lib/catalog";
-import { getPublicProductSummary } from "@/lib/data";
+import { getPublicProductSummary, listPublicProductOffers } from "@/lib/data";
 import {
   getOfficialPricePlanSummaryFromDataset,
   getOfficialPriceRowsByIdFromDataset,
@@ -101,6 +101,7 @@ export default async function ProductDetail({
   if (!product) notFound();
 
   const seoProfile = getProductSeoProfile(product);
+  const initialOffers = await listPublicProductOffers(product.id, { limit: 80, offset: 0 });
 
   return (
     <>
@@ -149,6 +150,7 @@ export default async function ProductDetail({
           productSlug={product.slug}
           productName={product.displayName}
           initialCount={product.offerCount}
+          initialData={initialOffers}
         />
 
         <ProductRelatedCta product={product} />
