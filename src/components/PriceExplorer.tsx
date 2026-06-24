@@ -22,6 +22,7 @@ import { BrandIcon } from "@/components/BrandIcon";
 import { CategoryTabBar, CategoryTabStrip, type CategoryTabItem } from "@/components/CategoryTabBar";
 import { OfferActions, OfferFeedbackButton, OfferFeedbackDialog, OfferLink } from "@/components/ProductOffersPanel";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SponsoredPlacementPreview } from "@/components/SponsoredPlacementPreview";
 import { listDetailNavigationHref, shouldHandleListDetailClick } from "@/lib/list-return";
 import {
   allPlatformOptions,
@@ -888,7 +889,8 @@ export function PriceExplorer({
       </main>
 
       <footer className="px-5 py-8 text-center text-xs leading-6 text-[#5a6061] sm:px-8">
-        价格仅供参考，实际价格、库存和售后规则以原平台为准。本工具不构成购买建议。
+        <SponsoredPlacementPreview kind="listFooter" className="mx-auto mb-5 max-w-4xl" />
+        <p>价格仅供参考，实际价格、库存和售后规则以原平台为准。本工具不构成购买建议。</p>
       </footer>
     </div>
   );

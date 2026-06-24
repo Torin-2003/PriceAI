@@ -9,7 +9,8 @@ type SponsoredPlacementKind =
   | "home"
   | "apiTransit"
   | "apiTransitModels"
-  | "apiModels";
+  | "apiModels"
+  | "listFooter";
 
 type SponsoredPlacementPreviewProps = {
   kind: SponsoredPlacementKind;
@@ -107,6 +108,20 @@ const placementCopy: Record<SponsoredPlacementKind, PlacementCopy> = {
     visualMeta: ["开发者", "可核验", "轻曝光"],
     tone: "blue",
   },
+  listFooter: {
+    id: "list-footer",
+    label: "广告",
+    eyebrow: "列表底部赞助位",
+    title: "AI 周边低打扰展示",
+    body: "适合网络环境检测、云服务器、监控、支付、域名和开发者工具；不承接卡网订阅或中转站排名型推广。",
+    cta: "查看投放要求",
+    slot: "价格列表底部",
+    fit: "低打扰横幅",
+    visualTitle: "Buyer Toolkit",
+    visualBody: "购买前的网络、支付与安全检查",
+    visualMeta: ["免责声明上方", "可关闭", "不影响排序"],
+    tone: "green",
+  },
 };
 
 export function SponsoredPlacementPreview({ kind, className = "" }: SponsoredPlacementPreviewProps) {
@@ -128,6 +143,10 @@ export function SponsoredPlacementPreview({ kind, className = "" }: SponsoredPla
 
   if (kind === "topBanner") {
     return <TopNoticeAd copy={copy} className={className} onDismiss={dismiss} />;
+  }
+
+  if (kind === "listFooter") {
+    return <FooterStripAd copy={copy} className={className} onDismiss={dismiss} />;
   }
 
   return <DisplayAdCard copy={copy} className={className} onDismiss={dismiss} />;
@@ -262,6 +281,59 @@ function DisplayAdCard({
               ))}
             </div>
           </div>
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function FooterStripAd({
+  copy,
+  className,
+  onDismiss,
+}: {
+  copy: PlacementCopy;
+  className: string;
+  onDismiss: () => void;
+}) {
+  return (
+    <section
+      aria-label={`${copy.eyebrow}广告位`}
+      className={`relative overflow-hidden rounded-lg bg-white px-4 py-3 text-left text-[#202829] ring-1 ring-[#dfe4e5] ${className}`}
+    >
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#f2f4f4] text-[#5a6061] transition hover:bg-[#e4e9ea] hover:text-[#202829]"
+        aria-label="关闭列表底部赞助位广告"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+
+      <div className="flex flex-col gap-3 pr-9 md:flex-row md:items-center md:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#fff7e8] px-2.5 py-1 text-[11px] font-extrabold text-[#7a541b]">
+              <Megaphone className="h-3.5 w-3.5" />
+              {copy.label}
+            </span>
+            <span className="inline-flex rounded-full bg-[#eef3f8] px-2.5 py-1 text-[11px] font-bold text-[#47657a]">
+              {copy.slot}
+            </span>
+          </div>
+          <p className="mt-2 max-w-[76ch] text-sm leading-6 text-[#5a6061]">
+            <span className="font-extrabold text-[#202829]">{copy.title}</span>
+            <span className="mx-2 text-[#adb3b4]">/</span>
+            {copy.body}
+          </p>
+        </div>
+
+        <Link
+          href="/commercial#slots"
+          className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#2d3435] px-3 text-xs font-bold text-[#f8f8f8] transition hover:bg-[#1f2526]"
+        >
+          {copy.cta}
+          <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>
     </section>
