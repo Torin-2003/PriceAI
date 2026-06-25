@@ -36,12 +36,19 @@ import { trackAnalyticsEvent } from "@/lib/analytics";
 import { readSessionCache, writeSessionCache } from "@/lib/client-cache";
 import { createTimeoutSignal, isGeneratedDatasetStale, newestGeneratedDataset } from "@/lib/client-refresh";
 import { PRICE_DATA_CACHE_TTL_MS } from "@/lib/public-cache-policy";
-import type { CanonicalProduct, ExplorerData, ExplorerProductSummary, RawOffer } from "@/lib/types";
+import type {
+  CanonicalProduct,
+  ExplorerData,
+  ExplorerProductSummary,
+  MerchantCollectorGroup,
+  PublicMerchantSummary,
+  RawOffer,
+} from "@/lib/types";
 import { formatCurrency, formatRelativeTime } from "@/lib/utils";
 
 type SortMode = "available_price" | "price" | "updated" | "channels";
 type ViewMode = "cards" | "table";
-type ScopeMode = "products" | "offers";
+type ScopeMode = "products" | "offers" | "merchants";
 
 export type ExplorerInitialState = {
   query?: string;
@@ -53,6 +60,8 @@ export type ExplorerInitialState = {
   maxPrice?: string;
   viewMode?: ViewMode;
   scopeMode?: ScopeMode;
+  merchantCollector?: MerchantCollectorFilter;
+  merchantSignal?: MerchantSignalFilter;
 };
 
 type PlatformOfferRow = {
@@ -68,6 +77,17 @@ type OfferListResponse = {
   degraded?: boolean;
   message?: string | null;
 };
+
+type MerchantListResponse = {
+  rows: PublicMerchantSummary[];
+  total: number;
+  generatedAt: string;
+  degraded?: boolean;
+  message?: string | null;
+};
+
+type MerchantCollectorFilter = "all" | MerchantCollectorGroup;
+type MerchantSignalFilter = "all" | "lowest" | "warranty" | "platform_aftersales" | "risk_clear";
 
 const productTypeLabels: Record<string, string> = {
   全部: "全部",
@@ -88,13 +108,17 @@ const productTypeLabels: Record<string, string> = {
 const OFFER_PAGE_SIZE = 80;
 const PRODUCT_SKELETON_ROWS = [0, 1, 2];
 const EXPLORER_CACHE_KEY = "priceai:explorer:v3";
+const MERCHANT_LIST_CACHE_KEY = "priceai:merchants:v1";
 const EXPLORER_CACHE_TTL_MS = PRICE_DATA_CACHE_TTL_MS;
 const OFFER_LIST_CACHE_TTL_MS = PRICE_DATA_CACHE_TTL_MS;
+const MERCHANT_LIST_CACHE_TTL_MS = PRICE_DATA_CACHE_TTL_MS;
 const OFFER_LIST_MEMORY_CACHE_LIMIT = 40;
 const stockOptions = ["all", "available", "out_of_stock"] as const;
 const sortOptions = ["available_price", "price", "updated", "channels"] as const;
 const viewOptions = ["cards", "table"] as const;
-const scopeOptions = ["products", "offers"] as const;
+const scopeOptions = ["products", "offers", "merchants"] as const;
+const merchantCollectorOptions = ["all", "shopApi", "dujiao", "kami", "other"] as const;
+const merchantSignalOptions = ["all", "lowest", "warranty", "platform_aftersales", "risk_clear"] as const;
 const visiblePlatformOptions = apiCdkPublicVisibleForClient() ? allPlatformOptions : platformOptions;
 
 const EMPTY_EXPLORER_DATA: ExplorerData = {
@@ -108,6 +132,7 @@ const EMPTY_EXPLORER_DATA: ExplorerData = {
 };
 
 let explorerMemoryCache: ExplorerData | null = null;
+let merchantMemoryCache: MerchantListResponse | null = null;
 const offerListMemoryCache = new Map<string, OfferListResponse>();
 
 function useMediaQuery(query: string) {
@@ -152,11 +177,16 @@ export function PriceExplorer({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(initialState.viewMode ?? "table");
   const [scopeMode, setScopeMode] = useState<ScopeMode>(initialState.scopeMode ?? "products");
+  const [merchantCollector, setMerchantCollector] = useState<MerchantCollectorFilter>(initialState.merchantCollector ?? "all");
+  const [merchantSignal, setMerchantSignal] = useState<MerchantSignalFilter>(initialState.merchantSignal ?? "all");
   const [urlStateReady, setUrlStateReady] = useState(!restoreStateFromUrl);
   const [offerResponse, setOfferResponse] = useState<OfferListResponse | null>(null);
   const [offersLoading, setOffersLoading] = useState(false);
   const [offersPaging, setOffersPaging] = useState(false);
   const [offersError, setOffersError] = useState<string | null>(null);
+  const [merchantResponse, setMerchantResponse] = useState<MerchantListResponse | null>(() => merchantMemoryCache);
+  const [merchantsLoading, setMerchantsLoading] = useState(false);
+  const [merchantsError, setMerchantsError] = useState<string | null>(null);
   const [feedbackRow, setFeedbackRow] = useState<PlatformOfferRow | null>(null);
   const offerLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const activeOfferQueryRef = useRef("");
@@ -186,6 +216,8 @@ export function PriceExplorer({
       setMaxPrice(nextState.maxPrice ?? "");
       setViewMode(nextState.viewMode ?? "table");
       setScopeMode(nextState.scopeMode ?? "products");
+      setMerchantCollector(nextState.merchantCollector ?? "all");
+      setMerchantSignal(nextState.merchantSignal ?? "all");
       readyFrameId = window.requestAnimationFrame(() => setUrlStateReady(true));
     });
 
@@ -266,10 +298,26 @@ export function PriceExplorer({
   const totalAvailable = explorerData.products.reduce((sum, product) => sum + product.inStockCount, 0);
   const totalOutOfStock = explorerData.products.reduce((sum, product) => sum + product.outOfStockCount, 0);
   const showingOffers = scopeMode === "offers";
-  const title = buildTitle(platform, productType, showingOffers);
-  const activeFilterChips = buildActiveFilterChips({ productType, stock, minPrice, maxPrice });
+  const showingMerchants = scopeMode === "merchants";
+  const merchantRows = useMemo(
+    () =>
+      filterAndSortMerchants(merchantResponse?.rows ?? [], {
+        query: effectiveQuery,
+        platform,
+        productType,
+        stock,
+        sort,
+        collector: merchantCollector,
+        signal: merchantSignal,
+        minPrice,
+        maxPrice,
+      }),
+    [effectiveQuery, maxPrice, merchantCollector, merchantResponse?.rows, merchantSignal, minPrice, platform, productType, sort, stock],
+  );
+  const title = buildTitle(platform, productType, scopeMode);
+  const activeFilterChips = buildActiveFilterChips({ productType, stock, minPrice, maxPrice, merchantCollector, merchantSignal, showingMerchants });
   const platformOffers = offerResponse?.rows ?? [];
-  const resultCount = showingOffers ? offerResponse?.total ?? 0 : products.length;
+  const resultCount = showingMerchants ? merchantRows.length : showingOffers ? offerResponse?.total ?? 0 : products.length;
   const hasMoreOffers = showingOffers && Boolean(offerResponse) && platformOffers.length < (offerResponse?.total ?? 0);
   const renderMobileProductList = isDesktopViewport !== true;
   const renderDesktopProductTable = viewMode === "table" && isDesktopViewport !== false;
@@ -286,8 +334,10 @@ export function PriceExplorer({
         maxPrice,
         viewMode,
         scopeMode,
+        merchantCollector,
+        merchantSignal,
       }).toString(),
-    [maxPrice, minPrice, platform, productType, query, scopeMode, sort, stock, viewMode],
+    [maxPrice, merchantCollector, merchantSignal, minPrice, platform, productType, query, scopeMode, sort, stock, viewMode],
   );
   const offerQueryString = useMemo(
     () =>
@@ -301,8 +351,10 @@ export function PriceExplorer({
         maxPrice,
         viewMode,
         scopeMode,
+        merchantCollector,
+        merchantSignal,
       }).toString(),
-    [effectiveQuery, maxPrice, minPrice, platform, productType, scopeMode, sort, stock, viewMode],
+    [effectiveQuery, maxPrice, merchantCollector, merchantSignal, minPrice, platform, productType, scopeMode, sort, stock, viewMode],
   );
 
   useEffect(() => {
@@ -413,6 +465,8 @@ export function PriceExplorer({
     setMaxPrice("");
     setViewMode("table");
     setScopeMode("products");
+    setMerchantCollector("all");
+    setMerchantSignal("all");
     trackAnalyticsEvent("filters_reset");
   }
 
@@ -425,6 +479,8 @@ export function PriceExplorer({
     setStock("all");
     setMinPrice("");
     setMaxPrice("");
+    setMerchantCollector("all");
+    setMerchantSignal("all");
     trackAnalyticsEvent("advanced_filters_reset");
   }
 
@@ -545,6 +601,47 @@ export function PriceExplorer({
     return () => observer.disconnect();
   }, [hasMoreOffers, loadMoreOffers]);
 
+  useEffect(() => {
+    if (!urlStateReady) return;
+    if (!showingMerchants) return;
+
+    const controller = new AbortController();
+
+    async function loadMerchants() {
+      const cachedMerchants =
+        merchantMemoryCache ??
+        readSessionCache<MerchantListResponse>(MERCHANT_LIST_CACHE_KEY, MERCHANT_LIST_CACHE_TTL_MS);
+
+      if (cachedMerchants) {
+        merchantMemoryCache = cachedMerchants;
+        setMerchantResponse(cachedMerchants);
+        setMerchantsLoading(false);
+      } else {
+        setMerchantsLoading(true);
+      }
+
+      setMerchantsError(null);
+
+      try {
+        const nextResponse = await fetchMerchantList(controller.signal);
+        if (controller.signal.aborted) return;
+        merchantMemoryCache = nextResponse;
+        writeSessionCache(MERCHANT_LIST_CACHE_KEY, nextResponse);
+        setMerchantResponse(nextResponse);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setMerchantsError(error instanceof Error ? error.message : "商家数据加载失败");
+        if (!cachedMerchants) setMerchantResponse(null);
+      } finally {
+        if (!controller.signal.aborted) setMerchantsLoading(false);
+      }
+    }
+
+    void loadMerchants();
+
+    return () => controller.abort();
+  }, [showingMerchants, urlStateReady]);
+
   return (
     <div className="min-h-screen bg-[#f9f9f9] text-[#2d3435]">
       <div className="sticky top-0 z-40 bg-[#f9f9f9]/95 shadow-[0_10px_24px_rgba(45,52,53,0.035)] backdrop-blur-xl">
@@ -581,7 +678,9 @@ export function PriceExplorer({
                     最近更新：{dataLoading ? "正在同步" : <RelativeTime value={explorerData.generatedAt} />}
                   </span>
                   <span className="h-1 w-1 rounded-full bg-[#adb3b4]" />
-                  <span>{dataLoading && !showingOffers ? "正在加载" : resultCount} {showingOffers ? "条报价" : "个商品"}</span>
+                  <span>
+                    {dataLoading && !showingOffers && !showingMerchants ? "正在加载" : resultCount} {showingMerchants ? "个商家" : showingOffers ? "条报价" : "个商品"}
+                  </span>
                   <span className="hidden h-1 w-1 rounded-full bg-[#adb3b4] md:inline-block" />
                   <span className="hidden md:inline">主价格优先取有货最低价，缺货会明显标注</span>
                 </div>
@@ -596,7 +695,9 @@ export function PriceExplorer({
                 </button>
               </div>
               <p className="mt-3 hidden max-w-[78ch] text-sm leading-7 text-[#5a6061] md:block">
-                PriceAI 聚合 AI 订阅卡网渠道报价。本站不卖货、不担保，价格仅供参考，实际交易和售后规则以原平台为准。
+                {showingMerchants
+                  ? "卡网商家页展示 PriceAI 从公开页面和公开接口观察到的店铺信号。本站不卖货、不担保，销量、库存和售后规则以原平台为准。"
+                  : "PriceAI 聚合 AI 订阅卡网渠道报价。本站不卖货、不担保，价格仅供参考，实际交易和售后规则以原平台为准。"}
               </p>
             </div>
 
@@ -641,20 +742,26 @@ export function PriceExplorer({
                   label="报价"
                   onClick={() => changeScope("offers")}
                 />
+                <ViewToggleButton
+                  active={scopeMode === "merchants"}
+                  icon={<Store size={16} />}
+                  label="商家"
+                  onClick={() => changeScope("merchants")}
+                />
               </div>
               <label className="relative inline-flex h-11 min-w-0 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full bg-[#e4e9ea] px-3 text-sm font-semibold text-[#2d3435]">
                 <ArrowUpDown size={16} className="shrink-0" />
-                <span className="truncate">{mobileSortLabel(sort, showingOffers)}</span>
+                <span className="truncate">{mobileSortLabel(sort, scopeMode)}</span>
                 <select
                   aria-label="排序"
                   value={sort}
                   onChange={(event) => setSort(event.target.value as SortMode)}
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                 >
-                  <option value="available_price">有货 + 低价</option>
+                  <option value="available_price">{showingMerchants ? "综合观察" : "有货 + 低价"}</option>
                   <option value="price">价格从低到高</option>
                   <option value="updated">最近更新</option>
-                  <option value="channels">{showingOffers ? "渠道名称" : "渠道数量"}</option>
+                  <option value="channels">{showingMerchants ? "覆盖最多" : showingOffers ? "渠道名称" : "渠道数量"}</option>
                 </select>
               </label>
               <button
@@ -663,7 +770,7 @@ export function PriceExplorer({
                 className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-[#e4e9ea] px-3 text-sm font-semibold text-[#2d3435] transition hover:bg-[#dde4e5]"
               >
                 <Filter size={16} />
-                筛选{advancedFilterCount({ productType, stock, minPrice, maxPrice }) ? ` ${advancedFilterCount({ productType, stock, minPrice, maxPrice })}` : ""}
+                筛选{advancedFilterCount({ productType, stock, minPrice, maxPrice, merchantCollector, merchantSignal, showingMerchants }) ? ` ${advancedFilterCount({ productType, stock, minPrice, maxPrice, merchantCollector, merchantSignal, showingMerchants })}` : ""}
               </button>
             </div>
           </div>
@@ -699,6 +806,12 @@ export function PriceExplorer({
                 label="全部报价"
                 onClick={() => changeScope("offers")}
               />
+              <ViewToggleButton
+                active={scopeMode === "merchants"}
+                icon={<Store size={16} />}
+                label="卡网商家"
+                onClick={() => changeScope("merchants")}
+              />
             </div>
             {scopeMode === "products" ? (
               <div className="h-11 shrink-0 items-center rounded-full bg-[#edf0f1] p-1 md:inline-flex">
@@ -723,10 +836,10 @@ export function PriceExplorer({
                 onChange={(event) => setSort(event.target.value as SortMode)}
                 className="bg-transparent text-sm outline-none"
               >
-                <option value="available_price">有货 + 低价</option>
+                <option value="available_price">{showingMerchants ? "综合观察" : "有货 + 低价"}</option>
                 <option value="price">价格从低到高</option>
                 <option value="updated">最近更新</option>
-                <option value="channels">{showingOffers ? "渠道名称" : "渠道数量"}</option>
+                <option value="channels">{showingMerchants ? "覆盖最多" : showingOffers ? "渠道名称" : "渠道数量"}</option>
               </select>
             </label>
             <button
@@ -783,6 +896,22 @@ export function PriceExplorer({
             />
             <PriceInput label="最低价" value={minPrice} onChange={setMinPrice} />
             <PriceInput label="最高价" value={maxPrice} onChange={setMaxPrice} />
+            {showingMerchants ? (
+              <>
+                <FilterSelect
+                  label="采集来源"
+                  value={merchantCollector}
+                  onChange={(value) => setMerchantCollector(value as MerchantCollectorFilter)}
+                  options={merchantCollectorOptions.map((item) => [item, merchantCollectorFilterLabel(item)] as [string, string])}
+                />
+                <FilterSelect
+                  label="商家信号"
+                  value={merchantSignal}
+                  onChange={(value) => setMerchantSignal(value as MerchantSignalFilter)}
+                  options={merchantSignalOptions.map((item) => [item, merchantSignalLabel(item)] as [string, string])}
+                />
+              </>
+            ) : null}
             <button
               type="button"
               onClick={resetFilters}
@@ -799,10 +928,15 @@ export function PriceExplorer({
           stock={stock}
           minPrice={minPrice}
           maxPrice={maxPrice}
+          showingMerchants={showingMerchants}
+          merchantCollector={merchantCollector}
+          merchantSignal={merchantSignal}
           onProductTypeChange={setProductType}
           onStockChange={setStock}
           onMinPriceChange={setMinPrice}
           onMaxPriceChange={setMaxPrice}
+          onMerchantCollectorChange={setMerchantCollector}
+          onMerchantSignalChange={setMerchantSignal}
           onReset={resetAdvancedFilters}
           onClose={closeFilters}
         />
@@ -813,7 +947,32 @@ export function PriceExplorer({
           </div>
         ) : null}
 
-        {showingOffers ? (
+        {showingMerchants ? (
+          merchantsLoading && !merchantResponse ? (
+            <EmptyState text="正在加载商家" />
+          ) : merchantsError && !merchantRows.length ? (
+            <EmptyState text={merchantsError} />
+          ) : merchantRows.length ? (
+            <>
+              {merchantResponse?.degraded ? (
+                <DegradedBanner message={merchantResponse.message} className="mb-4" />
+              ) : null}
+              {merchantsError ? (
+                <div className="mb-4 rounded-lg bg-[#fff7e8] px-4 py-3 text-sm text-[#6a4b16] shadow-[0_16px_45px_rgba(45,52,53,0.04)] ring-1 ring-[#efdfbd]">
+                  {merchantsError}。已保留当前商家数据，可稍后重试或切换筛选条件。
+                </div>
+              ) : null}
+              <MerchantTable merchants={merchantRows} />
+            </>
+          ) : (
+            <>
+              {merchantResponse?.degraded ? (
+                <DegradedBanner message={merchantResponse.message} className="mb-4" />
+              ) : null}
+              <EmptyState text="没有符合条件的商家" />
+            </>
+          )
+        ) : showingOffers ? (
           offersLoading && !offerResponse ? (
             <EmptyState text="正在加载报价" />
           ) : offersError && !platformOffers.length ? (
@@ -1152,6 +1311,177 @@ function PlatformOfferCard({
         <OfferActions offer={offer} available={available} onFeedback={onFeedback} />
       </div>
     </article>
+  );
+}
+
+function MerchantTable({ merchants }: { merchants: PublicMerchantSummary[] }) {
+  return (
+    <>
+      <div className="hidden overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15 md:block">
+        <div className="overflow-x-auto">
+          <table className="min-w-[1180px] w-full border-collapse text-left text-sm">
+            <colgroup>
+              <col className="w-[260px]" />
+              <col className="w-[120px]" />
+              <col className="w-[210px]" />
+              <col className="w-[170px]" />
+              <col className="w-[150px]" />
+              <col className="w-[150px]" />
+              <col className="w-[120px]" />
+              <col className="w-[120px]" />
+              <col className="w-[90px]" />
+            </colgroup>
+            <thead className="bg-[#f2f4f4] text-[0.68rem] font-semibold text-[#5a6061]">
+              <tr>
+                <TableHead>商家/店铺</TableHead>
+                <TableHead>采集来源</TableHead>
+                <TableHead>覆盖</TableHead>
+                <TableHead>库存</TableHead>
+                <TableHead>最低价命中</TableHead>
+                <TableHead>质保命中</TableHead>
+                <TableHead>售后信号</TableHead>
+                <TableHead>最近更新</TableHead>
+                <TableHead className="text-center">操作</TableHead>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#edf0f1]">
+              {merchants.map((merchant) => (
+                <tr key={merchant.id} className="transition hover:bg-[#f7f9f9]">
+                  <td className="max-w-[260px] px-5 py-4">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f2f4f4] text-[#5a6061]">
+                        <Store size={18} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate font-semibold text-[#202829]">{merchant.name}</span>
+                        <span className="mt-1 block truncate text-xs text-[#5a6061]">{merchant.host || merchant.sourceName}</span>
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-5 py-4">
+                    <CollectorBadge merchant={merchant} />
+                  </td>
+                  <td className="max-w-[210px] px-5 py-4">
+                    <p className="font-semibold text-[#202829]">{merchant.productCount} 个商品</p>
+                    <p className="mt-1 truncate text-xs text-[#5a6061]">{merchant.platforms.slice(0, 3).join(" / ") || "未记录平台"}</p>
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="flex flex-wrap gap-1.5">
+                      <CountBadge tone="good">有货 {merchant.inStockCount}</CountBadge>
+                      <CountBadge tone="danger">缺货 {merchant.outOfStockCount}</CountBadge>
+                    </div>
+                  </td>
+                  <td className="px-5 py-4">
+                    <MetricStack value={merchant.lowestHitCount} label="标准最低" />
+                  </td>
+                  <td className="px-5 py-4">
+                    <MetricStack value={merchant.warrantyLowestHitCount} label="质保最低" />
+                  </td>
+                  <td className="px-5 py-4">
+                    <MerchantSignalBadges merchant={merchant} />
+                  </td>
+                  <td className="px-5 py-4 text-[#5a6061]">
+                    <RelativeTime value={merchant.latestSeenAt} />
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    <MerchantSourceLink merchant={merchant} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="grid gap-3 md:hidden">
+        {merchants.map((merchant) => (
+          <MerchantCard key={merchant.id} merchant={merchant} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+function MerchantCard({ merchant }: { merchant: PublicMerchantSummary }) {
+  return (
+    <article
+      data-merchant-card="true"
+      className="rounded-lg bg-white p-4 shadow-[0_16px_45px_rgba(45,52,53,0.04)] ring-1 ring-[#adb3b4]/15"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-base font-semibold text-[#202829]">{merchant.name}</p>
+          <p className="mt-1 truncate text-xs text-[#5a6061]">{merchant.host || merchant.sourceName}</p>
+        </div>
+        <CollectorBadge merchant={merchant} />
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+        <MobileMerchantMetric label="商品" value={merchant.productCount} />
+        <MobileMerchantMetric label="有货" value={merchant.inStockCount} />
+        <MobileMerchantMetric label="最低价命中" value={merchant.lowestHitCount} />
+        <MobileMerchantMetric label="质保命中" value={merchant.warrantyLowestHitCount} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        <MerchantSignalBadges merchant={merchant} />
+      </div>
+      <p className="mt-3 line-clamp-1 text-xs text-[#5a6061]">
+        {merchant.representativeProduct || "未记录代表商品"} · <RelativeTime value={merchant.latestSeenAt} />
+      </p>
+      <div className="mt-4">
+        <MerchantSourceLink merchant={merchant} />
+      </div>
+    </article>
+  );
+}
+
+function CollectorBadge({ merchant }: { merchant: PublicMerchantSummary }) {
+  const tone = merchant.collectorGroup === "shopApi" ? "info" : merchant.collectorGroup === "other" ? "muted" : "warn";
+  return <CountBadge tone={tone}>{merchant.collectorLabel}</CountBadge>;
+}
+
+function MerchantSignalBadges({ merchant }: { merchant: PublicMerchantSummary }) {
+  return (
+    <div className="flex flex-wrap gap-1.5 text-xs">
+      {merchant.hasPlatformAftersalesMechanism ? (
+        <CountBadge tone="info">平台售后</CountBadge>
+      ) : null}
+      {merchant.riskFeedbackCount > 0 ? (
+        <CountBadge tone="warn">风险反馈 {merchant.riskFeedbackCount}</CountBadge>
+      ) : (
+        <CountBadge tone="muted">暂无风险反馈</CountBadge>
+      )}
+    </div>
+  );
+}
+
+function MetricStack({ value, label }: { value: number; label: string }) {
+  return (
+    <div>
+      <p className="text-lg font-bold tabular-nums text-[#202829]">{value}</p>
+      <p className="mt-0.5 text-xs text-[#5a6061]">{label}</p>
+    </div>
+  );
+}
+
+function MobileMerchantMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg bg-[#f2f4f4] px-3 py-2">
+      <p className="text-[0.68rem] font-semibold text-[#5a6061]">{label}</p>
+      <p className="mt-1 text-base font-bold tabular-nums text-[#202829]">{value}</p>
+    </div>
+  );
+}
+
+function MerchantSourceLink({ merchant }: { merchant: PublicMerchantSummary }) {
+  return (
+    <a
+      href={merchant.entryUrl}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-[#2d3435] px-3 text-xs font-semibold text-[#f8f8f8] transition hover:bg-[#1f2526]"
+    >
+      原站
+      <ChevronRight size={14} />
+    </a>
   );
 }
 
@@ -1560,10 +1890,15 @@ function MobileFilterSheet({
   stock,
   minPrice,
   maxPrice,
+  showingMerchants,
+  merchantCollector,
+  merchantSignal,
   onProductTypeChange,
   onStockChange,
   onMinPriceChange,
   onMaxPriceChange,
+  onMerchantCollectorChange,
+  onMerchantSignalChange,
   onReset,
   onClose,
 }: {
@@ -1572,10 +1907,15 @@ function MobileFilterSheet({
   stock: string;
   minPrice: string;
   maxPrice: string;
+  showingMerchants: boolean;
+  merchantCollector: MerchantCollectorFilter;
+  merchantSignal: MerchantSignalFilter;
   onProductTypeChange: (value: string) => void;
   onStockChange: (value: string) => void;
   onMinPriceChange: (value: string) => void;
   onMaxPriceChange: (value: string) => void;
+  onMerchantCollectorChange: (value: MerchantCollectorFilter) => void;
+  onMerchantSignalChange: (value: MerchantSignalFilter) => void;
   onReset: () => void;
   onClose: () => void;
 }) {
@@ -1627,6 +1967,22 @@ function MobileFilterSheet({
             <PriceInput label="最低价" value={minPrice} onChange={onMinPriceChange} />
             <PriceInput label="最高价" value={maxPrice} onChange={onMaxPriceChange} />
           </div>
+          {showingMerchants ? (
+            <>
+              <FilterSelect
+                label="采集来源"
+                value={merchantCollector}
+                onChange={(value) => onMerchantCollectorChange(value as MerchantCollectorFilter)}
+                options={merchantCollectorOptions.map((item) => [item, merchantCollectorFilterLabel(item)] as [string, string])}
+              />
+              <FilterSelect
+                label="商家信号"
+                value={merchantSignal}
+                onChange={(value) => onMerchantSignalChange(value as MerchantSignalFilter)}
+                options={merchantSignalOptions.map((item) => [item, merchantSignalLabel(item)] as [string, string])}
+              />
+            </>
+          ) : null}
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-3">
@@ -1808,6 +2164,13 @@ async function fetchExplorerData(signal?: AbortSignal): Promise<ExplorerData> {
   return (await response.json()) as ExplorerData;
 }
 
+async function fetchMerchantList(signal?: AbortSignal): Promise<MerchantListResponse> {
+  const response = await fetch("/api/merchants", { signal });
+  if (!response.ok) throw new Error("商家数据加载失败");
+
+  return (await response.json()) as MerchantListResponse;
+}
+
 function offerListCacheKey(queryString: string, offset: number): string {
   return `priceai:offers:v2:${queryString || "all"}:${offset}:${OFFER_PAGE_SIZE}`;
 }
@@ -1827,11 +2190,12 @@ function metricValue(value: number, loading: boolean): string {
   return loading ? "--" : value.toString();
 }
 
-function mobileSortLabel(sort: SortMode, showingOffers: boolean): string {
-  if (sort === "available_price") return "低价";
+function mobileSortLabel(sort: SortMode, scope: ScopeMode): string {
+  if (sort === "available_price") return scope === "merchants" ? "综合" : "低价";
   if (sort === "price") return "价格";
   if (sort === "updated") return "最新";
-  return showingOffers ? "渠道" : "数量";
+  if (scope === "merchants") return "覆盖";
+  return scope === "offers" ? "渠道" : "数量";
 }
 
 function buildExplorerSearchParams({
@@ -1844,6 +2208,8 @@ function buildExplorerSearchParams({
   maxPrice,
   viewMode,
   scopeMode,
+  merchantCollector,
+  merchantSignal,
 }: Required<ExplorerInitialState>): URLSearchParams {
   const params = new URLSearchParams();
   const normalizedQuery = query.trim();
@@ -1856,7 +2222,9 @@ function buildExplorerSearchParams({
   if (minPrice) params.set("min", minPrice);
   if (maxPrice) params.set("max", maxPrice);
   if (viewMode !== "table") params.set("view", viewMode);
-  if (scopeMode === "offers") params.set("scope", scopeMode);
+  if (scopeMode !== "products") params.set("scope", scopeMode);
+  if (scopeMode === "merchants" && merchantCollector !== "all") params.set("collector", merchantCollector);
+  if (scopeMode === "merchants" && merchantSignal !== "all") params.set("signal", merchantSignal);
 
   return params;
 }
@@ -1872,6 +2240,8 @@ function parseExplorerInitialState(params: URLSearchParams): ExplorerInitialStat
     maxPrice: numericParam(params.get("max") || ""),
     viewMode: pickParam(params.get("view") || "", viewOptions, "table"),
     scopeMode: pickParam(params.get("scope") || "", scopeOptions, "products"),
+    merchantCollector: pickParam(params.get("collector") || "", merchantCollectorOptions, "all"),
+    merchantSignal: pickParam(params.get("signal") || "", merchantSignalOptions, "all"),
   };
 }
 
@@ -1920,6 +2290,101 @@ function sourceSecondaryLabel(offer: RawOffer): string | null {
   return offer.sourceName;
 }
 
+function filterAndSortMerchants(
+  merchants: PublicMerchantSummary[],
+  {
+    query,
+    platform,
+    productType,
+    stock,
+    sort,
+    collector,
+    signal,
+    minPrice,
+    maxPrice,
+  }: {
+    query: string;
+    platform: string;
+    productType: string;
+    stock: string;
+    sort: SortMode;
+    collector: MerchantCollectorFilter;
+    signal: MerchantSignalFilter;
+    minPrice: string;
+    maxPrice: string;
+  },
+): PublicMerchantSummary[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  const min = minPrice ? Number(minPrice) : null;
+  const max = maxPrice ? Number(maxPrice) : null;
+
+  return merchants
+    .filter((merchant) => {
+      const representativePrice = merchant.representativePrice ?? null;
+      const haystack = [
+        merchant.name,
+        merchant.sourceName,
+        merchant.host || "",
+        merchant.collectorLabel,
+        merchant.representativeProduct || "",
+        merchant.representativeOfferTitle || "",
+        ...merchant.platforms,
+        ...merchant.productTypes,
+      ].join(" ").toLowerCase();
+
+      if (normalizedQuery && !haystack.includes(normalizedQuery)) return false;
+      if (platform !== "全部" && !merchant.platforms.includes(platform)) return false;
+      if (productType !== "全部" && !merchant.productTypes.includes(productType)) return false;
+      if (stock === "available" && merchant.inStockCount === 0) return false;
+      if (stock === "out_of_stock" && merchant.outOfStockCount === 0) return false;
+      if (collector !== "all" && merchant.collectorGroup !== collector) return false;
+      if (signal === "lowest" && merchant.lowestHitCount === 0) return false;
+      if (signal === "warranty" && merchant.warrantyLowestHitCount === 0) return false;
+      if (signal === "platform_aftersales" && !merchant.hasPlatformAftersalesMechanism) return false;
+      if (signal === "risk_clear" && merchant.riskFeedbackCount > 0) return false;
+      if ((min !== null || max !== null) && representativePrice === null) return false;
+      if (min !== null && representativePrice !== null && representativePrice < min) return false;
+      if (max !== null && representativePrice !== null && representativePrice > max) return false;
+
+      return true;
+    })
+    .sort((a, b) => compareMerchantsBySort(a, b, sort));
+}
+
+function compareMerchantsBySort(a: PublicMerchantSummary, b: PublicMerchantSummary, sort: SortMode): number {
+  if (sort === "updated") {
+    const updatedDelta = (b.latestSeenAt || "").localeCompare(a.latestSeenAt || "");
+    if (updatedDelta !== 0) return updatedDelta;
+  }
+
+  if (sort === "channels") {
+    const coverageDelta = b.productCount - a.productCount;
+    if (coverageDelta !== 0) return coverageDelta;
+  }
+
+  if (sort === "price") {
+    const priceDelta = (a.representativePrice ?? Number.MAX_SAFE_INTEGER) - (b.representativePrice ?? Number.MAX_SAFE_INTEGER);
+    if (priceDelta !== 0) return priceDelta;
+  }
+
+  const availableDelta = b.inStockCount - a.inStockCount;
+  if (availableDelta !== 0) return availableDelta;
+
+  const warrantyDelta = b.warrantyLowestHitCount - a.warrantyLowestHitCount;
+  if (warrantyDelta !== 0) return warrantyDelta;
+
+  const lowestDelta = b.lowestHitCount - a.lowestHitCount;
+  if (lowestDelta !== 0) return lowestDelta;
+
+  const aftersalesDelta = Number(b.hasPlatformAftersalesMechanism) - Number(a.hasPlatformAftersalesMechanism);
+  if (aftersalesDelta !== 0) return aftersalesDelta;
+
+  const riskDelta = a.riskFeedbackCount - b.riskFeedbackCount;
+  if (riskDelta !== 0) return riskDelta;
+
+  return a.name.localeCompare(b.name, "zh-CN");
+}
+
 function trackProductDetailOpen(product: Pick<CanonicalProduct, "id" | "platform" | "productType">) {
   trackAnalyticsEvent("product_detail_open", {
     product_id: product.id,
@@ -1933,17 +2398,25 @@ function buildActiveFilterChips({
   stock,
   minPrice,
   maxPrice,
+  merchantCollector,
+  merchantSignal,
+  showingMerchants,
 }: {
   productType: string;
   stock: string;
   minPrice: string;
   maxPrice: string;
+  merchantCollector: MerchantCollectorFilter;
+  merchantSignal: MerchantSignalFilter;
+  showingMerchants: boolean;
 }): string[] {
   const filters: string[] = [];
   if (productType !== "全部") filters.push(productTypeLabels[productType] || productType);
   if (stock === "available") filters.push("有货");
   if (stock === "out_of_stock") filters.push("缺货");
   if (minPrice || maxPrice) filters.push(`¥${minPrice || "0"}-${maxPrice || "不限"}`);
+  if (showingMerchants && merchantCollector !== "all") filters.push(merchantCollectorFilterLabel(merchantCollector));
+  if (showingMerchants && merchantSignal !== "all") filters.push(merchantSignalLabel(merchantSignal));
   return filters;
 }
 
@@ -1952,20 +2425,35 @@ function advancedFilterCount({
   stock,
   minPrice,
   maxPrice,
+  merchantCollector,
+  merchantSignal,
+  showingMerchants,
 }: {
   productType: string;
   stock: string;
   minPrice: string;
   maxPrice: string;
+  merchantCollector: MerchantCollectorFilter;
+  merchantSignal: MerchantSignalFilter;
+  showingMerchants: boolean;
 }): number {
   let count = 0;
   if (productType !== "全部") count += 1;
   if (stock !== "all") count += 1;
   if (minPrice || maxPrice) count += 1;
+  if (showingMerchants && merchantCollector !== "all") count += 1;
+  if (showingMerchants && merchantSignal !== "all") count += 1;
   return count;
 }
 
-function buildTitle(platform: string, productType: string, showingOffers = false): string {
+function buildTitle(platform: string, productType: string, scopeMode: ScopeMode): string {
+  const showingOffers = scopeMode === "offers";
+  const showingMerchants = scopeMode === "merchants";
+
+  if (platform === "全部" && productType === "全部" && showingMerchants) {
+    return "卡网商家观察";
+  }
+
   if (platform === "全部" && productType === "全部" && !showingOffers) {
     return "卡网订阅比价";
   }
@@ -1977,7 +2465,27 @@ function buildTitle(platform: string, productType: string, showingOffers = false
     return productType === "全部" ? `${platformName} 全部报价` : `${platformName} ${typeName}全部报价`;
   }
 
+  if (showingMerchants) {
+    return productType === "全部" ? `${platformName} 卡网商家` : `${platformName} ${typeName}商家`;
+  }
+
   return `${platformName} ${typeName}报价`;
+}
+
+function merchantCollectorFilterLabel(value: MerchantCollectorFilter): string {
+  if (value === "all") return "全部来源";
+  if (value === "shopApi") return "链动小铺";
+  if (value === "dujiao") return "独角数卡";
+  if (value === "kami") return "Kami";
+  return "其他";
+}
+
+function merchantSignalLabel(value: MerchantSignalFilter): string {
+  if (value === "all") return "全部信号";
+  if (value === "lowest") return "有最低价命中";
+  if (value === "warranty") return "有质保最低价";
+  if (value === "platform_aftersales") return "有平台售后机制";
+  return "暂无风险反馈";
 }
 
 function platformIcon(platform: string): ReactNode {

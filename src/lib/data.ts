@@ -43,6 +43,8 @@ import type {
   DashboardData,
   ExplorerData,
   ExplorerProductSummary,
+  MerchantCollectorGroup,
+  PublicMerchantSummary,
   PublicOfferSummary,
   PublicRiskFeedback,
   ProductGroup,
@@ -50,7 +52,7 @@ import type {
   Source,
   SourceOfferStats,
 } from "./types";
-import { publicOfferDedupeKey } from "./utils";
+import { publicOfferDedupeKey, stableId } from "./utils";
 
 const SUPABASE_PAGE_SIZE = 1000;
 const PUBLIC_FALLBACK_MAX_ROWS = 5000;
@@ -71,6 +73,13 @@ const PUBLIC_OFFERS_SNAPSHOT_LIMIT = 80;
 const PUBLIC_OFFERS_SNAPSHOT_OFFSET = 0;
 const PUBLIC_PRODUCT_OFFERS_SNAPSHOT_LIMIT = 80;
 const PUBLIC_PRODUCT_OFFERS_SNAPSHOT_OFFSET = 0;
+const PUBLIC_API_SNAPSHOT_REFRESH_STATE_KIND = "refresh_state";
+const PUBLIC_API_SNAPSHOT_REFRESH_STATE_KEY = "public-prices";
+const PUBLIC_API_SNAPSHOT_INCREMENTAL_REFRESH_MIN_INTERVAL_MS = 3 * 60 * 1000;
+const PUBLIC_API_SNAPSHOT_GLOBAL_REFRESH_MIN_INTERVAL_MS = 5 * 60 * 1000;
+const PUBLIC_API_SNAPSHOT_FULL_REFRESH_MAX_INTERVAL_MS = 60 * 60 * 1000;
+const PUBLIC_API_SNAPSHOT_MAX_AFFECTED_ITEMS = 200;
+const PUBLIC_API_SNAPSHOT_SOURCE_PRODUCT_LOOKUP_LIMIT = 1000;
 const RAW_OFFER_PUBLIC_SELECT_FIELDS = [
   "id",
   "source_id",
@@ -127,6 +136,8 @@ type PublicRiskFeedbackAggregate = {
   latestAt: string | null;
   reasons: Set<PublicRiskFeedbackReason>;
   summaries: Set<string>;
+  offerSummaries: Set<string>;
+  sourceSummaries: Set<string>;
 };
 
 const DATA_UNAVAILABLE_MESSAGE = "真实报价数据暂时不可用，请稍后刷新。";
@@ -149,6 +160,62 @@ type PublicOffersResult = {
   }>;
   total: number;
   limited?: boolean;
+  generatedAt: string;
+  degraded?: boolean;
+  message?: string | null;
+};
+
+export type PublicApiSnapshotRefreshState = {
+  dirty: boolean;
+  dirtyAt: string | null;
+  reason: string | null;
+  lastRefreshStartedAt: string | null;
+  lastRefreshCompletedAt: string | null;
+  lastGlobalRefreshCompletedAt: string | null;
+  lastFullRefreshCompletedAt: string | null;
+  refreshIntervalSeconds: number;
+  globalDirty: boolean;
+  fullRefreshRequired: boolean;
+  affectedProductIds: string[];
+  affectedOfferIds: string[];
+  affectedSourceIds: string[];
+};
+
+export type PublicApiSnapshotDirtyScope = {
+  productIds?: Array<string | null | undefined>;
+  offerIds?: Array<string | null | undefined>;
+  sourceIds?: Array<string | null | undefined>;
+  global?: boolean;
+  full?: boolean;
+};
+
+export type PublicApiSnapshotRefreshResult = {
+  mode: "full" | "incremental";
+  explorer?: boolean;
+  offers?: boolean;
+  productOffers: Array<{ key: string; ok: boolean }>;
+  productIds: string[];
+};
+
+export type PublicApiSnapshotRefreshDecision =
+  | {
+      refreshed: true;
+      skipped: false;
+      reason: "dirty" | "forced" | "missing_state";
+      state: PublicApiSnapshotRefreshState;
+      result: PublicApiSnapshotRefreshResult;
+    }
+  | {
+      refreshed: false;
+      skipped: true;
+      reason: "clean" | "cooldown";
+      state: PublicApiSnapshotRefreshState;
+      retryAfter: string | null;
+    };
+
+export type PublicMerchantsResult = {
+  rows: PublicMerchantSummary[];
+  total: number;
   generatedAt: string;
   degraded?: boolean;
   message?: string | null;
@@ -716,9 +783,33 @@ async function refreshPublicProductOfferSnapshots(
     }
     productOffers.push({ key, ok });
   }
+  return productOffers;
+}
 
-  clearPublicDataCache();
-  return { explorer, offers, productOffers };
+async function resolvePublicSnapshotProductRefs(
+  ids: string[],
+  knownProducts: Array<{ id: string; slug?: string | null }> = [],
+): Promise<Array<{ id: string; slug?: string | null }>> {
+  const normalizedIds = normalizePublicSnapshotIdList(ids);
+  if (!normalizedIds.length) return [];
+
+  const products = knownProducts.length
+    ? knownProducts
+    : await listActiveCanonicalProducts()
+        .then((value) => value.length ? value : canonicalCatalog)
+        .catch(() => canonicalCatalog);
+  const byIdOrSlug = new Map<string, { id: string; slug?: string | null }>();
+  for (const product of products) {
+    byIdOrSlug.set(product.id, { id: product.id, slug: product.slug });
+    if (product.slug) byIdOrSlug.set(product.slug, { id: product.id, slug: product.slug });
+  }
+
+  const output = new Map<string, { id: string; slug?: string | null }>();
+  for (const id of normalizedIds) {
+    const product = byIdOrSlug.get(id) || { id };
+    output.set(product.id, product);
+  }
+  return [...output.values()];
 }
 
 export function clearAdminDataCache(): void {
@@ -1878,6 +1969,10 @@ function latestIso(values: Array<string | null | undefined>): string | null {
   return values.filter((value): value is string => Boolean(value)).sort().at(-1) || null;
 }
 
+function earliestIso(values: Array<string | null | undefined>): string | null {
+  return values.filter((value): value is string => Boolean(value)).sort().at(0) || null;
+}
+
 function compareHealthSources(left: CollectorHealthSource, right: CollectorHealthSource): number {
   const statusOrder: Record<CollectorHealthSource["status"], number> = {
     never: 5,
@@ -2407,6 +2502,28 @@ export async function listPublicOffers(filters: OfferListFilters = {}) {
   return value;
 }
 
+export async function listPublicMerchants(): Promise<PublicMerchantsResult> {
+  const rpcData = await listPublicMerchantsFromDatabase();
+  if (rpcData) return rpcData;
+
+  const publicData = await readPublicOfferData();
+  const productGroups = buildProductGroups(publicData.offers, publicData.products).map(toExplorerProductSummary);
+  const rows = buildPublicMerchantSummaries({
+    offers: dedupePublicOffers(publicData.offers).filter((offer) => !offer.hidden),
+    products: productGroups,
+    sources: [],
+    generatedAt: publicData.generatedAt,
+  });
+
+  return {
+    rows,
+    total: rows.length,
+    generatedAt: publicData.generatedAt,
+    degraded: publicData.degraded,
+    message: publicData.message,
+  };
+}
+
 async function loadPublicOffers(filters: OfferListFilters & { skipSnapshot?: boolean } = {}): Promise<PublicOffersResult> {
   const rpcData = await listPublicOffersFromDatabase(filters);
   if (rpcData) return rpcData;
@@ -2536,6 +2653,187 @@ async function listPublicOffersFromDatabase(filters: OfferListFilters = {}) {
   };
 }
 
+async function listPublicMerchantsFromDatabase(): Promise<PublicMerchantsResult | null> {
+  if (!apiCdkPublicVisible()) return null;
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .rpc("list_public_merchant_summaries")
+    .abortSignal(publicSupabaseReadSignal());
+
+  if (error) {
+    console.error("Public merchant summaries RPC failed:", error.message);
+    return null;
+  }
+
+  const rows = ((data || []) as unknown as PublicMerchantRow[]).map(mapPublicMerchantSummaryRow);
+  const total = rows.length ? Number(((data || []) as PublicMerchantRow[])[0]?.total_count || rows.length) : 0;
+
+  return {
+    rows,
+    total,
+    generatedAt: new Date().toISOString(),
+    degraded: false,
+    message: null,
+  };
+}
+
+function buildPublicMerchantSummaries({
+  offers,
+  products,
+  sources,
+  generatedAt,
+}: {
+  offers: RawOffer[];
+  products: ExplorerProductSummary[];
+  sources: Source[];
+  generatedAt: string;
+}): PublicMerchantSummary[] {
+  const sourcesById = new Map(sources.map((source) => [source.id, source]));
+  const lowestHitOfferIds = new Set(products.map((product) => product.lowestOffer?.id).filter((id): id is string => Boolean(id)));
+  const warrantyLowestHitOfferIds = new Set(products.map((product) => product.warrantyLowestOffer?.id).filter((id): id is string => Boolean(id)));
+  const groups = new Map<string, {
+    summary: PublicMerchantSummary;
+    productIds: Set<string>;
+    platforms: Set<string>;
+    productTypes: Set<string>;
+  }>();
+
+  for (const offer of offers) {
+    const product = resolveExplorerProduct(offer, products);
+    if (!product) continue;
+
+    const source = offer.sourceId ? sourcesById.get(offer.sourceId) || null : null;
+    const groupKey = publicMerchantGroupKey(offer);
+    const existing = groups.get(groupKey);
+    const collectorKind = offer.collectorKind || source?.collectorKind || null;
+    const collectorGroup = merchantCollectorGroup(collectorKind);
+    const timestamp = offerTimestamp(offer) || null;
+    const available = isOfferAvailableForPublicList(offer);
+
+    const current = existing || {
+      summary: {
+        id: stableId("merchant", groupKey),
+        sourceId: offer.sourceId || null,
+        name: sourceLabel(offer),
+        storeName: offer.sourceStoreName || null,
+        sourceName: offer.sourceName || source?.name || sourceLabel(offer),
+        entryUrl: source?.entryUrl || offer.url,
+        host: source ? sourceHost(source) : offerHost(offer.url),
+        collectorKind,
+        collectorGroup,
+        collectorLabel: merchantCollectorLabel(collectorGroup),
+        healthStatus: source?.healthStatus || null,
+        lastSuccessAt: source?.lastSuccessAt || null,
+        consecutiveFailures: source?.consecutiveFailures ?? null,
+        productCount: 0,
+        offerCount: 0,
+        inStockCount: 0,
+        outOfStockCount: 0,
+        platformCount: 0,
+        platforms: [],
+        productTypes: [],
+        lowestHitCount: 0,
+        warrantyLowestHitCount: 0,
+        riskFeedbackCount: 0,
+        latestSeenAt: null,
+        observationStartedAt: timestamp,
+        representativeProduct: product.displayName,
+        representativeOfferTitle: offer.sourceTitle,
+        representativePrice: offer.price,
+        representativeCurrency: offer.currency,
+        hasPlatformAftersalesMechanism: collectorGroup === "shopApi",
+      },
+      productIds: new Set<string>(),
+      platforms: new Set<string>(),
+      productTypes: new Set<string>(),
+    };
+
+    current.summary.offerCount += 1;
+    current.summary.inStockCount += available ? 1 : 0;
+    current.summary.outOfStockCount += available ? 0 : 1;
+    current.summary.latestSeenAt = latestIso([current.summary.latestSeenAt, timestamp]);
+    current.summary.observationStartedAt = earliestIso([current.summary.observationStartedAt, timestamp]);
+    current.summary.riskFeedbackCount = Math.max(
+      current.summary.riskFeedbackCount,
+      offer.riskFeedback?.sourceCount || 0,
+    );
+    if (lowestHitOfferIds.has(offer.id)) current.summary.lowestHitCount += 1;
+    if (warrantyLowestHitOfferIds.has(offer.id)) current.summary.warrantyLowestHitCount += 1;
+    if (!current.summary.representativePrice && offer.price !== null) {
+      current.summary.representativeProduct = product.displayName;
+      current.summary.representativeOfferTitle = offer.sourceTitle;
+      current.summary.representativePrice = offer.price;
+      current.summary.representativeCurrency = offer.currency;
+    }
+
+    current.productIds.add(product.id);
+    current.platforms.add(product.platform);
+    current.productTypes.add(product.productType);
+    current.summary.productCount = current.productIds.size;
+    current.summary.platformCount = current.platforms.size;
+    current.summary.platforms = Array.from(current.platforms).sort(comparePlatformOrder);
+    current.summary.productTypes = Array.from(current.productTypes).sort((a, b) => a.localeCompare(b, "zh-CN"));
+
+    groups.set(groupKey, current);
+  }
+
+  return Array.from(groups.values())
+    .map(({ summary }) => ({
+      ...summary,
+      observationStartedAt: summary.observationStartedAt || generatedAt,
+    }))
+    .sort(comparePublicMerchants);
+}
+
+function mapPublicMerchantSummaryRow(row: PublicMerchantRow): PublicMerchantSummary {
+  const collectorKind = normalizeSourceCollectorKind(row.collector_kind);
+  const collectorGroup = merchantCollectorGroup(collectorKind);
+  const platforms = arrayFromRow(row.platforms);
+  const productTypes = arrayFromRow(row.product_types);
+
+  return {
+    id: String(row.id || stableId("merchant", row.source_id ? String(row.source_id) : String(row.name || ""))),
+    sourceId: row.source_id ? String(row.source_id) : null,
+    name: String(row.name || row.source_name || "未记录商家"),
+    storeName: row.store_name ? String(row.store_name) : null,
+    sourceName: String(row.source_name || row.name || "未记录渠道"),
+    entryUrl: String(row.entry_url || ""),
+    host: row.host ? String(row.host) : null,
+    collectorKind,
+    collectorGroup,
+    collectorLabel: merchantCollectorLabel(collectorGroup),
+    healthStatus: row.health_status ? String(row.health_status) as Source["healthStatus"] : null,
+    lastSuccessAt: row.last_success_at ? String(row.last_success_at) : null,
+    consecutiveFailures:
+      row.consecutive_failures === null || row.consecutive_failures === undefined
+        ? null
+        : Number(row.consecutive_failures),
+    productCount: Number(row.product_count || 0),
+    offerCount: Number(row.offer_count || 0),
+    inStockCount: Number(row.in_stock_count || 0),
+    outOfStockCount: Number(row.out_of_stock_count || 0),
+    platformCount: Number(row.platform_count || platforms.length),
+    platforms,
+    productTypes,
+    lowestHitCount: Number(row.lowest_hit_count || 0),
+    warrantyLowestHitCount: Number(row.warranty_lowest_hit_count || 0),
+    riskFeedbackCount: Number(row.risk_feedback_count || 0),
+    latestSeenAt: row.latest_seen_at ? String(row.latest_seen_at) : null,
+    observationStartedAt: row.observation_started_at ? String(row.observation_started_at) : null,
+    representativeProduct: row.representative_product ? String(row.representative_product) : null,
+    representativeOfferTitle: row.representative_offer_title ? String(row.representative_offer_title) : null,
+    representativePrice:
+      row.representative_price === null || row.representative_price === undefined
+        ? null
+        : Number(row.representative_price),
+    representativeCurrency: row.representative_currency ? String(row.representative_currency) : "CNY",
+    hasPlatformAftersalesMechanism: Boolean(row.has_platform_aftersales_mechanism),
+  };
+}
+
 function isPublicOfferForProducts(offer: RawOffer, products: CanonicalProduct[]): boolean {
   const product = resolveOfferProduct(offer, products);
   return isPublicCatalogProduct(product);
@@ -2552,7 +2850,8 @@ async function listPublicRiskFeedbackSummary(): Promise<PublicRiskFeedbackSummar
   const { data, error } = await supabase
     .from("offer_feedback")
     .select("offer_id,source_id,ai_review_result,created_at")
-    .eq("status", "pending")
+    .not("ai_review_result", "is", null)
+    .neq("status", "ignored")
     .order("created_at", { ascending: false })
     .limit(1000)
     .abortSignal(publicSupabaseReadSignal());
@@ -2570,13 +2869,17 @@ async function listPublicRiskFeedbackSummary(): Promise<PublicRiskFeedbackSummar
     const precheck = getPublicRiskPrecheck(row.ai_review_result);
     if (!precheck) continue;
 
-    const sourceLevel = precheck.riskScope === "source" || precheck.riskScope === "mixed";
-    const offerLevel = precheck.riskScope === "offer" || precheck.riskScope === "mixed" || !sourceId;
-    if (offerId && offerLevel) {
-      addPublicRiskFeedbackAggregate(summary.byOfferId, offerId, precheck.riskCategory, createdAt, precheck.publicSummary);
+    if (offerId) {
+      addPublicRiskFeedbackAggregate(summary.byOfferId, offerId, precheck.riskCategory, createdAt, {
+        summary: precheck.offerPublicSummary || precheck.publicSummary,
+        offerSummary: precheck.offerPublicSummary || precheck.publicSummary,
+      });
     }
-    if (sourceId && sourceLevel) {
-      addPublicRiskFeedbackAggregate(summary.bySourceId, sourceId, precheck.riskCategory, createdAt, precheck.publicSummary);
+    if (sourceId && precheck.sourceCanShowPublicly) {
+      addPublicRiskFeedbackAggregate(summary.bySourceId, sourceId, precheck.riskCategory, createdAt, {
+        summary: precheck.sourcePublicSummary || precheck.publicSummary,
+        sourceSummary: precheck.sourcePublicSummary || precheck.publicSummary,
+      });
     }
   }
 
@@ -2607,6 +2910,8 @@ function attachPublicRiskFeedback(offers: RawOffer[], summary: PublicRiskFeedbac
           ...(offerFeedback ? Array.from(offerFeedback.summaries) : []),
           ...(sourceFeedback ? Array.from(sourceFeedback.summaries) : []),
         ])).slice(0, 3),
+        offerSummaries: Array.from(offerFeedback?.offerSummaries || []).slice(0, 3),
+        sourceSummaries: Array.from(sourceFeedback?.sourceSummaries || []).slice(0, 3),
         status: "user_report_pending_verification",
       },
     };
@@ -2670,7 +2975,11 @@ function addPublicRiskFeedbackAggregate(
   key: string,
   reason: PublicRiskFeedbackReason,
   createdAt: string | null,
-  summary: string,
+  input: {
+    summary: string;
+    offerSummary?: string;
+    sourceSummary?: string;
+  },
 ) {
   const current = map.get(key);
   if (!current) {
@@ -2678,7 +2987,9 @@ function addPublicRiskFeedbackAggregate(
       count: 1,
       latestAt: createdAt,
       reasons: new Set([reason]),
-      summaries: new Set(summary ? [summary] : []),
+      summaries: new Set(input.summary ? [input.summary] : []),
+      offerSummaries: new Set(input.offerSummary ? [input.offerSummary] : []),
+      sourceSummaries: new Set(input.sourceSummary ? [input.sourceSummary] : []),
     });
     return;
   }
@@ -2686,7 +2997,9 @@ function addPublicRiskFeedbackAggregate(
   current.count += 1;
   current.latestAt = latestIso([current.latestAt, createdAt]);
   current.reasons.add(reason);
-  if (summary) current.summaries.add(summary);
+  if (input.summary) current.summaries.add(input.summary);
+  if (input.offerSummary) current.offerSummaries.add(input.offerSummary);
+  if (input.sourceSummary) current.sourceSummaries.add(input.sourceSummary);
 }
 
 function compactPublicOfferRow(row: { offer: RawOffer; product: ExplorerProductSummary }) {
@@ -2952,6 +3265,65 @@ function offerTimestamp(offer: RawOffer): string | null | undefined {
 
 function sourceLabel(offer: RawOffer): string {
   return offer.sourceStoreName || offer.sourceName || "未记录渠道";
+}
+
+function publicMerchantGroupKey(offer: RawOffer): string {
+  if (offer.sourceId) return `source:${offer.sourceId}`;
+  return `fallback:${offer.collectorKind || "unknown"}:${sourceLabel(offer)}:${offerHost(offer.url) || offer.sourceName}`;
+}
+
+function merchantCollectorGroup(kind: Source["collectorKind"]): MerchantCollectorGroup {
+  if (kind === "shopApi") return "shopApi";
+  if (kind === "dujiao") return "dujiao";
+  if (kind === "kami") return "kami";
+  return "other";
+}
+
+function merchantCollectorLabel(group: MerchantCollectorGroup): string {
+  if (group === "shopApi") return "链动小铺";
+  if (group === "dujiao") return "独角数卡";
+  if (group === "kami") return "Kami";
+  return "其他";
+}
+
+function comparePublicMerchants(a: PublicMerchantSummary, b: PublicMerchantSummary): number {
+  const availableDelta = b.inStockCount - a.inStockCount;
+  if (availableDelta !== 0) return availableDelta;
+
+  const warrantyDelta = b.warrantyLowestHitCount - a.warrantyLowestHitCount;
+  if (warrantyDelta !== 0) return warrantyDelta;
+
+  const lowestDelta = b.lowestHitCount - a.lowestHitCount;
+  if (lowestDelta !== 0) return lowestDelta;
+
+  const aftersalesDelta = Number(b.hasPlatformAftersalesMechanism) - Number(a.hasPlatformAftersalesMechanism);
+  if (aftersalesDelta !== 0) return aftersalesDelta;
+
+  const latestDelta = (b.latestSeenAt || "").localeCompare(a.latestSeenAt || "");
+  if (latestDelta !== 0) return latestDelta;
+
+  const coverageDelta = b.productCount - a.productCount;
+  if (coverageDelta !== 0) return coverageDelta;
+
+  const riskDelta = a.riskFeedbackCount - b.riskFeedbackCount;
+  if (riskDelta !== 0) return riskDelta;
+
+  return a.name.localeCompare(b.name, "zh-CN");
+}
+
+function arrayFromRow(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(String).filter(Boolean);
+}
+
+function offerHost(value: string | null | undefined): string | null {
+  const raw = String(value || "");
+  if (!raw) return null;
+  try {
+    return new URL(raw.includes("://") ? raw : `https://${raw}`).hostname.replace(/^www\./, "");
+  } catch {
+    return raw.replace(/^https?:\/\//, "").split("/")[0].replace(/^www\./, "") || null;
+  }
 }
 
 function dedupePublicOffers(offers: RawOffer[]): RawOffer[] {

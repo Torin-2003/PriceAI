@@ -42,3 +42,9 @@ curl https://priceai.cc/api/explorer
 HTTPS_PROXY=http://127.0.0.1:7897 HTTP_PROXY=http://127.0.0.1:7897 git push origin main
 ```
 <!-- END:priceai-db-migration-rules -->
+
+<!-- BEGIN:priceai-commit-rules -->
+# 代码改动先单独提交
+
+只要本仓库里改了代码，默认在继续下一步之前，先把这次改动单独整理成一个本地 commit。
+<!-- END:priceai-commit-rules -->

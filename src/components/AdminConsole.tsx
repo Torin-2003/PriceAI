@@ -10,6 +10,7 @@ import {
   Copy,
   Clock,
   Database,
+  EyeOff,
   Trash2,
   ExternalLink,
   FileInput,
@@ -1530,6 +1531,30 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     }
   }
 
+  async function updateFeedbackRiskVisibility(feedback: OfferFeedback, mode: "hide_public" | "expand_source") {
+    const confirmed = mode === "hide_public"
+      ? window.confirm("确定撤销这条反馈生成的前台风险提示吗？反馈记录会保留。")
+      : window.confirm("确定把这条反馈扩展为商家级风险提示吗？前台会在同商家的报价中展示商家风险。");
+    if (!confirmed) return;
+
+    setLoadingAction(`feedback-risk-visibility-${mode}-${feedback.id}`);
+    const result = await requestWithMethod("/api/admin/feedback", "PATCH", password, {
+      action: "risk_visibility",
+      id: feedback.id,
+      riskVisibilityMode: mode,
+      reviewerNote: mode === "hide_public" ? "人工撤销前台风险提示" : "人工扩展为商家级风险提示",
+    });
+    setLoadingAction(null);
+
+    if (result.ok && result.feedback) {
+      const nextFeedback = result.feedback as OfferFeedback;
+      setOfferFeedback((prev) => prev.map((item) => (item.id === feedback.id ? nextFeedback : item)));
+      showRowFeedback(feedback.id, "success", mode === "hide_public" ? "已撤销前台风险提示。" : "已扩展为商家级风险提示。");
+    } else {
+      showRowFeedback(feedback.id, "error", result.message || "更新前台风险提示失败。");
+    }
+  }
+
   async function saveRiskReviewSettings(formData: FormData) {
     setLoadingAction("risk-review-settings");
     const result = await requestWithMethod("/api/admin/risk-review-settings", "PATCH", password, {
@@ -2851,6 +2876,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                       onHideSource={hideSourceFromFeedback}
                       onRecollect={createFeedbackRecollection}
                       onRiskPrecheck={runFeedbackRiskPrecheck}
+                      onRiskVisibility={updateFeedbackRiskVisibility}
                       onUpdateVerification={updateFeedbackVerification}
                       onResolve={(item) => updateFeedbackStatus(item, "resolved", "已人工确认处理")}
                       onIgnore={(item) => updateFeedbackStatus(item, "ignored", "已忽略")}
@@ -3904,6 +3930,7 @@ function OfferFeedbackList({
   onHideSource,
   onRecollect,
   onRiskPrecheck,
+  onRiskVisibility,
   onUpdateVerification,
   onResolve,
   onIgnore,
@@ -3920,6 +3947,7 @@ function OfferFeedbackList({
   onHideSource: (feedback: OfferFeedback) => void;
   onRecollect: (feedback: OfferFeedback) => void;
   onRiskPrecheck: (feedback: OfferFeedback) => void;
+  onRiskVisibility: (feedback: OfferFeedback, mode: "hide_public" | "expand_source") => void;
   onUpdateVerification: (
     feedback: OfferFeedback,
     verificationStatus: OfferFeedback["verificationStatus"],
@@ -3948,6 +3976,8 @@ function OfferFeedbackList({
         const hideSourceLoading = loadingAction === `feedback-hide-source-${item.id}`;
         const recollectLoading = loadingAction === `feedback-recollect-${item.id}`;
         const riskPrecheckLoading = loadingAction === `feedback-risk-precheck-${item.id}`;
+        const riskHideLoading = loadingAction === `feedback-risk-visibility-hide_public-${item.id}`;
+        const riskExpandLoading = loadingAction === `feedback-risk-visibility-expand_source-${item.id}`;
         const verificationLoading = loadingAction === `feedback-verification-${item.id}`;
         const resolveLoading = loadingAction === `feedback-resolved-${item.id}`;
         const ignoreLoading = loadingAction === `feedback-ignored-${item.id}`;
@@ -4091,8 +4121,14 @@ function OfferFeedbackList({
                     </div>
                     {riskPrecheck.publicSummary ? (
                       <p className="mt-2 rounded-md bg-white/70 px-2 py-1.5 text-[#5a6061]">
-                        <span className="font-semibold text-[#2d3435]">前台摘要：</span>
-                        {riskPrecheck.publicSummary}
+                        <span className="font-semibold text-[#2d3435]">商品风险摘要：</span>
+                        {riskPrecheck.offerPublicSummary || riskPrecheck.publicSummary}
+                      </p>
+                    ) : null}
+                    {riskPrecheck.sourceCanShowPublicly && riskPrecheck.sourcePublicSummary ? (
+                      <p className="mt-2 rounded-md bg-white/70 px-2 py-1.5 text-[#5a6061]">
+                        <span className="font-semibold text-[#2d3435]">商家风险摘要：</span>
+                        {riskPrecheck.sourcePublicSummary}
                       </p>
                     ) : null}
                     <p className="mt-2 text-[#5a6061]">
@@ -4104,10 +4140,12 @@ function OfferFeedbackList({
                     ) : null}
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.7rem] text-[#8a9293]">
                       <span>证据质量：{riskPrecheckEvidenceQualityLabel(riskPrecheck.evidenceQuality)}</span>
+                      <span>图片：{riskPrecheck.imageEvidenceUsedCount ?? 0}/{riskPrecheck.imageEvidenceCount ?? item.evidenceUrls.length}</span>
                       <span>滥用风险：{riskPrecheckAbuseRiskLabel(riskPrecheck.abuseRisk)}</span>
                       <span>模型：{riskPrecheck.model}</span>
                       <span>预审：{formatRelativeTime(riskPrecheck.reviewedAt)}</span>
                       {riskPrecheck.expiresAt ? <span>过期：{formatRelativeTime(riskPrecheck.expiresAt)}</span> : null}
+                      {riskPrecheck.publicHidden ? <span>前台已撤销</span> : null}
                     </div>
                   </div>
                 ) : null}
@@ -4221,6 +4259,28 @@ function OfferFeedbackList({
                     {riskPrecheckLoading ? <Loader2 size={14} className="animate-spin" /> : <Activity size={14} />}
                     模型预审
                   </button>
+                  {riskPrecheck?.canShowPublicly && !riskPrecheck.publicHidden ? (
+                    <button
+                      type="button"
+                      disabled={riskHideLoading}
+                      onClick={() => onRiskVisibility(item, "hide_public")}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#9b3328]/20 bg-white px-3 text-xs font-medium text-[#9b3328] transition-colors hover:bg-[#fbe9e7] disabled:opacity-60"
+                    >
+                      {riskHideLoading ? <Loader2 size={14} className="animate-spin" /> : <EyeOff size={14} />}
+                      撤销前台提醒
+                    </button>
+                  ) : null}
+                  {riskPrecheck?.canShowPublicly && !riskPrecheck.publicHidden && !riskPrecheck.sourceCanShowPublicly ? (
+                    <button
+                      type="button"
+                      disabled={riskExpandLoading}
+                      onClick={() => onRiskVisibility(item, "expand_source")}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#7a541b]/20 bg-white px-3 text-xs font-medium text-[#7a541b] transition-colors hover:bg-[#fff7e8] disabled:opacity-60"
+                    >
+                      {riskExpandLoading ? <Loader2 size={14} className="animate-spin" /> : <Store size={14} />}
+                      扩展为商家提醒
+                    </button>
+                  ) : null}
                   {item.verificationStatus !== "not_needed" ? (
                     <button
                       type="button"
@@ -7530,12 +7590,14 @@ function feedbackVerificationClass(value: OfferFeedback["verificationStatus"]): 
 }
 
 function riskPrecheckStatusLabel(value: OfferFeedbackRiskPrecheckResult): string {
+  if (value.publicHidden) return "前台已撤销";
   if (value.status === "failed") return "失败";
   if (value.status === "skipped") return "跳过";
   return value.canShowPublicly ? "可临时公开" : "待人工";
 }
 
 function riskPrecheckStatusClass(value: OfferFeedbackRiskPrecheckResult): string {
+  if (value.publicHidden) return "bg-[#f2f4f4] text-[#5a6061]";
   if (value.status === "failed") return "bg-[#fbe9e7] text-[#9b3328]";
   if (value.status === "skipped") return "bg-[#f2f4f4] text-[#5a6061]";
   if (value.canShowPublicly) return "bg-[#fff7e8] text-[#7a541b]";
@@ -7543,6 +7605,7 @@ function riskPrecheckStatusClass(value: OfferFeedbackRiskPrecheckResult): string
 }
 
 function riskPrecheckPanelClass(value: OfferFeedbackRiskPrecheckResult): string {
+  if (value.publicHidden) return "border-[#adb3b4]/20 bg-[#f7f9f9]";
   if (value.status === "failed") return "border-[#9b3328]/15 bg-[#fbe9e7]/55";
   if (value.canShowPublicly) return "border-[#d58a20]/20 bg-[#fff7e8]";
   return "border-[#47657a]/15 bg-[#eef3f8]/70";

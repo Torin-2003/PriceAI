@@ -852,7 +852,13 @@ function OfferRiskButton({ offer, compact = false }: { offer: RawOffer; compact?
   if (!risk?.count) return null;
 
   const sourceOnly = risk.scope === "source";
-  const label = compact ? "风险" : sourceOnly ? "商家风险" : risk.scope === "mixed" ? "多项风险" : "商品风险";
+  const label = compact
+    ? "风险"
+    : sourceOnly
+      ? "商家风险"
+      : risk.scope === "mixed"
+        ? "多重风险"
+        : "商品风险";
 
   return (
     <>
@@ -901,18 +907,19 @@ function OfferRiskDetailDialog({ offer, onClose }: { offer: RawOffer; onClose: (
   const offerCount = risk.offerCount ?? (risk.scope === "offer" ? risk.count : 0);
   const sourceCount = risk.sourceCount ?? (risk.scope === "source" ? risk.count : 0);
   const reasonLabels = (risk.reasons?.length ? risk.reasons : ["fraud" as const]).map(riskFeedbackReasonLabel);
-  const summaries = risk.summaries?.filter(Boolean).slice(0, 3) || [];
+  const offerSummaries = risk.offerSummaries?.filter(Boolean).slice(0, 3) || [];
+  const sourceSummaries = risk.sourceSummaries?.filter(Boolean).slice(0, 3) || [];
+  const summaries = offerSummaries.length || sourceSummaries.length
+    ? [...offerSummaries, ...sourceSummaries].slice(0, 3)
+    : risk.summaries?.filter(Boolean).slice(0, 3) || [];
   const sourceOnly = risk.scope === "source";
   const title = sourceOnly ? "商家临时风险提示" : risk.scope === "mixed" ? "商品与商家临时风险提示" : "商品临时风险提示";
   const scopeSummary = [
     offerCount ? `商品 ${offerCount} 条` : null,
     sourceCount ? `商家 ${sourceCount} 条` : null,
   ].filter(Boolean).join(" / ") || `${risk.count} 条反馈`;
-  const description = sourceOnly
-    ? "已有用户反馈该商家或渠道存在可信度风险，系统正在核验。购买前请先查看店铺信息、历史评价和售后路径，再判断是否值得购买。"
-    : risk.scope === "mixed"
-      ? "已有用户反馈这条报价及其商家存在高风险问题，系统正在核验。付款前请先联系商家确认商品细节、发货方式和售后边界。"
-      : "已有用户反馈这条报价存在高风险问题，系统正在核验。付款前请先联系商家确认商品细节、发货方式和售后边界，不建议直接付款。";
+  const description = summaries[0] ||
+    "有用户反馈该报价存在需要核验的问题。购买前建议先联系商家确认商品细节、交付方式和售后处理规则。";
 
   return (
     <div
@@ -956,7 +963,7 @@ function OfferRiskDetailDialog({ offer, onClose }: { offer: RawOffer; onClose: (
         <div className="mt-4 grid gap-2 text-sm">
           <div className="flex items-center justify-between gap-3 rounded-lg border border-[#edf0f1] px-3 py-2">
             <span className="text-[#6c7677]">当前状态</span>
-            <span className="text-right font-semibold text-[#7a541b]">用户反馈，待核验</span>
+            <span className="text-right font-semibold text-[#7a541b]">用户反馈，供购买前参考</span>
           </div>
           <div className="flex items-center justify-between gap-3 rounded-lg border border-[#edf0f1] px-3 py-2">
             <span className="text-[#6c7677]">风险类型</span>
@@ -976,9 +983,29 @@ function OfferRiskDetailDialog({ offer, onClose }: { offer: RawOffer; onClose: (
           </div>
         </div>
 
-        {summaries.length ? (
+        {offerSummaries.length ? (
           <div className="mt-4 rounded-lg border border-[#efd38a] bg-[#fffaf2] px-3 py-2.5">
-            <p className="text-xs font-semibold text-[#7a541b]">反馈摘要</p>
+            <p className="text-xs font-semibold text-[#7a541b]">该商品下的用户反馈摘要</p>
+            <ul className="mt-2 space-y-1.5 text-xs leading-5 text-[#5a6061]">
+              {offerSummaries.map((summary) => (
+                <li key={summary}>• {summary}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {sourceSummaries.length ? (
+          <div className="mt-3 rounded-lg border border-[#efc4bc] bg-[#fff7f5] px-3 py-2.5">
+            <p className="text-xs font-semibold text-[#9b3328]">该商家的用户反馈摘要</p>
+            <ul className="mt-2 space-y-1.5 text-xs leading-5 text-[#5a6061]">
+              {sourceSummaries.map((summary) => (
+                <li key={summary}>• {summary}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {!offerSummaries.length && !sourceSummaries.length && summaries.length ? (
+          <div className="mt-4 rounded-lg border border-[#efd38a] bg-[#fffaf2] px-3 py-2.5">
+            <p className="text-xs font-semibold text-[#7a541b]">用户反馈摘要</p>
             <ul className="mt-2 space-y-1.5 text-xs leading-5 text-[#5a6061]">
               {summaries.map((summary) => (
                 <li key={summary}>• {summary}</li>

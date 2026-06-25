@@ -95,6 +95,8 @@ export type PublicRiskFeedback = {
   latestAt: string | null;
   reasons?: Array<Extract<OfferFeedbackReason, "aftersales_shipping" | "fraud" | "bad_source">>;
   summaries?: string[];
+  offerSummaries?: string[];
+  sourceSummaries?: string[];
   status?: "user_report_pending_verification";
 };
 
@@ -144,6 +146,41 @@ export type ExplorerProductSummary = Omit<ProductGroup, "offers" | "lowestOffer"
   lowestOffer: PublicOfferSummary | null;
   warrantyLowestOffer: PublicOfferSummary | null;
   offerSearchText: string;
+};
+
+export type MerchantCollectorGroup = "shopApi" | "dujiao" | "kami" | "other";
+
+export type PublicMerchantSummary = {
+  id: string;
+  sourceId?: string | null;
+  name: string;
+  storeName?: string | null;
+  sourceName: string;
+  entryUrl: string;
+  host?: string | null;
+  collectorKind?: CollectorKind | null;
+  collectorGroup: MerchantCollectorGroup;
+  collectorLabel: string;
+  healthStatus?: Source["healthStatus"] | null;
+  lastSuccessAt?: string | null;
+  consecutiveFailures?: number | null;
+  productCount: number;
+  offerCount: number;
+  inStockCount: number;
+  outOfStockCount: number;
+  platformCount: number;
+  platforms: string[];
+  productTypes: string[];
+  lowestHitCount: number;
+  warrantyLowestHitCount: number;
+  riskFeedbackCount: number;
+  latestSeenAt: string | null;
+  observationStartedAt: string | null;
+  representativeProduct?: string | null;
+  representativeOfferTitle?: string | null;
+  representativePrice?: number | null;
+  representativeCurrency?: string | null;
+  hasPlatformAftersalesMechanism: boolean;
 };
 
 export type ExplorerData = {
@@ -769,6 +806,15 @@ export type OfferFeedbackRiskPrecheck = {
   abuseRisk: "low" | "medium" | "high";
   evidenceQuality: "none" | "low" | "medium" | "high";
   publicSummary: string;
+  offerSummary?: string | null;
+  offerPublicSummary?: string | null;
+  sourceCanShowPublicly?: boolean;
+  sourcePublicSummary?: string | null;
+  imageEvidenceCount?: number;
+  imageEvidenceUsedCount?: number;
+  publicHidden?: boolean;
+  publicHiddenAt?: string | null;
+  publicHiddenReason?: string | null;
   privateReason: string;
   expiresAt: string | null;
   error?: string;

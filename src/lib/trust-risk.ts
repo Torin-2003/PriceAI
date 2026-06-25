@@ -41,6 +41,10 @@ export type PublicRiskPrecheck = {
   abuseRisk: RiskPrecheckAbuseRisk;
   evidenceQuality: RiskPrecheckEvidenceQuality;
   publicSummary: string;
+  offerSummary: string | null;
+  offerPublicSummary: string;
+  sourceCanShowPublicly: boolean;
+  sourcePublicSummary: string | null;
   reviewedAt: string | null;
   expiresAt: string | null;
 };
@@ -159,16 +163,14 @@ export type OfferRiskHint = {
 export function getOfferRiskHints(offer: RawOffer): OfferRiskHint[] {
   if (!offer.riskFeedback?.count) return [];
 
-  const scopeLabel = offer.riskFeedback.scope === "source"
-    ? "该店铺"
-    : offer.riskFeedback.scope === "mixed"
-      ? "该报价或店铺"
-      : "该报价";
+  const summary = offer.riskFeedback.offerSummaries?.[0] ||
+    offer.riskFeedback.summaries?.[0] ||
+    "有用户反馈该报价存在需要核验的问题。购买前建议先联系商家确认商品细节、交付方式和售后处理规则。";
 
   return [{
     id: "feedback_risk",
     label: "提示与风险",
-    detail: `${scopeLabel}已有用户反馈问题，购买前请先查看原店铺详情并联系商家确认。`,
+    detail: summary,
     tone: "warn",
   }];
 }
@@ -183,6 +185,7 @@ export function getPublicRiskPrecheck(
     ? record.riskPrecheck as Record<string, unknown>
     : null;
   if (!raw) return null;
+  if (raw.publicHidden === true) return null;
   if (raw.status !== "ready" || raw.canShowPublicly !== true) return null;
 
   const expiresAt = stringOrNull(raw.expiresAt);
@@ -192,7 +195,11 @@ export function getPublicRiskPrecheck(
   }
 
   const riskCategory = normalizeRiskPrecheckCategory(raw.riskCategory);
-  const publicSummary = normalizePublicRiskSummary(raw.publicSummary);
+  const publicSummary = normalizePublicRiskSummary(raw.offerPublicSummary) ||
+    normalizePublicRiskSummary(raw.publicSummary);
+  const sourcePublicSummary = raw.sourceCanShowPublicly === true
+    ? normalizePublicRiskSummary(raw.sourcePublicSummary) || publicSummary
+    : null;
   const confidence = clampNumber(raw.confidence, 0, 1, 0);
 
   if (!riskCategory || !publicSummary || confidence < 0.45) return null;
@@ -200,12 +207,16 @@ export function getPublicRiskPrecheck(
   return {
     canShowPublicly: true,
     riskLevel: normalizeRiskLevel(raw.riskLevel),
-    riskScope: normalizeRiskScope(raw.riskScope),
+    riskScope: sourcePublicSummary ? "mixed" : "offer",
     riskCategory,
     confidence,
     abuseRisk: normalizeAbuseRisk(raw.abuseRisk),
     evidenceQuality: normalizeEvidenceQuality(raw.evidenceQuality),
     publicSummary,
+    offerSummary: stringOrNull(raw.offerSummary),
+    offerPublicSummary: publicSummary,
+    sourceCanShowPublicly: Boolean(sourcePublicSummary),
+    sourcePublicSummary,
     reviewedAt: stringOrNull(raw.reviewedAt),
     expiresAt,
   };
@@ -221,10 +232,6 @@ function isHighPriceOffer(offer: Pick<RawOffer, "price">): boolean {
 
 function normalizeRiskLevel(value: unknown): PublicRiskPrecheck["riskLevel"] {
   return value === "low" || value === "medium" || value === "high" ? value : "medium";
-}
-
-function normalizeRiskScope(value: unknown): RiskPrecheckScope {
-  return value === "source" || value === "mixed" || value === "offer" ? value : "offer";
 }
 
 function normalizeRiskPrecheckCategory(value: unknown): RiskPrecheckCategory | null {

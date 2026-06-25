@@ -1150,6 +1150,15 @@ function parseOfferFeedbackRiskPrecheck(value: unknown): OfferFeedbackRiskPreche
     abuseRisk: item.abuseRisk === "low" || item.abuseRisk === "medium" || item.abuseRisk === "high" ? item.abuseRisk : "medium",
     evidenceQuality: item.evidenceQuality === "none" || item.evidenceQuality === "low" || item.evidenceQuality === "medium" || item.evidenceQuality === "high" ? item.evidenceQuality : "low",
     publicSummary: typeof item.publicSummary === "string" ? item.publicSummary : "",
+    offerSummary: typeof item.offerSummary === "string" ? item.offerSummary : null,
+    offerPublicSummary: typeof item.offerPublicSummary === "string" ? item.offerPublicSummary : null,
+    sourceCanShowPublicly: item.sourceCanShowPublicly === true,
+    sourcePublicSummary: typeof item.sourcePublicSummary === "string" ? item.sourcePublicSummary : null,
+    imageEvidenceCount: numberValue(item.imageEvidenceCount) ?? undefined,
+    imageEvidenceUsedCount: numberValue(item.imageEvidenceUsedCount) ?? undefined,
+    publicHidden: item.publicHidden === true,
+    publicHiddenAt: typeof item.publicHiddenAt === "string" ? item.publicHiddenAt : null,
+    publicHiddenReason: typeof item.publicHiddenReason === "string" ? item.publicHiddenReason : null,
     privateReason: typeof item.privateReason === "string" ? item.privateReason : "",
     expiresAt: typeof item.expiresAt === "string" ? item.expiresAt : null,
     error: typeof item.error === "string" ? item.error : undefined,
@@ -2326,6 +2335,70 @@ export async function runOfferFeedbackRiskPrecheck(feedbackId: string): Promise<
       verification_status: result.status === "failed" ? "failed" : "manual_review",
       verification_message: nextVerificationMessage,
       verification_checked_at: result.reviewedAt,
+    })
+    .eq("id", feedback.id)
+    .select("*")
+    .maybeSingle();
+  if (updateError) throw updateError;
+  if (!updatedRow) throw new Error("反馈记录不存在。");
+
+  return mapOfferFeedbackRow(updatedRow);
+}
+
+export async function updateOfferFeedbackRiskPrecheckVisibility(input: {
+  id: string;
+  mode: "hide_public" | "expand_source";
+  reviewerNote?: string | null;
+}): Promise<OfferFeedback> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) throw new Error("Supabase 尚未配置。");
+
+  const { data: row, error } = await supabase
+    .from("offer_feedback")
+    .select("*")
+    .eq("id", input.id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!row) throw new Error("反馈记录不存在。");
+
+  const feedback = mapOfferFeedbackRow(row);
+  const current = feedback.aiReviewResult || {};
+  const riskPrecheck = current.riskPrecheck && typeof current.riskPrecheck === "object"
+    ? current.riskPrecheck as Record<string, unknown>
+    : null;
+  if (!riskPrecheck) throw new Error("这条反馈还没有模型预审结果。");
+
+  const now = new Date().toISOString();
+  const note = input.reviewerNote?.trim() || null;
+  const nextRiskPrecheck = input.mode === "hide_public"
+    ? {
+        ...riskPrecheck,
+        publicHidden: true,
+        publicHiddenAt: now,
+        publicHiddenReason: note || "后台人工撤销前台风险提示。",
+        canShowPublicly: false,
+        expiresAt: null,
+      }
+    : {
+        ...riskPrecheck,
+        sourceCanShowPublicly: true,
+        riskScope: "mixed",
+        sourcePublicSummary: String(riskPrecheck.sourcePublicSummary || riskPrecheck.offerPublicSummary || riskPrecheck.publicSummary || ""),
+      };
+
+  const { data: updatedRow, error: updateError } = await supabase
+    .from("offer_feedback")
+    .update({
+      ai_review_result: {
+        ...current,
+        riskPrecheck: nextRiskPrecheck,
+      },
+      verification_status: "manual_review",
+      verification_message: input.mode === "hide_public"
+        ? "已人工撤销前台风险提示，反馈记录保留。"
+        : "已人工扩展为商家级风险提示，等待后续核验。",
+      verification_checked_at: now,
+      reviewer_note: note,
     })
     .eq("id", feedback.id)
     .select("*")
