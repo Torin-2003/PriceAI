@@ -16,6 +16,7 @@ const DEFAULT_POST_BATCH_SIZE = 100;
 const DEFAULT_FULL_SNAPSHOT_OFFER_LIMIT = 200;
 const DEFAULT_UPLOAD_TIMEOUT_MS = 90_000;
 const DEFAULT_DIRECT_TIMEOUT_MS = 15_000;
+const DEFAULT_DIRECT_RETRY_COOLDOWN_MS = 300_000;
 const MAX_DISCOVERED_TOKENS = 3;
 const MAX_CATEGORY_PAGES = 10;
 
@@ -54,6 +55,7 @@ const config = {
   postBatchSize: integerInRange(args.postBatchSize || args["post-batch-size"] || process.env.PRICEAI_AGENT_POST_BATCH_SIZE, 10, 500, DEFAULT_POST_BATCH_SIZE),
   uploadTimeoutMs: integerInRange(args.uploadTimeoutMs || args["upload-timeout-ms"] || process.env.PRICEAI_AGENT_UPLOAD_TIMEOUT_MS, 15_000, 180_000, DEFAULT_UPLOAD_TIMEOUT_MS),
   directTimeoutMs: integerInRange(args.directTimeoutMs || args["direct-timeout-ms"] || process.env.PRICEAI_AGENT_DIRECT_TIMEOUT_MS, 5_000, 60_000, DEFAULT_DIRECT_TIMEOUT_MS),
+  directRetryCooldownMs: integerInRange(args.directRetryCooldownMs || args["direct-retry-cooldown-ms"] || process.env.PRICEAI_AGENT_DIRECT_RETRY_COOLDOWN_MS, 0, 3_600_000, DEFAULT_DIRECT_RETRY_COOLDOWN_MS),
   fullSnapshotOfferLimit: integerInRange(args.fullSnapshotOfferLimit || args["full-snapshot-offer-limit"] || process.env.PRICEAI_AGENT_FULL_SNAPSHOT_OFFER_LIMIT, 0, 2000, DEFAULT_FULL_SNAPSHOT_OFFER_LIMIT),
   loop: truthy(args.loop) || truthy(process.env.PRICEAI_AGENT_LOOP),
   maxCycles: explicitMaxCycles ? integerInRange(explicitMaxCycles, 1, 1000000, 1) : null,
@@ -61,6 +63,7 @@ const config = {
 };
 
 let lastControlEndpoint = config.endpoint;
+let directRetryAfter = 0;
 
 if (!config.token) {
   console.error("Missing PRICEAI_AGENT_TOKEN. Pass it as env or --token.");
@@ -837,22 +840,27 @@ function authHeaders() {
 
 async function fetchControlJson(path, init = {}, label = "control-plane request", timeoutMs = null) {
   const errors = [];
+  const endpoints = orderedControlEndpoints();
 
-  for (const endpoint of config.controlEndpoints) {
+  for (const endpoint of endpoints) {
     const url = controlPlaneUrl(endpoint, path);
     try {
       const requestTimeoutMs = controlRequestTimeoutMs(endpoint, timeoutMs);
       const requestInit = requestTimeoutMs ? { ...init, signal: AbortSignal.timeout(requestTimeoutMs) } : init;
       const body = await fetchJson(url, requestInit);
       lastControlEndpoint = endpoint;
+      if (isPrimaryControlEndpoint(endpoint)) directRetryAfter = 0;
       return { body, endpoint };
     } catch (error) {
       errors.push(`${endpointHost(endpoint)}: ${errorMessage(error)}`);
-      if (!shouldTryNextControlEndpoint(error) || endpoint === config.controlEndpoints.at(-1)) {
+      if (!shouldTryNextControlEndpoint(error) || endpoint === endpoints.at(-1)) {
         throw new Error(`${label} failed via ${endpointHost(endpoint)}: ${errorMessage(error)}`);
       }
+      if (isPrimaryControlEndpoint(endpoint)) {
+        pausePrimaryControlEndpoint();
+      }
       console.error(
-        `[priceai-edge] ${label} failed via ${endpointHost(endpoint)}; trying ${endpointHost(nextControlEndpoint(endpoint))}: ${errorMessage(error)}`,
+        `[priceai-edge] ${label} failed via ${endpointHost(endpoint)}; trying ${endpointHost(nextControlEndpoint(endpoint, endpoints))}: ${errorMessage(error)}`,
       );
     }
   }
@@ -912,14 +920,36 @@ function shouldTryNextControlEndpoint(error) {
   );
 }
 
-function nextControlEndpoint(endpoint) {
-  const index = config.controlEndpoints.indexOf(endpoint);
-  return config.controlEndpoints[index + 1] || endpoint;
+function orderedControlEndpoints() {
+  if (config.controlEndpoints.length < 2 || !isPrimaryControlEndpointCoolingDown()) {
+    return config.controlEndpoints;
+  }
+
+  const [primary, ...fallbacks] = config.controlEndpoints;
+  return [...fallbacks, primary];
+}
+
+function nextControlEndpoint(endpoint, endpoints = orderedControlEndpoints()) {
+  const index = endpoints.indexOf(endpoint);
+  return endpoints[index + 1] || endpoint;
+}
+
+function pausePrimaryControlEndpoint() {
+  if (config.directRetryCooldownMs <= 0 || config.controlEndpoints.length < 2) return;
+  directRetryAfter = Date.now() + config.directRetryCooldownMs;
+}
+
+function isPrimaryControlEndpointCoolingDown() {
+  return directRetryAfter > Date.now();
+}
+
+function isPrimaryControlEndpoint(endpoint) {
+  return endpoint === config.controlEndpoints[0];
 }
 
 function controlRequestTimeoutMs(endpoint, timeoutMs) {
   if (!timeoutMs) return null;
-  if (config.controlEndpoints.length > 1 && endpoint === config.controlEndpoints[0]) {
+  if (config.controlEndpoints.length > 1 && isPrimaryControlEndpoint(endpoint)) {
     return Math.min(timeoutMs, config.directTimeoutMs);
   }
   return timeoutMs;
@@ -930,6 +960,7 @@ function controlPlaneDetails() {
     mode: controlEndpointMode(lastControlEndpoint),
     activeHost: endpointHost(lastControlEndpoint),
     endpoints: config.controlEndpoints.map(endpointHost),
+    directRetryAfter: directRetryAfter ? new Date(directRetryAfter).toISOString() : null,
   };
 }
 
