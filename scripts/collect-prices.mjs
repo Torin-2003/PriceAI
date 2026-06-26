@@ -696,6 +696,7 @@ async function collectShopApi(target, options = {}) {
 
     const storeName = cleanText(shopInfo.data.nickname || target.sourceStoreName || target.sourceName);
     const sourceUrl = shopInfo.data.link || `${base}/shop/${token}`;
+    const shopCreatedAt = timestampFromShopApiValue(shopInfo.data.create_time);
     const defaultChannelId = await getShopApiDefaultChannelId(base, token, sourceUrl, options);
     const categoriesPayload = await postJson(
       `${base}/shopApi/Shop/categoryList`,
@@ -752,6 +753,7 @@ async function collectShopApi(target, options = {}) {
                 sourceUrl,
                 sourceEntryUrl: sourceUrl,
                 sourceStoreName: storeName,
+                sourceShopCreatedAt: shopCreatedAt,
               },
               {
                 title,
@@ -1792,6 +1794,7 @@ function makeOffer(target, input) {
     sourceName: target.sourceName,
     sourceUrl: target.sourceUrl,
     sourceStoreName: target.sourceStoreName || target.sourceName,
+    sourceShopCreatedAt: target.sourceShopCreatedAt || null,
     sourceTitle: input.title,
     price: input.price,
     listedPrice: input.listedPrice ?? null,
@@ -1811,6 +1814,7 @@ function crawlLogPayloadFor(target, offers, status, message, options = {}, detai
     sourceName: target.sourceName,
     sourceUrl: target.sourceUrl,
     sourceEntryUrl: target.sourceEntryUrl,
+    sourceShopCreatedAt: target.sourceShopCreatedAt || offers.find((offer) => offer.sourceShopCreatedAt)?.sourceShopCreatedAt || undefined,
     mode: "http",
     status,
     message,
@@ -3164,6 +3168,17 @@ function numberOrNull(value) {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number(String(value).replace(/[^\d.-]/g, ""));
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function timestampFromShopApiValue(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  const milliseconds = parsed > 10_000_000_000 ? parsed : parsed * 1000;
+  const date = new Date(milliseconds);
+  const now = Date.now();
+  if (!Number.isFinite(date.getTime()) || date.getTime() > now + 86_400_000) return null;
+  return date.toISOString();
 }
 
 function compact(values) {

@@ -20,6 +20,7 @@ const offerSchema = z.object({
   sourceName: z.string().min(1),
   sourceUrl: z.string().url(),
   sourceStoreName: z.string().optional(),
+  sourceShopCreatedAt: z.string().datetime().nullable().optional(),
   sourceTitle: z.string().min(1),
   price: z.number().nonnegative().nullable().optional(),
   listedPrice: z.number().nonnegative().nullable().optional(),
@@ -37,6 +38,7 @@ const crawlLogPayloadSchema = z.object({
   sourceName: z.string().min(1),
   sourceUrl: z.string().url(),
   sourceEntryUrl: z.string().url().optional(),
+  sourceShopCreatedAt: z.string().datetime().nullable().optional(),
   mode: z.enum(["browser", "http", "manual"]).default("browser"),
   status: z.enum(["success", "partial", "failed", "skipped"]).default("success"),
   message: z.string().optional(),
@@ -119,11 +121,13 @@ async function saveCrawlLogRun(
     entryUrl: payload.sourceEntryUrl || payload.sourceUrl,
     collectionMethod: payload.mode,
     collectorKind: collectorKindFromDetails(payload.details),
+    shopCreatedAt: payload.sourceShopCreatedAt || shopCreatedAtFromDetails(payload.details),
     notes: "由采集日志自动维护。",
   });
   const offers = payload.offers.map((offer) => ({
     ...offer,
     sourceId: offer.sourceId || payload.sourceId || source.id,
+    sourceShopCreatedAt: offer.sourceShopCreatedAt || payload.sourceShopCreatedAt || shopCreatedAtFromDetails(payload.details),
   }));
   const upsertResult = await upsertRawOffers(offers, { collectionMethod: payload.mode, checkedAt: collectedAt });
   const successCount = upsertResult.receivedCount;
@@ -264,4 +268,8 @@ function dateFromDetails(details: Record<string, unknown> | undefined, key: stri
   const time = new Date(value).getTime();
   if (!Number.isFinite(time)) return null;
   return new Date(time).toISOString();
+}
+
+function shopCreatedAtFromDetails(details: Record<string, unknown> | undefined): string | null {
+  return dateFromDetails(details, "shopCreatedAt") || dateFromDetails(details, "sourceShopCreatedAt");
 }

@@ -44,7 +44,7 @@ import type {
   PublicMerchantSummary,
   RawOffer,
 } from "@/lib/types";
-import { formatCurrency, formatRelativeTime } from "@/lib/utils";
+import { formatCurrency, formatDateDay, formatRelativeTime } from "@/lib/utils";
 
 type SortMode = "available_price" | "price" | "updated" | "channels";
 type ViewMode = "cards" | "table";
@@ -108,7 +108,7 @@ const productTypeLabels: Record<string, string> = {
 const OFFER_PAGE_SIZE = 80;
 const PRODUCT_SKELETON_ROWS = [0, 1, 2];
 const EXPLORER_CACHE_KEY = "priceai:explorer:v3";
-const MERCHANT_LIST_CACHE_KEY = "priceai:merchants:v3";
+const MERCHANT_LIST_CACHE_KEY = "priceai:merchants:v4";
 const EXPLORER_CACHE_TTL_MS = PRICE_DATA_CACHE_TTL_MS;
 const OFFER_LIST_CACHE_TTL_MS = PRICE_DATA_CACHE_TTL_MS;
 const MERCHANT_LIST_CACHE_TTL_MS = PRICE_DATA_CACHE_TTL_MS;
@@ -317,9 +317,7 @@ export function PriceExplorer({
     [effectiveQuery, maxPrice, merchantCollector, merchantResponse?.rows, merchantSignal, minPrice, platform, productType, sort, stock],
   );
   const title = buildTitle(platform, productType, scopeMode);
-  const searchPlaceholder = showingMerchants
-    ? "搜索店铺名或粘贴店铺链接"
-    : "搜索 ChatGPT、Gemini、邮箱";
+  const searchPlaceholder = searchPlaceholderForScope(scopeMode);
   const activeFilterChips = buildActiveFilterChips({ productType, stock, minPrice, maxPrice, merchantCollector, merchantSignal, showingMerchants });
   const platformOffers = offerResponse?.rows ?? [];
   const resultCount = showingMerchants ? merchantRows.length : showingOffers ? offerResponse?.total ?? 0 : products.length;
@@ -1356,6 +1354,7 @@ function MerchantTable({ merchants }: { merchants: PublicMerchantSummary[] }) {
             <col className="w-[150px]" />
             <col className="w-[150px]" />
             <col className="w-[120px]" />
+            <col className="w-[160px]" />
             <col className="w-[120px]" />
             <col className="w-[90px]" />
           </colgroup>
@@ -1368,6 +1367,7 @@ function MerchantTable({ merchants }: { merchants: PublicMerchantSummary[] }) {
               <TableHead>最低价命中</TableHead>
               <TableHead>质保命中</TableHead>
               <TableHead>观察标签</TableHead>
+              <TableHead>时间</TableHead>
               <TableHead>最近更新</TableHead>
               <TableHead className="text-center">操作</TableHead>
             </tr>
@@ -1407,6 +1407,9 @@ function MerchantTable({ merchants }: { merchants: PublicMerchantSummary[] }) {
                 </td>
                 <td className="px-5 py-4">
                   <MerchantSignalBadges merchant={merchant} />
+                </td>
+                <td className="px-5 py-4">
+                  <MerchantTimeSummary merchant={merchant} compact />
                 </td>
                 <td className="px-5 py-4 text-[#5a6061]">
                   <RelativeTime value={merchant.latestSeenAt} />
@@ -1449,6 +1452,8 @@ function MerchantCard({ merchant }: { merchant: PublicMerchantSummary }) {
       <div className="mt-3 flex flex-wrap gap-1.5">
         <MerchantSignalBadges merchant={merchant} />
       </div>
+
+      <MerchantTimeSummary merchant={merchant} />
 
       <div className="mt-5 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
         <MobileMerchantMetric label="商品" value={merchant.productCount} />
@@ -1515,11 +1520,67 @@ function MerchantSignalBadges({ merchant }: { merchant: PublicMerchantSummary })
   );
 }
 
+function MerchantTimeSummary({ merchant, compact = false }: { merchant: PublicMerchantSummary; compact?: boolean }) {
+  const includedAt = merchant.includedAt || merchant.observationStartedAt;
+  const shopCreatedAt = merchant.shopCreatedAt || null;
+  const className = compact
+    ? "space-y-1 text-xs leading-5 text-[#5a6061]"
+    : "mt-4 grid grid-cols-2 gap-2 text-xs";
+
+  if (compact) {
+    return (
+      <div className={className}>
+        <p>
+          <span className="font-semibold text-[#202829]">收录</span>{" "}
+          <RelativeTime value={includedAt} />
+        </p>
+        <p>
+          <span className="font-semibold text-[#202829]">公开运营</span>{" "}
+          {shopCreatedAt ? formatMerchantAge(shopCreatedAt) : "未公开"}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={className}>
+      <MerchantTimeTile label="PriceAI 收录" value={<RelativeTime value={includedAt} />} />
+      <MerchantTimeTile
+        label="公开运营"
+        value={shopCreatedAt ? formatMerchantAge(shopCreatedAt) : "未公开"}
+        detail={shopCreatedAt ? formatDateDay(shopCreatedAt) : undefined}
+      />
+    </div>
+  );
+}
+
+function MerchantTimeTile({ label, value, detail }: { label: string; value: ReactNode; detail?: string }) {
+  return (
+    <div className="rounded-lg bg-[#f7f9f9] px-3 py-2 ring-1 ring-[#adb3b4]/10">
+      <p className="font-semibold text-[#5a6061]">{label}</p>
+      <p className="mt-1 font-bold text-[#202829]">{value}</p>
+      {detail ? <p className="mt-0.5 text-[0.68rem] text-[#5a6061]">{detail}</p> : null}
+    </div>
+  );
+}
+
 function daysSince(value: string | null | undefined): number | null {
   if (!value) return null;
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) return null;
   return Math.max(0, Math.floor((Date.now() - timestamp) / 86_400_000));
+}
+
+function formatMerchantAge(value: string | null | undefined): string {
+  const days = daysSince(value);
+  if (days === null) return "未公开";
+  if (days < 1) return "今天";
+  if (days < 30) return `${days}天`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}个月`;
+  const years = Math.floor(months / 12);
+  const remainingMonths = months % 12;
+  return remainingMonths ? `${years}年${remainingMonths}个月` : `${years}年`;
 }
 
 function MetricStack({ value, label }: { value: number; label: string }) {
@@ -2363,6 +2424,12 @@ function productSortPenalty(product: ExplorerProductSummary): number {
 
 function compareProductPrice(a: ExplorerProductSummary, b: ExplorerProductSummary): number {
   return (a.lowestPrice ?? Number.MAX_SAFE_INTEGER) - (b.lowestPrice ?? Number.MAX_SAFE_INTEGER);
+}
+
+function searchPlaceholderForScope(scopeMode: ScopeMode): string {
+  if (scopeMode === "offers") return "搜索报价标题、渠道名或商品关键词";
+  if (scopeMode === "merchants") return "搜索店铺名，或粘贴店铺链接";
+  return "搜索标准商品，如 ChatGPT Plus、Gemini Pro、邮箱";
 }
 
 function compareProductFallback(a: ExplorerProductSummary, b: ExplorerProductSummary): number {

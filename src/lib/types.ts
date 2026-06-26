@@ -50,6 +50,8 @@ export type Source = {
   lastSuccessAt?: string | null;
   consecutiveFailures?: number | null;
   lastError?: string | null;
+  createdAt?: string | null;
+  shopCreatedAt?: string | null;
   updatedAt?: string | null;
 };
 
@@ -177,6 +179,8 @@ export type PublicMerchantSummary = {
   riskFeedbackCount: number;
   latestSeenAt: string | null;
   observationStartedAt: string | null;
+  includedAt?: string | null;
+  shopCreatedAt?: string | null;
   representativeProduct?: string | null;
   representativeOfferTitle?: string | null;
   representativePrice?: number | null;
@@ -678,6 +682,7 @@ export type OfferInput = {
   sourceName: string;
   sourceUrl: string;
   sourceStoreName?: string;
+  sourceShopCreatedAt?: string | null;
   sourceTitle: string;
   price?: number | null;
   listedPrice?: number | null;

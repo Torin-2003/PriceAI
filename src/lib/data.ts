@@ -69,7 +69,7 @@ const EXPLORER_OFFER_SEARCH_TEXT_MAX_LENGTH = 480;
 const STALE_PUBLIC_DATA_MESSAGE = "报价服务响应变慢，已先显示最近缓存结果。";
 const PUBLIC_EXPLORER_SNAPSHOT_KEY = "default";
 const PUBLIC_OFFERS_SNAPSHOT_KEY = "default:limit:80";
-const PUBLIC_MERCHANTS_SNAPSHOT_KEY = "default:v3";
+const PUBLIC_MERCHANTS_SNAPSHOT_KEY = "default:v4";
 const PUBLIC_OFFERS_SNAPSHOT_LIMIT = 80;
 const PUBLIC_OFFERS_SNAPSHOT_OFFSET = 0;
 const PUBLIC_PRODUCT_OFFERS_SNAPSHOT_LIMIT = 80;
@@ -115,6 +115,8 @@ const RAW_OFFER_ADMIN_SELECT = [
   "fee_amount",
   "price_basis",
 ].join(",");
+const PUBLIC_SOURCE_SELECT = "id,name,base_url,entry_url,collection_method,collector_kind,enabled,notes,health_status,last_checked_at,last_success_at,consecutive_failures,last_error,created_at,shop_created_at,updated_at";
+const PUBLIC_SOURCE_LEGACY_SELECT = "id,name,base_url,entry_url,collection_method,collector_kind,enabled,notes,health_status,last_checked_at,last_success_at,consecutive_failures,last_error,created_at,updated_at";
 
 type PublicOfferData = {
   configured: boolean;
@@ -242,6 +244,7 @@ type PublicMerchantRow = Record<string, unknown> & {
 
 let publicOfferDataCache: { expiresAt: number; value: PublicOfferData } | null = null;
 let publicOfferDataPromise: Promise<PublicOfferData> | null = null;
+let publicOffersCache: { expiresAt: number; value: PublicOffersResult } | null = null;
 let explorerDataCache: { expiresAt: number; value: ExplorerData } | null = null;
 let explorerDataPromise: Promise<ExplorerData> | null = null;
 let publicMerchantsCache: { expiresAt: number; value: PublicMerchantsResult } | null = null;
@@ -287,6 +290,7 @@ type ProductOfferListFilters = {
 export function clearPublicDataCache(): void {
   publicOfferDataCache = null;
   publicOfferDataPromise = null;
+  publicOffersCache = null;
   explorerDataCache = null;
   explorerDataPromise = null;
   publicMerchantsCache = null;
@@ -1547,6 +1551,16 @@ function preferStaleProductOffers<T extends {
   };
 }
 
+function preferStalePublicOffers(staleValue: PublicOffersResult | null, value: PublicOffersResult): PublicOffersResult {
+  if (!value.degraded || value.rows.length || !staleValue?.rows.length) return value;
+
+  return {
+    ...staleValue,
+    degraded: true,
+    message: STALE_PUBLIC_DATA_MESSAGE,
+  };
+}
+
 function preferStalePublicMerchants(staleValue: PublicMerchantsResult | null, value: PublicMerchantsResult): PublicMerchantsResult {
   if (!value.degraded || value.rows.length || !staleValue?.rows.length) return value;
 
@@ -2528,14 +2542,25 @@ export async function listPublicOffers(filters: OfferListFilters = {}) {
     offset: normalizePublicOfferOffset(filters.offset),
   };
   const snapshotEligible = isDefaultOfferListSnapshotRequest(normalizedFilters);
+  const now = Date.now();
+  if (snapshotEligible && publicOffersCache && publicOffersCache.expiresAt > now) {
+    return publicOffersCache.value;
+  }
+
   if (snapshotEligible && !normalizedFilters.skipSnapshot) {
     const snapshot = await readPublicApiSnapshot<PublicOffersResult>("offers", PUBLIC_OFFERS_SNAPSHOT_KEY);
     if (snapshot && isPublicOffersSnapshot(snapshot.value)) {
-      return hydrateGeneratedAt(snapshot);
+      const value = hydrateGeneratedAt(snapshot);
+      publicOffersCache = {
+        expiresAt: Date.now() + PUBLIC_DATA_CACHE_TTL_MS,
+        value,
+      };
+      return value;
     }
   }
 
   const value = await loadPublicOffers(normalizedFilters);
+  const nextValue = snapshotEligible ? preferStalePublicOffers(publicOffersCache?.value || null, value) : value;
   if (snapshotEligible && !normalizedFilters.skipSnapshot && !value.degraded) {
     await writePublicApiSnapshot({
       kind: "offers",
@@ -2545,7 +2570,14 @@ export async function listPublicOffers(filters: OfferListFilters = {}) {
     });
   }
 
-  return value;
+  if (snapshotEligible) {
+    publicOffersCache = {
+      expiresAt: Date.now() + PUBLIC_DATA_CACHE_TTL_MS,
+      value: nextValue,
+    };
+  }
+
+  return nextValue;
 }
 
 export async function listPublicMerchants(): Promise<PublicMerchantsResult> {
@@ -2794,19 +2826,15 @@ async function listPublicSourcesForOffers(offers?: RawOffer[]): Promise<Source[]
   const rows: Record<string, unknown>[] = [];
   const batches = sourceIds.length ? chunks(sourceIds, 100) : [[]];
   for (const ids of batches) {
-    let query = supabase
-      .from("sources")
-      .select("id,name,base_url,entry_url,collection_method,collector_kind,enabled,notes,health_status,last_checked_at,last_success_at,consecutive_failures,last_error,updated_at")
-      .abortSignal(publicSupabaseReadSignal());
-
-    if (ids.length) {
-      query = query.in("id", ids);
-    } else {
-      query = query.eq("enabled", true);
-    }
-
-    const { data, error } = await query;
+    const { data, error } = await selectPublicSourceRows(ids, false);
     if (error) {
+      if (isMissingColumnError(error, "shop_created_at")) {
+        const fallback = await selectPublicSourceRows(ids, true);
+        if (!fallback.error) {
+          rows.push(...((fallback.data || []) as Record<string, unknown>[]));
+          continue;
+        }
+      }
       console.warn("Public source lookup failed:", error.message);
       return rows.map(mapSource);
     }
@@ -2815,6 +2843,28 @@ async function listPublicSourcesForOffers(offers?: RawOffer[]): Promise<Source[]
   }
 
   return rows.map(mapSource);
+}
+
+async function selectPublicSourceRows(sourceIds: string[], legacy: boolean) {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return { data: [], error: null };
+
+  let query = supabase
+    .from("sources")
+    .select(legacy ? PUBLIC_SOURCE_LEGACY_SELECT : PUBLIC_SOURCE_SELECT)
+    .abortSignal(publicSupabaseReadSignal());
+
+  if (sourceIds.length) {
+    query = query.in("id", sourceIds);
+  } else {
+    query = query.eq("enabled", true);
+  }
+
+  return query;
+}
+
+function isMissingColumnError(error: { code?: string | null; message?: string | null }, column: string): boolean {
+  return error.code === "42703" || Boolean(error.message?.includes(column) && error.message.includes("does not exist"));
 }
 
 function buildPublicMerchantSummaries({
@@ -2885,6 +2935,8 @@ function buildPublicMerchantSummaries({
         riskFeedbackCount: 0,
         latestSeenAt: null,
         observationStartedAt: timestamp,
+        includedAt: source?.createdAt || null,
+        shopCreatedAt: source?.shopCreatedAt || null,
         representativeProduct: product.displayName,
         representativeOfferTitle: offer.sourceTitle,
         representativePrice: offer.price,
@@ -2901,6 +2953,8 @@ function buildPublicMerchantSummaries({
     current.summary.outOfStockCount += available ? 0 : 1;
     current.summary.latestSeenAt = latestIso([current.summary.latestSeenAt, timestamp]);
     current.summary.observationStartedAt = earliestIso([current.summary.observationStartedAt, timestamp]);
+    current.summary.includedAt = earliestIso([current.summary.includedAt || null, source?.createdAt || null]);
+    current.summary.shopCreatedAt = earliestIso([current.summary.shopCreatedAt || null, source?.shopCreatedAt || null]);
     current.summary.riskFeedbackCount = Math.max(
       current.summary.riskFeedbackCount,
       offer.riskFeedback?.sourceCount || 0,
@@ -2974,6 +3028,8 @@ function mapPublicMerchantSummaryRow(row: PublicMerchantRow): PublicMerchantSumm
     riskFeedbackCount: Number(row.risk_feedback_count || 0),
     latestSeenAt: row.latest_seen_at ? String(row.latest_seen_at) : null,
     observationStartedAt: row.observation_started_at ? String(row.observation_started_at) : null,
+    includedAt: row.included_at ? String(row.included_at) : null,
+    shopCreatedAt: row.shop_created_at ? String(row.shop_created_at) : null,
     representativeProduct: row.representative_product ? String(row.representative_product) : null,
     representativeOfferTitle: row.representative_offer_title ? String(row.representative_offer_title) : null,
     representativePrice:
@@ -3574,6 +3630,8 @@ export function mapSource(row: Record<string, unknown>): Source {
         ? null
         : Number(row.consecutive_failures),
     lastError: row.last_error ? String(row.last_error) : null,
+    createdAt: row.created_at ? String(row.created_at) : null,
+    shopCreatedAt: row.shop_created_at ? String(row.shop_created_at) : null,
     updatedAt: row.updated_at ? String(row.updated_at) : null,
   };
 }

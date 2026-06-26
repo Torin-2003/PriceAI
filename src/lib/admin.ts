@@ -128,6 +128,7 @@ export async function upsertSource(input: {
   collectorKind?: CollectorKind | null;
   enabled?: boolean;
   notes?: string | null;
+  shopCreatedAt?: string | null;
 }): Promise<Source> {
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase 尚未配置，无法保存来源。");
@@ -151,6 +152,8 @@ export async function upsertSource(input: {
     : input.name;
 
   const nextUpdatedAt = new Date().toISOString();
+  const shopCreatedAt = normalizedDateString(input.shopCreatedAt || null) ||
+    (matchedExisting?.shop_created_at ? String(matchedExisting.shop_created_at) : null);
   const source: Source = {
     id,
     name: sourceName,
@@ -160,6 +163,8 @@ export async function upsertSource(input: {
     collectorKind: input.collectorKind ?? normalizeCollectorKind(matchedExisting?.collector_kind),
     enabled: input.enabled ?? (matchedExisting ? Boolean(matchedExisting.enabled) : true),
     notes: input.notes || (matchedExisting?.notes ? String(matchedExisting.notes) : null),
+    createdAt: matchedExisting?.created_at ? String(matchedExisting.created_at) : null,
+    shopCreatedAt,
     updatedAt: nextUpdatedAt,
   };
 
@@ -174,10 +179,13 @@ export async function upsertSource(input: {
     updated_at: source.updatedAt,
   };
   if (input.collectorKind !== undefined) row.collector_kind = source.collectorKind;
+  if (input.shopCreatedAt !== undefined) row.shop_created_at = source.shopCreatedAt;
 
   if (matchedExisting && isSourceRowUnchanged(row, matchedExisting)) {
     return {
       ...source,
+      createdAt: matchedExisting.created_at ? String(matchedExisting.created_at) : source.createdAt,
+      shopCreatedAt: matchedExisting.shop_created_at ? String(matchedExisting.shop_created_at) : source.shopCreatedAt,
       updatedAt: matchedExisting.updated_at ? String(matchedExisting.updated_at) : source.updatedAt,
     };
   }
@@ -333,6 +341,7 @@ export async function upsertRawOffer(input: OfferInput & { sourceId?: string | n
     name: input.sourceName,
     entryUrl: input.sourceUrl,
     collectionMethod: "manual",
+    shopCreatedAt: input.sourceShopCreatedAt,
     notes: "由后台调试补录或采集助手自动创建。",
   });
 
@@ -402,6 +411,7 @@ export async function upsertRawOffers(
         name: offer.sourceName,
         entryUrl: offer.sourceUrl,
         collectionMethod,
+        shopCreatedAt: offer.sourceShopCreatedAt,
         notes: collectionMethod === "http" ? "由自动价格采集脚本维护。" : "由半自动浏览器采集助手创建。",
       });
       sourceCache.set(sourceKey, source);
@@ -653,10 +663,12 @@ function isSourceRowUnchanged(next: Record<string, unknown>, existing: Record<st
     "enabled",
     "notes",
     "collector_kind",
+    "shop_created_at",
   ];
 
   return keys.every((key) => {
     if (!(key in next) && key === "collector_kind") return true;
+    if (!(key in next) && key === "shop_created_at") return true;
     return comparableValue(next[key]) === comparableValue(existing[key]);
   });
 }
@@ -1296,6 +1308,8 @@ function mapSourceRow(row: Record<string, unknown>): Source {
         ? null
         : Number(row.consecutive_failures),
     lastError: row.last_error ? String(row.last_error) : null,
+    createdAt: row.created_at ? String(row.created_at) : null,
+    shopCreatedAt: row.shop_created_at ? String(row.shop_created_at) : null,
     updatedAt: row.updated_at ? String(row.updated_at) : null,
   };
 }

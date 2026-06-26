@@ -30,6 +30,7 @@ create table if not exists sources (
   collector_lock_until timestamptz,
   collector_lock_owner text,
   collector_lock_started_at timestamptz,
+  shop_created_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -44,6 +45,7 @@ alter table sources add column if not exists runtime_region text not null defaul
 alter table sources add column if not exists collector_lock_until timestamptz;
 alter table sources add column if not exists collector_lock_owner text;
 alter table sources add column if not exists collector_lock_started_at timestamptz;
+alter table sources add column if not exists shop_created_at timestamptz;
 
 create table if not exists raw_offers (
   id text primary key,
@@ -216,6 +218,7 @@ create index if not exists sources_health_status_idx on sources(health_status);
 create index if not exists sources_last_checked_at_idx on sources(last_checked_at desc);
 create index if not exists sources_collector_kind_idx on sources(collector_kind);
 create index if not exists sources_collector_lock_until_idx on sources(collector_lock_until);
+create index if not exists sources_shop_created_at_idx on sources(shop_created_at desc);
 create index if not exists crawl_runs_started_at_idx on crawl_runs(started_at desc);
 create index if not exists collection_jobs_status_created_at_idx on collection_jobs(status, created_at desc);
 create index if not exists collection_jobs_source_status_idx on collection_jobs(source_id, status);
@@ -846,6 +849,8 @@ returns table (
   risk_feedback_count bigint,
   latest_seen_at timestamptz,
   observation_started_at timestamptz,
+  included_at timestamptz,
+  shop_created_at timestamptz,
   representative_product text,
   representative_offer_title text,
   representative_price numeric,
@@ -876,6 +881,8 @@ as $$
       sources.health_status,
       sources.last_success_at,
       sources.consecutive_failures,
+      sources.created_at as source_created_at,
+      sources.shop_created_at,
       case
         when raw_offers.status <> 'out_of_stock'
           and raw_offers.price is not null
@@ -1007,6 +1014,8 @@ as $$
       max(coalesce(feedback.risk_feedback_count, 0)) as risk_feedback_count,
       max(deduped.public_updated_at) as latest_seen_at,
       min(coalesce(deduped.public_updated_at, deduped.captured_at)) as observation_started_at,
+      min(deduped.source_created_at) as included_at,
+      min(deduped.shop_created_at) as shop_created_at,
       (array_agg(deduped.product_display_name order by deduped.is_public_available desc, deduped.price asc nulls last, deduped.public_updated_at desc nulls last))[1] as representative_product,
       (array_agg(deduped.source_title order by deduped.is_public_available desc, deduped.price asc nulls last, deduped.public_updated_at desc nulls last))[1] as representative_offer_title,
       (array_agg(deduped.price order by deduped.is_public_available desc, deduped.price asc nulls last, deduped.public_updated_at desc nulls last))[1] as representative_price,
@@ -1047,6 +1056,8 @@ as $$
     merchant_rows.risk_feedback_count,
     merchant_rows.latest_seen_at,
     merchant_rows.observation_started_at,
+    merchant_rows.included_at,
+    merchant_rows.shop_created_at,
     merchant_rows.representative_product,
     merchant_rows.representative_offer_title,
     merchant_rows.representative_price,
@@ -1440,6 +1451,7 @@ create table if not exists app_runtime_settings (
   timeout_ms integer not null default 12000 check (timeout_ms between 3000 and 60000),
   encrypted_api_key jsonb,
   api_key_hint text,
+  settings jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
