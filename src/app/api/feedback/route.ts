@@ -3,9 +3,16 @@ import { after } from "next/server";
 import { createOfferFeedback, runOfferFeedbackRiskPrecheck } from "@/lib/admin";
 import { clearPublicDataCache, markPublicApiSnapshotsDirty } from "@/lib/data";
 import { isFeedbackEvidenceReference } from "@/lib/feedback-evidence";
+import {
+  checkPublicWriteRateLimit,
+  getPublicClientFingerprint,
+  getPublicRequestErrorStatus,
+  readJsonWithLimit,
+} from "@/lib/public-request";
 import { feedbackRequiresContact } from "@/lib/trust-risk";
 import { offerFeedbackReasonValues } from "@/lib/types";
 
+const PUBLIC_OFFER_FEEDBACK_RATE_LIMIT_PER_HOUR = 20;
 const reasonSchema = z.enum(offerFeedbackReasonValues);
 const userExpectedActionSchema = z.enum(["recheck", "hide_offer", "hide_source", "unsure"]);
 
@@ -46,12 +53,6 @@ function isAllowedEvidenceUrl(value: string): boolean {
   }
 }
 
-function getClientIp(request: Request): string | null {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]!.trim();
-  return request.headers.get("x-real-ip");
-}
-
 function getErrorMessage(error: unknown): string {
   if (error instanceof z.ZodError) return error.issues[0]?.message || "反馈内容格式不正确。";
   if (error instanceof Error) return error.message;
@@ -59,6 +60,8 @@ function getErrorMessage(error: unknown): string {
 }
 
 function getErrorStatus(error: unknown, message: string): number {
+  const publicRequestStatus = getPublicRequestErrorStatus(error);
+  if (publicRequestStatus) return publicRequestStatus;
   if (error instanceof z.ZodError) return 400;
   if (message.includes("刚刚被反馈过")) return 409;
   if (message.includes("反馈过于频繁")) return 429;
@@ -69,7 +72,14 @@ function getErrorStatus(error: unknown, message: string): number {
 
 export async function POST(request: Request) {
   try {
-    const payload = schema.parse(await request.json());
+    const submitterIp = getPublicClientFingerprint(request);
+    checkPublicWriteRateLimit({
+      scope: "offer-feedback",
+      key: submitterIp,
+      limit: PUBLIC_OFFER_FEEDBACK_RATE_LIMIT_PER_HOUR,
+    });
+
+    const payload = schema.parse(await readJsonWithLimit(request));
 
     if (payload.website) {
       return Response.json({ ok: true });
@@ -103,7 +113,7 @@ export async function POST(request: Request) {
       evidenceUrls: payload.evidenceUrls || [],
       notes: payload.notes || null,
       contact: payload.contact || null,
-      submitterIp: getClientIp(request),
+      submitterIp,
     });
 
     after(async () => {

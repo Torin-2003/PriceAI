@@ -1,7 +1,14 @@
 import { z } from "zod";
 import { createSiteFeedback } from "@/lib/admin";
+import {
+  checkPublicWriteRateLimit,
+  getPublicClientFingerprint,
+  getPublicRequestErrorStatus,
+  readJsonWithLimit,
+} from "@/lib/public-request";
 
 const typeSchema = z.enum(["feature", "data", "ux", "channel", "bug", "other"]);
+const PUBLIC_SITE_FEEDBACK_RATE_LIMIT_PER_HOUR = 20;
 
 const schema = z.object({
   type: typeSchema,
@@ -11,12 +18,6 @@ const schema = z.object({
   website: z.string().max(200).nullable().optional(),
 });
 
-function getClientIp(request: Request): string | null {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]!.trim();
-  return request.headers.get("x-real-ip");
-}
-
 function getErrorMessage(error: unknown): string {
   if (error instanceof z.ZodError) return "反馈内容格式不正确。";
   if (error instanceof Error) return error.message;
@@ -24,6 +25,8 @@ function getErrorMessage(error: unknown): string {
 }
 
 function getErrorStatus(error: unknown, message: string): number {
+  const publicRequestStatus = getPublicRequestErrorStatus(error);
+  if (publicRequestStatus) return publicRequestStatus;
   if (error instanceof z.ZodError) return 400;
   if (message.includes("刚刚提交过")) return 409;
   if (message.includes("反馈过于频繁")) return 429;
@@ -32,7 +35,14 @@ function getErrorStatus(error: unknown, message: string): number {
 
 export async function POST(request: Request) {
   try {
-    const payload = schema.parse(await request.json());
+    const submitterIp = getPublicClientFingerprint(request);
+    checkPublicWriteRateLimit({
+      scope: "site-feedback",
+      key: submitterIp,
+      limit: PUBLIC_SITE_FEEDBACK_RATE_LIMIT_PER_HOUR,
+    });
+
+    const payload = schema.parse(await readJsonWithLimit(request));
 
     if (payload.website) {
       return Response.json({ ok: true });
@@ -43,7 +53,7 @@ export async function POST(request: Request) {
       message: payload.message,
       contact: payload.contact || null,
       pageUrl: payload.pageUrl || null,
-      submitterIp: getClientIp(request),
+      submitterIp,
     });
 
     return Response.json({ ok: true, ...result });

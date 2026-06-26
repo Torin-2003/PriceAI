@@ -1,8 +1,15 @@
 import { z } from "zod";
 import { createSubmission } from "@/lib/admin";
+import {
+  checkPublicWriteRateLimit,
+  getPublicClientFingerprint,
+  getPublicRequestErrorStatus,
+  readJsonWithLimit,
+} from "@/lib/public-request";
 
 const MAX_BATCH_SIZE = 10;
 const BATCH_RATE_LIMIT_PER_HOUR = 30;
+const PUBLIC_SUBMISSION_RATE_LIMIT_PER_HOUR = 20;
 
 const schema = z.object({
   url: z.string().url().max(2048).optional().nullable(),
@@ -12,12 +19,6 @@ const schema = z.object({
   notes: z.string().trim().max(500).optional().nullable(),
   website: z.string().max(200).optional().nullable(),
 });
-
-function getClientIp(request: Request): string | null {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]!.trim();
-  return request.headers.get("x-real-ip");
-}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof z.ZodError) return "提交内容格式不正确，请检查链接。";
@@ -29,6 +30,8 @@ function getErrorMessage(error: unknown): string {
 }
 
 function getErrorStatus(error: unknown, message: string): number {
+  const publicRequestStatus = getPublicRequestErrorStatus(error);
+  if (publicRequestStatus) return publicRequestStatus;
   if (error instanceof z.ZodError) return 400;
   if (message.includes("刚刚被提交过")) return 409;
   if (message.includes("提交过于频繁")) return 429;
@@ -50,7 +53,14 @@ function uniqueUrls(payload: z.infer<typeof schema>): string[] {
 
 export async function POST(request: Request) {
   try {
-    const json = await request.json();
+    const submitterIp = getPublicClientFingerprint(request);
+    checkPublicWriteRateLimit({
+      scope: "channel-submissions",
+      key: submitterIp,
+      limit: PUBLIC_SUBMISSION_RATE_LIMIT_PER_HOUR,
+    });
+
+    const json = await readJsonWithLimit(request);
     const payload = schema.parse(json);
 
     if (payload.website) {
@@ -62,7 +72,6 @@ export async function POST(request: Request) {
       return Response.json({ ok: false, message: "请至少提交一个链接。" }, { status: 400 });
     }
 
-    const submitterIp = getClientIp(request);
     const results = [];
 
     for (const url of urls) {

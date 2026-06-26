@@ -1,8 +1,15 @@
 import { z } from "zod";
 import { createApiProviderSubmission } from "@/lib/api-models-db";
+import {
+  checkPublicWriteRateLimit,
+  getPublicClientFingerprint,
+  getPublicRequestErrorStatus,
+  readJsonWithLimit,
+} from "@/lib/public-request";
 
 const MAX_BATCH_SIZE = 10;
 const BATCH_RATE_LIMIT_PER_HOUR = 30;
+const PUBLIC_API_MODEL_SUBMISSION_RATE_LIMIT_PER_HOUR = 20;
 
 const schema = z.object({
   url: z.string().url().max(2048).optional().nullable(),
@@ -15,7 +22,14 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const payload = schema.parse(await request.json());
+    const submitterIp = getPublicClientFingerprint(request);
+    checkPublicWriteRateLimit({
+      scope: "api-model-submissions",
+      key: submitterIp,
+      limit: PUBLIC_API_MODEL_SUBMISSION_RATE_LIMIT_PER_HOUR,
+    });
+
+    const payload = schema.parse(await readJsonWithLimit(request));
 
     if (payload.website) {
       return Response.json({ ok: true });
@@ -26,7 +40,6 @@ export async function POST(request: Request) {
       return Response.json({ ok: false, message: "请至少提交一个 API 渠道链接。" }, { status: 400 });
     }
 
-    const submitterIp = getClientIp(request);
     const results = [];
 
     for (const url of urls) {
@@ -61,19 +74,16 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, results, summary });
   } catch (error) {
     const message = getErrorMessage(error);
-    return Response.json({ ok: false, message }, { status: error instanceof z.ZodError ? 400 : getErrorStatus(message) });
+    return Response.json(
+      { ok: false, message },
+      { status: error instanceof z.ZodError ? 400 : getResponseStatus(error, message) },
+    );
   }
 }
 
 function uniqueUrls(payload: z.infer<typeof schema>): string[] {
   const urls = payload.urls?.length ? payload.urls : payload.url ? [payload.url] : [];
   return Array.from(new Set(urls.map((url) => url.trim()).filter(Boolean)));
-}
-
-function getClientIp(request: Request): string | null {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]!.trim();
-  return request.headers.get("x-real-ip");
 }
 
 function getErrorMessage(error: unknown): string {
@@ -87,4 +97,8 @@ function getErrorStatus(message: string): number {
   if (message.includes("提交过于频繁")) return 429;
   if (message.includes("URL 格式") || message.includes("仅支持")) return 400;
   return 500;
+}
+
+function getResponseStatus(error: unknown, message: string): number {
+  return getPublicRequestErrorStatus(error) ?? getErrorStatus(message);
 }

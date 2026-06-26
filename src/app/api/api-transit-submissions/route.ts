@@ -5,8 +5,15 @@ import {
   type TransitCredentialAccessMode,
 } from "@/lib/api-transit-credentials";
 import { createTransitSubmission } from "@/lib/api-transit-submissions";
+import {
+  checkPublicWriteRateLimit,
+  getPublicClientFingerprint,
+  getPublicRequestErrorStatus,
+  readJsonWithLimit,
+} from "@/lib/public-request";
 
 const accessModeSchema = z.enum(["public_only", "test_key", "test_account"]);
+const PUBLIC_TRANSIT_SUBMISSION_RATE_LIMIT_PER_HOUR = 20;
 const httpUrlSchema = z.string().url().max(2048).refine((value) => isHttpUrl(value), {
   message: "链接仅支持 http 或 https。",
 });
@@ -49,7 +56,14 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const payload = schema.parse(await request.json());
+    const submitterIp = getPublicClientFingerprint(request);
+    checkPublicWriteRateLimit({
+      scope: "api-transit-submissions",
+      key: submitterIp,
+      limit: PUBLIC_TRANSIT_SUBMISSION_RATE_LIMIT_PER_HOUR,
+    });
+
+    const payload = schema.parse(await readJsonWithLimit(request));
     if (payload.website) return Response.json({ ok: true });
 
     validateSubmissionAccess(payload);
@@ -69,7 +83,7 @@ export async function POST(request: Request) {
       models: payload.models || [],
       meta: buildSafeMeta(payload),
       accessMode,
-      submitterIp: getClientIp(request),
+      submitterIp,
     });
 
     if (credential && !("ignored" in result)) {
@@ -77,7 +91,7 @@ export async function POST(request: Request) {
         ...credential,
         submissionId: result.id,
         stationId: payload.stationId ?? null,
-        submitterIp: getClientIp(request),
+        submitterIp,
       });
     }
 
@@ -90,19 +104,6 @@ export async function POST(request: Request) {
   }
 }
 
-function getClientIp(request: Request): string | null {
-  const cloudflareIp = request.headers.get("cf-connecting-ip")?.trim();
-  if (cloudflareIp) return cloudflareIp;
-
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
-  }
-
-  return request.headers.get("x-real-ip")?.trim() || "unknown";
-}
-
 function getErrorMessage(error: unknown): string {
   if (error instanceof z.ZodError) return "提交内容格式不正确，请检查链接和字段。";
   if (error instanceof Error) return error.message;
@@ -110,6 +111,8 @@ function getErrorMessage(error: unknown): string {
 }
 
 function getErrorStatus(error: unknown, message: string): number {
+  const publicRequestStatus = getPublicRequestErrorStatus(error);
+  if (publicRequestStatus) return publicRequestStatus;
   if (error instanceof z.ZodError) return 400;
   if (message.includes("尚未配置")) return 503;
   if (message.includes("过于频繁")) return 429;
