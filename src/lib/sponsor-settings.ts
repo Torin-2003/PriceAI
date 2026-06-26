@@ -27,7 +27,16 @@ type RuntimeSettingsRow = {
 };
 
 export async function getSponsorSettingsSummary(): Promise<SponsorSettingsSummary> {
-  const row = await getSponsorSettingsRow();
+  let row: RuntimeSettingsRow | null = null;
+  try {
+    row = await getSponsorSettingsRow();
+  } catch (error) {
+    if (isMissingSponsorSettingsColumnError(error)) {
+      return getFallbackSponsorSettingsSummary("赞助位配置字段尚未迁移，请先应用 Supabase migration 后再保存。");
+    }
+    throw error;
+  }
+
   if (!row) {
     return createDefaultSponsorSettingsSummary({
       tableReady: true,
@@ -54,7 +63,16 @@ export async function updateSponsorSettings(input: SponsorSettingsInput): Promis
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase 尚未配置，无法保存赞助位配置。");
 
-  const existing = await getSponsorSettingsRow();
+  let existing: RuntimeSettingsRow | null = null;
+  try {
+    existing = await getSponsorSettingsRow();
+  } catch (error) {
+    if (isMissingSponsorSettingsColumnError(error)) {
+      throw new Error("赞助位配置字段尚未迁移，请先应用 Supabase migration 后再保存。");
+    }
+    throw error;
+  }
+
   const base = existing
     ? normalizeSponsorSettings(existing.settings, { configured: true, tableReady: true, updatedAt: existing.updated_at || null })
     : createDefaultSponsorSettingsSummary({ configured: true, tableReady: true });
@@ -78,7 +96,12 @@ export async function updateSponsorSettings(input: SponsorSettingsInput): Promis
       settings: serializeSponsorSettings(next),
       updated_at: new Date().toISOString(),
     }, { onConflict: "id" });
-  if (error) throw error;
+  if (error) {
+    if (isMissingSponsorSettingsColumnError(error)) {
+      throw new Error("赞助位配置字段尚未迁移，请先应用 Supabase migration 后再保存。");
+    }
+    throw error;
+  }
 
   return getSponsorSettingsSummary();
 }
@@ -94,6 +117,17 @@ async function getSponsorSettingsRow(): Promise<RuntimeSettingsRow | null> {
     .maybeSingle();
   if (error) throw error;
   return data as RuntimeSettingsRow | null;
+}
+
+function isMissingSponsorSettingsColumnError(error: unknown): boolean {
+  const record = error && typeof error === "object" ? error as { code?: unknown; message?: unknown; details?: unknown } : {};
+  const message = [record.message, record.details]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ");
+
+  return record.code === "42703" ||
+    record.code === "PGRST204" ||
+    Boolean(message.includes("app_runtime_settings.settings") || /settings.*does not exist/i.test(message));
 }
 
 function normalizeSponsorSettings(
