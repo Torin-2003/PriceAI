@@ -1,6 +1,7 @@
 export const PUBLIC_OFFER_DEFAULT_LIMIT = 80;
 export const PUBLIC_OFFER_MAX_LIMIT = 200;
 export const PUBLIC_OFFER_MAX_OFFSET = 5000;
+export const PUBLIC_OFFER_MAX_QUERY_LENGTH = 80;
 
 export type PublicOfferPaginationParams = {
   limit?: number;
@@ -55,6 +56,13 @@ export function normalizePublicOfferOffset(value: number | undefined): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return 0;
 
   return Math.min(Math.max(Math.trunc(value), 0), PUBLIC_OFFER_MAX_OFFSET);
+}
+
+export function normalizePublicOfferQuery(value: string | null | undefined): string {
+  const trimmed = value?.trim();
+  if (!trimmed) return "";
+
+  return trimmed.slice(0, PUBLIC_OFFER_MAX_QUERY_LENGTH);
 }
 
 function parsePositiveIntegerParam(

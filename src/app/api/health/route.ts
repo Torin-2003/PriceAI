@@ -8,6 +8,11 @@ export const dynamic = "force-dynamic";
 const HEALTH_SUPABASE_TIMEOUT_MS = 2_500;
 
 type HealthStatus = "ok" | "degraded" | "not_configured";
+type HealthCheck = {
+  ok: boolean;
+  name: string;
+  message: string | null;
+};
 
 export async function GET() {
   const generatedAt = new Date().toISOString();
@@ -31,14 +36,33 @@ export async function GET() {
     );
   }
 
-  try {
-    const { error } = await supabase
-      .from("sources")
-      .select("id", { head: true })
-      .limit(1)
-      .abortSignal(AbortSignal.timeout(HEALTH_SUPABASE_TIMEOUT_MS));
+  const checks: HealthCheck[] = [];
 
-    if (error) throw error;
+  try {
+    checks.push(await runHeadCheck("sources_connectivity", () =>
+      supabase
+        .from("sources")
+        .select("id")
+        .limit(1)
+        .abortSignal(AbortSignal.timeout(HEALTH_SUPABASE_TIMEOUT_MS)),
+    ));
+    checks.push(await runHeadCheck("sources_schema", () =>
+      supabase
+        .from("sources")
+        .select("id,shop_created_at")
+        .limit(1)
+        .abortSignal(AbortSignal.timeout(HEALTH_SUPABASE_TIMEOUT_MS)),
+    ));
+    checks.push(await runHeadCheck("public_api_snapshots", () =>
+      supabase
+        .from("public_api_snapshots")
+        .select("kind,cache_key,generated_at")
+        .limit(1)
+        .abortSignal(AbortSignal.timeout(HEALTH_SUPABASE_TIMEOUT_MS)),
+    ));
+
+    const failed = checks.find((check) => !check.ok);
+    if (failed) throw new Error(failed.message || `${failed.name} 健康检查失败。`);
 
     return NextResponse.json({
       ok: true,
@@ -46,6 +70,7 @@ export async function GET() {
       generatedAt,
       supabaseConfigured,
       supabaseReachable: true,
+      checks,
       latestSuccessfulCrawlAt: null,
       latestCrawlAt: null,
       latestCrawlStatus: null,
@@ -58,7 +83,8 @@ export async function GET() {
         status: "degraded" satisfies HealthStatus,
         generatedAt,
         supabaseConfigured,
-        supabaseReachable: false,
+        supabaseReachable: isSupabaseReachable(checks),
+        checks,
         latestSuccessfulCrawlAt: null,
         latestCrawlAt: null,
         latestCrawlStatus: null,
@@ -67,4 +93,42 @@ export async function GET() {
       { status: 503 },
     );
   }
+}
+
+function isSupabaseReachable(checks: HealthCheck[]): boolean {
+  return checks.some((check) => check.name === "sources_connectivity" && check.ok);
+}
+
+async function runHeadCheck(
+  name: string,
+  query: () => PromiseLike<{ error: HealthCheckError | null }>,
+): Promise<HealthCheck> {
+  try {
+    const { error } = await query();
+    return {
+      ok: !error,
+      name,
+      message: error ? formatHealthCheckError(name, error) : null,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      name,
+      message: error instanceof Error ? error.message : `${name} 健康检查失败。`,
+    };
+  }
+}
+
+type HealthCheckError = {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+};
+
+function formatHealthCheckError(name: string, error: HealthCheckError): string {
+  const parts = [error.code, error.message, error.details, error.hint]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+  return parts.length ? parts.join(" ") : `${name} 健康检查失败。`;
 }

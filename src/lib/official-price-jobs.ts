@@ -1,7 +1,5 @@
-import { getAdminPasswordFromRequest } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
-import { requireAdminOrCronPassword } from "@/lib/env";
-import { getRuntimeEnv } from "@/lib/runtime-env";
+import { authorizeCronRequest } from "@/lib/cron-auth";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { stableId } from "@/lib/utils";
 
@@ -11,7 +9,7 @@ export async function enqueueOfficialPriceCollectionJob(
   request: Request,
   officialMode: OfficialPriceJobMode,
 ) {
-  const authError = authorizeCronRequest(request);
+  const authError = authorizeCronRequest(request, "创建官方地区价采集任务");
   if (authError) return authError;
 
   const startedAt = new Date().toISOString();
@@ -85,22 +83,6 @@ export function officialModeFromRequest(request: Request): OfficialPriceJobMode 
   const { searchParams } = new URL(request.url);
   const mode = searchParams.get("mode") || searchParams.get("officialMode");
   return mode === "weekly_full" ? "weekly_full" : "fx_only";
-}
-
-function authorizeCronRequest(request: Request) {
-  if (!getRuntimeEnv("CRON_SECRET") && process.env.NODE_ENV === "production") {
-    return Response.json(
-      { ok: false, message: "CRON_SECRET 未配置，已拒绝创建官方地区价采集任务。" },
-      { status: 500 },
-    );
-  }
-
-  try {
-    requireAdminOrCronPassword(getAdminPasswordFromRequest(request));
-    return null;
-  } catch {
-    return Response.json({ ok: false, message: "无权创建官方地区价采集任务。" }, { status: 401 });
-  }
 }
 
 async function findExistingOfficialPriceJob(officialMode: OfficialPriceJobMode): Promise<Record<string, unknown> | null> {

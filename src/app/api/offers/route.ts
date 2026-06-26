@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { priceDataCacheHeaders } from "@/lib/cache-headers";
 import { listPublicOffers } from "@/lib/data";
 import { parsePublicOfferPaginationForRoute } from "@/lib/public-offer-route";
+import { normalizePublicOfferQuery } from "@/lib/public-offer-query";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
   if (pagination instanceof NextResponse) return pagination;
 
   const result = await listPublicOffers({
-    query: params.get("q"),
+    query: normalizePublicOfferQuery(params.get("q")),
     platform: params.get("platform"),
     productType: params.get("type"),
     stock: params.get("stock"),

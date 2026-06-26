@@ -12,6 +12,7 @@ const routeFilesWithPriceCache = [
   "src/app/api/explorer/route.ts",
   "src/app/api/offers/route.ts",
   "src/app/api/products/[id]/offers/route.ts",
+  "src/app/api/merchants/route.ts",
 ];
 
 const publicDataModules = [
@@ -64,6 +65,7 @@ assert(/filterFacetsPromise\.catch/.test(dataText), "src/lib/data.ts: auxiliary 
 assert(/readPublicApiSnapshot<ExplorerData>\(\s*["']explorer["']/.test(dataText), "src/lib/data.ts: explorer API must try the shared public API snapshot before expensive source reads.");
 assert(/readPublicApiSnapshot<PublicOffersResult>\(\s*["']offers["']/.test(dataText), "src/lib/data.ts: default public offer list must try the shared public API snapshot before expensive source reads.");
 assert(/readPublicApiSnapshot<PublicProductOffersResult>\(\s*[\r\n\s]*["']product_offers["']/.test(dataText), "src/lib/data.ts: default product offer pages must try the shared public API snapshot before expensive source reads.");
+assert(/readPublicApiSnapshot<PublicMerchantsResult>\(\s*["']merchants["']/.test(dataText), "src/lib/data.ts: default public merchant list must try the shared public API snapshot before expensive source reads.");
 assert(/refreshPublicApiSnapshots/.test(dataText), "src/lib/data.ts: public API snapshot refresh must stay available for writes and manual warmup.");
 assert(/markPublicApiSnapshotsDirty/.test(dataText), "src/lib/data.ts: public API snapshot writes must support a cheap dirty marker.");
 assert(/refreshPublicApiSnapshotsIfDue/.test(dataText), "src/lib/data.ts: public API snapshot refresh must be coalesced and rate-limited.");
@@ -117,6 +119,8 @@ assert(/initialData=\{initialOffers\}/.test(productPageText), "src/app/products/
 const publicOfferQueryText = read("src/lib/public-offer-query.ts");
 assert(/PUBLIC_OFFER_MAX_LIMIT\s*=\s*200/.test(publicOfferQueryText), "src/lib/public-offer-query.ts: public offer pages must stay capped at 200 rows or less.");
 assert(/PUBLIC_OFFER_MAX_OFFSET\s*=\s*5000/.test(publicOfferQueryText), "src/lib/public-offer-query.ts: public offer offset must keep a bounded public scan window.");
+assert(/PUBLIC_OFFER_MAX_QUERY_LENGTH\s*=\s*80/.test(publicOfferQueryText), "src/lib/public-offer-query.ts: public offer search query must keep a bounded length.");
+assert(/normalizePublicOfferQuery/.test(publicOfferQueryText), "src/lib/public-offer-query.ts: public offer search query normalization must stay centralized.");
 
 const transitPublicText = read("src/lib/api-transit-db.ts");
 assert(!/api_transit_detection_runs/.test(transitPublicText), "src/lib/api-transit-db.ts: public API transit reads must not query detection runs.");

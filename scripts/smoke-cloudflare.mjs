@@ -73,8 +73,17 @@ const checks = [
     json: validateOffersJson,
   },
   { path: "/api/products/chatgpt-plus/offers?limit=80", status: 200, maxBytes: 140_000, cache: true },
-  { path: "/api/cron/collect-prices", status: 401, maxBytes: 5_000 },
-  { path: "/api/cron/official-prices", status: 401, maxBytes: 5_000 },
+  {
+    path: "/api/merchants",
+    status: 200,
+    maxBytes: 160_000,
+    cache: true,
+    json: validateMerchantsJson,
+  },
+  { path: "/api/cron/collect-prices", status: 405, maxBytes: 5_000 },
+  { path: "/api/cron/collect-prices", method: "POST", status: 401, maxBytes: 5_000 },
+  { path: "/api/cron/official-prices", status: 405, maxBytes: 5_000 },
+  { path: "/api/cron/official-prices", method: "POST", status: 401, maxBytes: 5_000 },
   { path: "/robots.txt", status: 200, maxBytes: 5_000 },
   { path: "/sitemap.xml", status: 200, maxBytes: 80_000 },
 ];
@@ -88,6 +97,7 @@ for (const check of checks) {
 
   try {
     const response = await fetchWithTimeout(url, {
+      method: check.method || "GET",
       headers: {
         "user-agent": "PriceAI Cloudflare smoke check",
       },
@@ -119,7 +129,7 @@ for (const check of checks) {
         response.status,
         `${bytes}B`,
         `${elapsed}ms`,
-        check.path,
+        check.method ? `${check.method} ${check.path}` : check.path,
         check.cache ? `cache=${cacheHeader || "missing"}` : "",
         !sizeOk && maxBytes !== null ? `size>${maxBytes}B` : "",
         textFailures.length ? `text=${textFailures.join(";")}` : "",
@@ -196,6 +206,14 @@ function validateOffersJson(data) {
   const failures = [];
   if (data?.degraded === true) failures.push("degraded=true");
   if (!Number.isFinite(data?.total) || data.total < 100) failures.push("total<100");
+  return failures;
+}
+
+function validateMerchantsJson(data) {
+  const failures = [];
+  if (data?.degraded === true) failures.push("degraded=true");
+  if (!Array.isArray(data?.rows)) failures.push("rows!=array");
+  if (!Number.isFinite(data?.total) || data.total < 1) failures.push("total<1");
   return failures;
 }
 

@@ -24,7 +24,7 @@ import {
 } from "./public-api-snapshots";
 import { getFallbackRiskReviewSettingsSummary, getRiskReviewSettingsSummary } from "./risk-review-settings";
 import { getFallbackSponsorSettingsSummary, getSponsorSettingsSummary } from "./sponsor-settings";
-import { normalizePublicOfferLimit, normalizePublicOfferOffset } from "./public-offer-query";
+import { normalizePublicOfferLimit, normalizePublicOfferOffset, normalizePublicOfferQuery } from "./public-offer-query";
 import { PRICE_DATA_CACHE_TTL_MS } from "./public-cache-policy";
 import { seedRawOffers, seedSources } from "./sample-data";
 import { getSupabaseServerClient } from "./supabase";
@@ -2545,6 +2545,7 @@ function buildProductOfferSearchHaystack(offer: RawOffer): string {
 export async function listPublicOffers(filters: OfferListFilters = {}) {
   const normalizedFilters = {
     ...filters,
+    query: normalizePublicOfferQuery(filters.query),
     limit: normalizePublicOfferLimit(filters.limit),
     offset: normalizePublicOfferOffset(filters.offset),
   };

@@ -83,6 +83,26 @@ export function requireAdminOrCronPassword(value: string | null): void {
   throw new Error("未授权，请检查后台密码或定时采集密钥。");
 }
 
+export function getCronSecretFromRequest(request: Request): string | null {
+  const header = request.headers.get("x-cron-secret") || request.headers.get("x-admin-password");
+  if (header) return header;
+
+  const authorization = request.headers.get("authorization");
+  if (authorization?.startsWith("Bearer ")) {
+    const token = authorization.slice("Bearer ".length).trim();
+    return token || null;
+  }
+
+  return null;
+}
+
+export function requireCronSecret(value: string | null): void {
+  const cronSecret = getRuntimeEnv("CRON_SECRET");
+  if (value && cronSecret && timingSafeEqual(value, cronSecret)) return;
+
+  throw new Error("未授权，请检查定时采集密钥。");
+}
+
 export function verifyAdminPassword(value: string | null | undefined): boolean {
   return Boolean(value && timingSafeEqual(value, getAdminPassword()));
 }

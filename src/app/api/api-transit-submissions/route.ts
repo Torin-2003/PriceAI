@@ -7,12 +7,15 @@ import {
 import { createTransitSubmission } from "@/lib/api-transit-submissions";
 
 const accessModeSchema = z.enum(["public_only", "test_key", "test_account"]);
+const httpUrlSchema = z.string().url().max(2048).refine((value) => isHttpUrl(value), {
+  message: "链接仅支持 http 或 https。",
+});
 
 const credentialSchema = z.object({
   accessMode: accessModeSchema,
   safetyConfirmed: z.boolean().optional(),
   apiKey: z.string().trim().max(3000).optional().nullable(),
-  loginUrl: z.string().url().max(2048).optional().nullable(),
+  loginUrl: httpUrlSchema.optional().nullable(),
   username: z.string().trim().max(300).optional().nullable(),
   password: z.string().trim().max(3000).optional().nullable(),
   budgetLimit: z.string().trim().max(200).optional().nullable(),
@@ -31,10 +34,10 @@ const credentialSchema = z.object({
 const schema = z.object({
   type: z.enum(["user", "merchant"]).default("user"),
   stationId: z.string().trim().max(120).optional().nullable(),
-  url: z.string().url().max(2048),
+  url: httpUrlSchema,
   name: z.string().trim().max(200).optional().nullable(),
-  apiBaseUrl: z.string().url().max(2048).optional().nullable(),
-  pricingUrl: z.string().url().max(2048).optional().nullable(),
+  apiBaseUrl: httpUrlSchema.optional().nullable(),
+  pricingUrl: httpUrlSchema.optional().nullable(),
   contact: z.string().trim().max(200).optional().nullable(),
   notes: z.string().trim().max(1000).optional().nullable(),
   models: z.array(z.string().trim().max(80)).max(30).optional(),
@@ -81,22 +84,57 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, ...result });
   } catch (error) {
     const message = getErrorMessage(error);
-    const status = error instanceof z.ZodError ? 400 : message.includes("尚未配置") ? 503 : 500;
+    const status = getErrorStatus(error, message);
     if (status >= 500) console.error("[api-transit-submissions] failed", error);
     return Response.json({ ok: false, message }, { status });
   }
 }
 
 function getClientIp(request: Request): string | null {
+  const cloudflareIp = request.headers.get("cf-connecting-ip")?.trim();
+  if (cloudflareIp) return cloudflareIp;
+
   const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]!.trim();
-  return request.headers.get("x-real-ip");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first;
+  }
+
+  return request.headers.get("x-real-ip")?.trim() || "unknown";
 }
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof z.ZodError) return "提交内容格式不正确，请检查链接和字段。";
   if (error instanceof Error) return error.message;
   return "提交失败，请稍后再试。";
+}
+
+function getErrorStatus(error: unknown, message: string): number {
+  if (error instanceof z.ZodError) return 400;
+  if (message.includes("尚未配置")) return 503;
+  if (message.includes("过于频繁")) return 429;
+  if (isClientSubmissionError(message)) return 400;
+  return 500;
+}
+
+function isClientSubmissionError(message: string): boolean {
+  return [
+    "链接仅支持",
+    "至少需要",
+    "需要填写",
+    "请确认",
+    "只有商家入驻",
+    "Invalid URL",
+  ].some((keyword) => message.includes(keyword));
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function validateSubmissionAccess(payload: z.infer<typeof schema>) {

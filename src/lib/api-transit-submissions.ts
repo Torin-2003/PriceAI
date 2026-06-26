@@ -19,7 +19,10 @@ export type CreateTransitSubmissionInput = {
   meta?: Record<string, unknown>;
   accessMode?: TransitSubmissionAccessMode | null;
   submitterIp?: string | null;
+  rateLimitPerHour?: number;
 };
+
+const DEFAULT_TRANSIT_SUBMISSION_RATE_LIMIT_PER_HOUR = 8;
 
 export async function createTransitSubmission(input: CreateTransitSubmissionInput) {
   const supabase = getSupabaseServerClient();
@@ -29,6 +32,8 @@ export async function createTransitSubmission(input: CreateTransitSubmissionInpu
   const id = stableId("api-transit-submission", input.type, submittedUrl, input.submitterIp || "", new Date().toISOString());
   const existing = await findRecentSubmission(submittedUrl, input.submitterIp);
   if (existing) return { ignored: true as const, id: existing };
+
+  await assertSubmitterRateLimit(input.submitterIp, input.rateLimitPerHour);
 
   const { error } = await supabase.from("api_transit_submissions").insert({
     id,
@@ -71,8 +76,33 @@ async function findRecentSubmission(url: string, submitterIp?: string | null): P
   return data?.id ? String(data.id) : null;
 }
 
+async function assertSubmitterRateLimit(
+  submitterIp: string | null | undefined,
+  rateLimitPerHour = DEFAULT_TRANSIT_SUBMISSION_RATE_LIMIT_PER_HOUR,
+): Promise<void> {
+  if (!submitterIp || rateLimitPerHour <= 0) return;
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return;
+
+  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count, error } = await supabase
+    .from("api_transit_submissions")
+    .select("id", { count: "exact", head: true })
+    .eq("submitter_ip", submitterIp)
+    .gte("created_at", since);
+
+  if (error) throw error;
+  if ((count || 0) >= rateLimitPerHour) {
+    throw new Error("提交过于频繁，请稍后再试。");
+  }
+}
+
 function normalizeUrl(value: string): string {
   const url = new URL(value.trim());
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("链接仅支持 http 或 https。");
+  }
   url.hash = "";
   return url.toString();
 }

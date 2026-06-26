@@ -1,15 +1,14 @@
 import { loadTargets, runPriceCollection } from "../../../../../scripts/collect-prices.mjs";
-import { getAdminPasswordFromRequest } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
-import { requireAdminOrCronPassword } from "@/lib/env";
+import { authorizeCronRequest, cronMethodNotAllowed } from "@/lib/cron-auth";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-export async function GET(request: Request) {
-  return runCronCollection(request);
+export function GET() {
+  return cronMethodNotAllowed("执行定时采集");
 }
 
 export async function POST(request: Request) {
@@ -17,7 +16,7 @@ export async function POST(request: Request) {
 }
 
 async function runCronCollection(request: Request) {
-  const authError = authorizeCronRequest(request);
+  const authError = authorizeCronRequest(request, "执行定时采集");
   if (authError) return authError;
 
   const startedAt = new Date().toISOString();
@@ -49,7 +48,7 @@ async function runCronCollection(request: Request) {
       source,
       post: true,
       endpoint,
-      password: getRuntimeEnv("ADMIN_PASSWORD"),
+      password: getRuntimeEnv("CRON_SECRET") || getRuntimeEnv("ADMIN_PASSWORD"),
       silent: true,
     });
 
@@ -69,21 +68,5 @@ async function runCronCollection(request: Request) {
       },
       { status: 500 },
     );
-  }
-}
-
-function authorizeCronRequest(request: Request) {
-  if (!getRuntimeEnv("CRON_SECRET") && process.env.NODE_ENV === "production") {
-    return Response.json(
-      { ok: false, message: "CRON_SECRET 未配置，已拒绝执行定时采集。" },
-      { status: 500 },
-    );
-  }
-
-  try {
-    requireAdminOrCronPassword(getAdminPasswordFromRequest(request));
-    return null;
-  } catch {
-    return Response.json({ ok: false, message: "无权执行定时采集。" }, { status: 401 });
   }
 }
