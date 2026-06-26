@@ -29,6 +29,7 @@ import { TransitStationSystemIcon } from "@/components/TransitStationSystemIcon"
 import { formatDateDay, formatDateMinute, formatDateShortMinute } from "@/lib/utils";
 import type {
   TransitModelFamily,
+  TransitMultiplierHistoryPoint,
   TransitModelPrice,
   TransitStation,
 } from "@/data/api-transit/types";
@@ -76,9 +77,11 @@ type TransitPriceGroup = {
   modelMultiplierMax: number | null;
   sevenDayRate: number | null;
   sevenDaySamples: number;
+  firstCheckedAt: string | null;
   lastCheckedAt: string | null;
   latestVerifiedAt: string;
   priceSource: string;
+  history: TransitMultiplierHistoryPoint[];
 };
 
 type TransitOutboundIntent = {
@@ -216,7 +219,7 @@ export default function TransitStationDetail({ station, backHref }: Props) {
               <MetricCard label="Claude 倍率" value={formatRate(claudeSummary.combinedRateMin)} helper={`${claudeSummary.priceCount} 个分组`} />
               <MetricCard label="GPT 倍率" value={formatRate(gptSummary.combinedRateMin)} helper={`${gptSummary.priceCount} 个分组`} />
               <MetricCard label="可用率" value={formatPercent(station.availability.sevenDayRate)} helper={`样本 ${station.availability.sevenDaySamples}`} />
-              <MetricCard label="最后检查" value={formatDateMinute(station.availability.lastCheckedAt)} helper={station.monitorUrl ? "含监测入口" : "站点样本"} />
+              <MetricCard label="最近检查" value={formatDateMinute(station.availability.lastCheckedAt)} helper={formatAvailabilityBasis(station)} />
             </div>
           </div>
 
@@ -274,7 +277,6 @@ export default function TransitStationDetail({ station, backHref }: Props) {
               来源渠道
             </h3>
             <InfoGroup label="公开标签" items={getNormalizedSourceTags(station).map((item) => item.label)} />
-            <InfoGroup label="支付方式" items={station.paymentMethods} />
             {station.monitorUrl ? (
               <a
                 href={station.monitorUrl}
@@ -292,11 +294,12 @@ export default function TransitStationDetail({ station, backHref }: Props) {
               <HelpCircle className="h-4 w-4" />
               售后与规则
             </h3>
-            <div className="space-y-2 text-xs">
-              <TextLine label="售后渠道" value={station.supportChannels.join("、")} />
-              <TextLine label="退款政策" value={station.refundPolicy} />
+            <div className="space-y-3 text-xs">
+              <InfoGroup label="支付方式" items={station.paymentMethods} />
               <TextLine label="最低充值" value={station.minimumTopUp} />
-              <TextLine label="余额有效期" value={station.balanceExpiry} />
+              <OptionalTextLine label="售后渠道" value={station.supportChannels.join("、")} />
+              <OptionalTextLine label="余额有效期" value={station.balanceExpiry} />
+              <OptionalTextLine label="退款说明" value={station.refundPolicy} />
             </div>
           </section>
         </aside>
@@ -780,6 +783,7 @@ function PriceTable({
   const groups = getFamilyPriceGroups(station, family);
   const summary = getFamilyRateSummary(station, family);
   const isDesktop = useMediaQuery("(min-width: 768px)");
+  const trend = buildFamilyTrend(groups);
 
   return (
     <section className="overflow-hidden rounded-lg border border-[#dfe4e5] bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)]">
@@ -792,50 +796,356 @@ function PriceTable({
         </span>
       </div>
       {groups.length ? (
-        isDesktop === false ? (
-          <div className="divide-y divide-[#dfe4e5]">
-            {groups.map((group) => (
-              <PriceGroupMobileCard
-                key={`${family}-${group.groupName}`}
-                station={station}
-                group={group}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] table-fixed border-collapse">
-              <colgroup>
-                <col className="w-[30%]" />
-                <col className="w-[14%]" />
-                <col className="w-[28%]" />
-                <col className="w-[28%]" />
-              </colgroup>
-              <thead>
-                <tr className="bg-[#f2f4f4]/50">
-                  <DataTableHead compact>分组 / 模型</DataTableHead>
-                  <DataTableHead compact>综合倍率</DataTableHead>
-                  <DataTableHead compact>监测模型价格</DataTableHead>
-                  <DataTableHead compact>监测 / 确认</DataTableHead>
-                </tr>
-              </thead>
-              <tbody>
+        <>
+          <MultiplierTrendPanel family={family} groups={groups} trend={trend} />
+          {isDesktop === false ? (
+            <div className="divide-y divide-[#dfe4e5]">
               {groups.map((group) => (
-                <PriceGroupRow
+                <PriceGroupMobileCard
                   key={`${family}-${group.groupName}`}
                   station={station}
                   group={group}
                 />
               ))}
-              </tbody>
-            </table>
-          </div>
-        )
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] table-fixed border-collapse">
+                <colgroup>
+                  <col className="w-[30%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[28%]" />
+                  <col className="w-[28%]" />
+                </colgroup>
+                <thead>
+                  <tr className="bg-[#f2f4f4]/50">
+                    <DataTableHead compact>分组 / 模型</DataTableHead>
+                    <DataTableHead compact>综合倍率</DataTableHead>
+                    <DataTableHead compact>监测模型价格</DataTableHead>
+                    <DataTableHead compact>监测 / 确认</DataTableHead>
+                  </tr>
+                </thead>
+                <tbody>
+                {groups.map((group) => (
+                  <PriceGroupRow
+                    key={`${family}-${group.groupName}`}
+                    station={station}
+                    group={group}
+                  />
+                ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       ) : (
         <div className="px-4 py-8 text-sm text-[#5a6061] sm:px-5">这个站点暂未收录 {TRANSIT_MODEL_FAMILY_LABELS[family]} 报价。</div>
       )}
     </section>
   );
+}
+
+type FamilyTrend = {
+  series: TrendSeries[];
+  points: TrendPoint[];
+  min: number | null;
+  max: number | null;
+  change: number | null;
+  largestGroupChange: { groupName: string; change: number; from: number; to: number } | null;
+  observedStart: string | null;
+  observedEnd: string | null;
+  hasHistoricalData: boolean;
+};
+
+type TrendSeries = {
+  groupName: string;
+  points: TrendPoint[];
+  current: number | null;
+  change: number | null;
+};
+
+type TrendPoint = {
+  label: string;
+  observedAt: string;
+  value: number;
+};
+
+const TREND_SERIES_COLORS = ["#2f7a4b", "#47657a", "#c7861d", "#8a5fbf", "#9b3328", "#4f7c7a"];
+
+function MultiplierTrendPanel({
+  family,
+  groups,
+  trend,
+}: {
+  family: TransitModelFamily;
+  groups: TransitPriceGroup[];
+  trend: FamilyTrend;
+}) {
+  return (
+    <div className="border-b border-[#dfe4e5] bg-white px-4 py-4 sm:px-5">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
+        <div className="min-w-0">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-extrabold text-[#202829]">
+                {TRANSIT_MODEL_FAMILY_LABELS[family]} 综合倍率趋势
+              </h3>
+              <p className="mt-0.5 text-xs leading-5 text-[#5a6061]">
+                {formatTrendWindow(trend)}
+              </p>
+            </div>
+            <span className={`rounded-full px-2.5 py-1 text-[11px] font-extrabold ${trendAlertClass(trend.largestGroupChange?.change ?? null)}`}>
+              {formatTrendChangeLabel(trend)}
+            </span>
+          </div>
+          <TrendSparkline trend={trend} />
+          {trend.series.length > 1 ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {trend.series.map((series, index) => (
+                <span key={series.groupName} className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#5a6061]">
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: trendSeriesColor(index) }}
+                    aria-hidden="true"
+                  />
+                  <span className="max-w-[16ch] truncate">{series.groupName}</span>
+                  <span className="tabular-nums text-[#202829]">{formatRate(series.current)}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="grid gap-2 text-xs">
+          <TrendFact label="当前最低" value={formatRate(getCurrentTrendMinimum(trend))} />
+          <TrendFact label="观察范围" value={formatRateRange(trend.min, trend.max)} />
+          <TrendFact label="分组数" value={`${groups.length} 个分组`} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TrendSparkline({ trend }: { trend: FamilyTrend }) {
+  if (!trend.points.length || !trend.series.length) {
+    return (
+      <div className="flex h-[96px] items-center justify-center rounded-lg border border-dashed border-[#cfd8d9] bg-[#f7f9f9] text-xs font-semibold text-[#7a8182]">
+        暂无倍率历史，等待后续采集沉淀曲线
+      </div>
+    );
+  }
+
+  const width = 720;
+  const height = 96;
+  const paddingX = 12;
+  const paddingY = 14;
+  const values = trend.points.map((point) => point.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || Math.max(max, 1);
+  const timestamps = Array.from(new Set(trend.points.map((point) => point.observedAt)))
+    .sort((left, right) => new Date(left).getTime() - new Date(right).getTime());
+  const timeIndex = new Map(timestamps.map((timestamp, index) => [timestamp, index]));
+  const denominator = Math.max(timestamps.length - 1, 1);
+  const seriesPaths = trend.series
+    .map((series, seriesIndex) => {
+      const coords = series.points
+        .map((point) => {
+          const index = timeIndex.get(point.observedAt);
+          if (index === undefined) return null;
+          const x = paddingX + (timestamps.length === 1 ? 0.5 : index / denominator) * (width - paddingX * 2);
+          const y = paddingY + (1 - (point.value - min) / range) * (height - paddingY * 2);
+          return { x, y, point };
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item));
+      const path = coords.map((item, index) => `${index === 0 ? "M" : "L"} ${item.x.toFixed(2)} ${item.y.toFixed(2)}`).join(" ");
+      return { series, seriesIndex, coords, path };
+    })
+    .filter((item) => item.coords.length);
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-[#dfe4e5] bg-[#f9fbfa]">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-[96px] w-full" role="img" aria-label={trendAriaLabel(trend)}>
+        {seriesPaths.map(({ series, seriesIndex, path, coords }) => (
+          <g key={series.groupName}>
+            <path
+              d={path}
+              fill="none"
+              stroke={trendSeriesColor(seriesIndex)}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={seriesIndex === 0 ? 2.8 : 2}
+              opacity={seriesIndex === 0 ? 1 : 0.78}
+            />
+            {coords.map((item, index) => (
+              <circle
+                key={`${series.groupName}-${item.point.observedAt}-${index}`}
+                cx={item.x}
+                cy={item.y}
+                r={index === coords.length - 1 ? 3.2 : 2.1}
+                fill={index === coords.length - 1 ? "#202829" : trendSeriesColor(seriesIndex)}
+              >
+                <title>{`${series.groupName} ${formatRate(item.point.value)} · ${formatDateShortMinute(item.point.observedAt)}`}</title>
+              </circle>
+            ))}
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+function TrendFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-[#f7f9f9] px-3 py-2 ring-1 ring-[#adb3b4]/15">
+      <div className="text-[10px] font-bold text-[#7a8182]">{label}</div>
+      <div className="mt-0.5 text-sm font-extrabold tabular-nums text-[#202829]">{value}</div>
+    </div>
+  );
+}
+
+function buildFamilyTrend(groups: TransitPriceGroup[]): FamilyTrend {
+  const timestamps = new Set<string>();
+  const series = groups
+    .map((group) => {
+      const points = group.history
+        .filter((point) => point.combinedRate !== null && Number.isFinite(point.combinedRate))
+        .map((point) => ({
+          label: group.groupName,
+          observedAt: point.observedAt,
+          value: point.combinedRate as number,
+        }))
+        .sort((left, right) => new Date(left.observedAt).getTime() - new Date(right.observedAt).getTime())
+        .slice(-18);
+
+      for (const point of points) timestamps.add(point.observedAt);
+      const first = points[0]?.value ?? null;
+      const last = points.at(-1)?.value ?? null;
+      return {
+        groupName: group.groupName,
+        points,
+        current: last,
+        change: first !== null && last !== null && points.length >= 2 ? last - first : null,
+      };
+    })
+    .filter((item) => item.points.length)
+    .sort((left, right) => nullableSortValue(left.current) - nullableSortValue(right.current));
+
+  const timeline = Array.from(timestamps)
+    .sort((left, right) => new Date(left).getTime() - new Date(right).getTime())
+    .slice(-18);
+  const timelineSet = new Set(timeline);
+  const points = series.flatMap((item) => item.points.filter((point) => timelineSet.has(point.observedAt)));
+  const values = points.map((point) => point.value);
+  const changeCandidates = series
+    .filter((item): item is TrendSeries & { change: number; current: number } =>
+      item.change !== null && item.current !== null && Number.isFinite(item.change)
+    )
+    .map((item) => ({
+      groupName: item.groupName,
+      change: item.change,
+      from: item.current - item.change,
+      to: item.current,
+    }));
+  const largestGroupChange = changeCandidates.sort((left, right) => Math.abs(right.change) - Math.abs(left.change))[0] || null;
+
+  return {
+    series,
+    points,
+    min: values.length ? Math.min(...values) : null,
+    max: values.length ? Math.max(...values) : null,
+    change: largestGroupChange?.change ?? null,
+    largestGroupChange,
+    observedStart: timeline[0] || null,
+    observedEnd: timeline.at(-1) || null,
+    hasHistoricalData: series.some((item) => item.points.length > 1),
+  };
+}
+
+function normalizedGroupHistory(
+  station: TransitStation,
+  price: TransitModelPrice
+): TransitMultiplierHistoryPoint[] {
+  const combinedRate = getCombinedRateForPrice(station, price);
+  const currentPoint =
+    combinedRate === null
+      ? null
+      : {
+          observedAt: price.lastVerifiedAt,
+          rechargeRatio: price.rechargeRatio,
+          rechargeCoefficient:
+            getRechargeCoefficientFromRatio(price.rechargeRatio) ??
+            getStationRechargeCoefficient(station),
+          modelMultiplier: price.modelMultiplier,
+          combinedRate,
+          priceSource: price.priceSource,
+        };
+  const points = [...(price.history || [])];
+
+  if (currentPoint) {
+    const existingCurrent = points.some((point) =>
+      point.observedAt === currentPoint.observedAt &&
+      point.combinedRate !== null &&
+      Math.abs(point.combinedRate - currentPoint.combinedRate) < 0.0001
+    );
+    if (!existingCurrent) points.push(currentPoint);
+  }
+
+  return points
+    .filter((point) => point.combinedRate !== null && Number.isFinite(point.combinedRate))
+    .sort((left, right) => new Date(left.observedAt).getTime() - new Date(right.observedAt).getTime());
+}
+
+function formatTrendWindow(trend: FamilyTrend): string {
+  if (!trend.points.length) return "暂无历史记录，后续采集后生成倍率曲线。";
+  const windowText =
+    trend.observedStart && trend.observedEnd && trend.observedStart !== trend.observedEnd
+      ? `${formatDateShortMinute(trend.observedStart)} - ${formatDateShortMinute(trend.observedEnd)}`
+      : `当前快照 ${formatDateShortMinute(trend.observedEnd)}`;
+  const sourceText = trend.hasHistoricalData ? "历史快照" : "当前快照";
+  return `${sourceText} · ${windowText}`;
+}
+
+function formatTrendChangeLabel(trend: FamilyTrend): string {
+  if (!trend.points.length) return "等待记录";
+  const change = trend.largestGroupChange?.change ?? trend.change;
+  if (change === null || !Number.isFinite(change) || Math.abs(change) < 0.005) return "倍率稳定";
+  return `最大变动 ${trend.largestGroupChange?.groupName ? `${trend.largestGroupChange.groupName} ` : ""}${formatRateDelta(change)}`;
+}
+
+function trendAlertClass(change: number | null): string {
+  if (change === null || !Number.isFinite(change)) return "bg-[#f2f4f4] text-[#5a6061]";
+  const absolute = Math.abs(change);
+  if (absolute >= 0.5) return "bg-[#fbe9e7] text-[#9b3328]";
+  if (absolute >= 0.2) return "bg-[#fff7e8] text-[#7a541b]";
+  return "bg-[#e8f3ec] text-[#2f7a4b]";
+}
+
+function trendAriaLabel(trend: FamilyTrend): string {
+  if (!trend.points.length) return "暂无倍率历史趋势";
+  return `综合倍率趋势，${formatTrendWindow(trend)}，${formatTrendChangeLabel(trend)}`;
+}
+
+function formatRateRange(min: number | null, max: number | null): string {
+  if (min === null || max === null) return "—";
+  if (min === max) return formatRate(min);
+  return `${formatRate(min)} - ${formatRate(max)}`;
+}
+
+function formatRateDelta(value: number): string {
+  const prefix = value > 0 ? "+" : "-";
+  return `${prefix}${formatRate(Math.abs(value))}`;
+}
+
+function getCurrentTrendMinimum(trend: FamilyTrend): number | null {
+  const values = trend.series
+    .map((series) => series.current)
+    .filter((value): value is number => value !== null && Number.isFinite(value));
+  return values.length ? Math.min(...values) : null;
+}
+
+function trendSeriesColor(index: number): string {
+  return TREND_SERIES_COLORS[index % TREND_SERIES_COLORS.length];
 }
 
 function PriceGroupMobileCard({
@@ -901,7 +1211,7 @@ function PriceGroupMobileCard({
         ))}
         <ProbePolicyTag
           label={`监测 ${shortModelLabel(primaryPrice.standardModel)}`}
-          title="PriceAI 先拉取该分组 Key 的可用模型列表，再按最新且级别最高的可用模型发起一次请求。模型可用性计划每 5 分钟监测；价格和分组倍率计划每天刷新一次。"
+          title="PriceAI 先拉取该分组 Key 的可用模型列表，再按最新且级别最高的可用模型发起一次请求。监测频率按实际样本展示；价格和分组倍率按公开价格或后台确认记录沉淀。"
         />
       </div>
 
@@ -909,6 +1219,7 @@ function PriceGroupMobileCard({
         <TransitAvailabilityStrip
           rate={group.sevenDayRate}
           samples={group.sevenDaySamples}
+          firstCheckedAt={group.firstCheckedAt}
           lastCheckedAt={group.lastCheckedAt}
           className="shrink-0"
         />
@@ -962,7 +1273,7 @@ function PriceGroupRow({
         <ProbePolicyTag
           className="mt-2"
           label={`监测 ${shortModelLabel(primaryPrice.standardModel)}`}
-          title="PriceAI 先拉取该分组 Key 的可用模型列表，再按最新且级别最高的可用模型发起一次请求。模型可用性计划每 5 分钟监测；价格和分组倍率计划每天刷新一次。"
+          title="PriceAI 先拉取该分组 Key 的可用模型列表，再按最新且级别最高的可用模型发起一次请求。监测频率按实际样本展示；价格和分组倍率按公开价格或后台确认记录沉淀。"
         />
       </td>
       <td className="px-4 py-4">
@@ -999,12 +1310,13 @@ function PriceGroupRow({
           <TransitAvailabilityStrip
             rate={group.sevenDayRate}
             samples={group.sevenDaySamples}
+            firstCheckedAt={group.firstCheckedAt}
             lastCheckedAt={group.lastCheckedAt}
           />
         </div>
         <div className="mt-2 break-words text-xs font-semibold text-[#2d3435]">{group.priceSource || "未公开"}</div>
         <div className="mt-1 whitespace-nowrap text-[11px] text-[#5a6061]">
-          {formatDateShortMinute(group.latestVerifiedAt)}
+          价格确认 {formatDateShortMinute(group.latestVerifiedAt)}
         </div>
       </td>
     </tr>
@@ -1049,6 +1361,12 @@ function buildPriceGroup(
       .filter((value): value is string => Boolean(value))
       .sort()
       .at(-1) ?? null;
+  const firstCheckedAt =
+    prices
+      .map((price) => price.availability.firstCheckedAt)
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .at(0) ?? null;
   const latestVerifiedAt =
     prices
       .map((price) => price.lastVerifiedAt)
@@ -1066,9 +1384,11 @@ function buildPriceGroup(
     modelMultiplierMax: modelMultipliers.length ? Math.max(...modelMultipliers) : null,
     sevenDayRate: weightedAvailability,
     sevenDaySamples: availabilitySamples,
+    firstCheckedAt,
     lastCheckedAt,
     latestVerifiedAt,
     priceSource: primaryPrice.priceSource,
+    history: normalizedGroupHistory(station, primaryPrice),
   };
 }
 
@@ -1143,8 +1463,8 @@ function AvailabilityTable({ station }: { station: TransitStation }) {
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#dfe4e5] bg-[#f2f4f4] px-4 py-3 sm:px-5">
         <h2 className="text-base font-extrabold text-[#202829]">监测样本</h2>
         <ProbePolicyTag
-          label="5 分钟模型探测"
-          title="模型可用性：先拉取可用模型列表，再按最新且级别最高的可用模型实际请求。频率计划为每 5 分钟一次；价格和分组倍率计划每天刷新一次。"
+          label="模型探测样本"
+          title="模型可用性：先拉取可用模型列表，再按最新且级别最高的可用模型实际请求。监测区间按已记录样本的起止时间展示；价格和分组倍率按公开价格或后台确认记录沉淀。"
         />
       </div>
       {isDesktop === false ? (
@@ -1171,7 +1491,12 @@ function AvailabilityTable({ station }: { station: TransitStation }) {
                 <tr key={row.label} className="border-b border-[#dfe4e5]">
                   <td className="px-4 py-3 text-xs font-semibold text-[#202829]">{row.label}</td>
                   <td className="px-4 py-3">
-                    <AvailabilityStatus rate={row.rate} samples={row.sevenDaySamples} lastCheckedAt={row.lastCheckedAt} />
+                    <AvailabilityStatus
+                      rate={row.rate}
+                      samples={row.sevenDaySamples}
+                      firstCheckedAt={row.firstCheckedAt}
+                      lastCheckedAt={row.lastCheckedAt}
+                    />
                   </td>
                   <td className="px-4 py-3 text-sm text-[#2d3435]">{row.sevenDaySamples}</td>
                   <td className="px-4 py-3 text-xs text-[#5a6061]">{formatMonitoringWindow(row)}</td>
@@ -1205,7 +1530,12 @@ function AvailabilityMobileCard({ row }: { row: AvailabilityRow }) {
           <h3 className="text-sm font-extrabold text-[#202829]">{row.label}</h3>
           <p className="mt-1 text-xs text-[#5a6061]">样本 {row.sevenDaySamples}</p>
         </div>
-        <AvailabilityStatus rate={row.rate} samples={row.sevenDaySamples} lastCheckedAt={row.lastCheckedAt} />
+        <AvailabilityStatus
+          rate={row.rate}
+          samples={row.sevenDaySamples}
+          firstCheckedAt={row.firstCheckedAt}
+          lastCheckedAt={row.lastCheckedAt}
+        />
       </div>
       <div className="mt-3 grid gap-2">
         <MobileTextBlock label="监测区间" value={formatMonitoringWindow(row)} />
@@ -1228,10 +1558,12 @@ function MobileTextBlock({ label, value }: { label: string; value: string }) {
 function AvailabilityStatus({
   rate,
   samples,
+  firstCheckedAt,
   lastCheckedAt,
 }: {
   rate: number | null;
   samples: number;
+  firstCheckedAt?: string | null;
   lastCheckedAt: string | null;
 }) {
   return (
@@ -1243,6 +1575,7 @@ function AvailabilityStatus({
       <TransitAvailabilityStrip
         rate={rate}
         samples={samples}
+        firstCheckedAt={firstCheckedAt}
         lastCheckedAt={lastCheckedAt}
         className="mt-1"
       />
@@ -1259,7 +1592,16 @@ function getFamilyMonitorModelLabel(station: TransitStation, family: TransitMode
 function formatMonitoringWindow(input: { firstCheckedAt?: string | null; lastCheckedAt: string | null; sevenDaySamples: number }): string {
   if (!input.lastCheckedAt || input.sevenDaySamples <= 0) return "暂无监测区间";
   const start = input.firstCheckedAt || input.lastCheckedAt;
+  if (start === input.lastCheckedAt || input.sevenDaySamples === 1) {
+    return `单次检查 ${formatDateShortMinute(input.lastCheckedAt)}`;
+  }
   return `${formatDateShortMinute(start)} - ${formatDateShortMinute(input.lastCheckedAt)}`;
+}
+
+function formatAvailabilityBasis(station: TransitStation): string {
+  if (station.availability.sevenDaySamples > 1) return `样本 ${station.availability.sevenDaySamples}`;
+  if (station.availability.sevenDaySamples === 1) return "单次样本";
+  return station.monitorUrl ? "含监测入口" : "暂无样本";
 }
 
 function MetricCard({
@@ -1304,6 +1646,17 @@ function TextLine({ label, value }: { label: string; value: string | null }) {
       <span className="text-[#2d3435]">{value || "未公开"}</span>
     </div>
   );
+}
+
+function OptionalTextLine({ label, value }: { label: string; value: string | null }) {
+  if (!isPublicRuleValue(value)) return null;
+  return <TextLine label={label} value={value} />;
+}
+
+function isPublicRuleValue(value: string | null): value is string {
+  const text = value?.trim();
+  if (!text) return false;
+  return !["未公开", "暂无", "无", "unknown", "n/a", "N/A", "-"].includes(text);
 }
 
 function formatModelRate(value: number | null) {

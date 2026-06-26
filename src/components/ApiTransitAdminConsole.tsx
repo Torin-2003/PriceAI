@@ -1322,16 +1322,16 @@ function StationEditDialog({
           <AdminField label="号池标签">
             <input name="accountPools" defaultValue={station.accountPools.join("，")} className={adminFieldClassName} placeholder="Plus，Pro，Max，Kiro" />
           </AdminField>
-          <AdminField label="支付方式">
+          <AdminField label="支付方式（前台重点）">
             <input name="paymentMethods" defaultValue={station.paymentMethods.join("，")} className={adminFieldClassName} />
           </AdminField>
           <AdminField label="售后渠道">
             <input name="supportChannels" defaultValue={station.supportChannels.join("，")} className={adminFieldClassName} />
           </AdminField>
-          <AdminField label="最低充值">
+          <AdminField label="最低充值（前台重点）">
             <input name="minimumTopUp" defaultValue={station.minimumTopUp || ""} className={adminFieldClassName} />
           </AdminField>
-          <AdminField label="余额有效期">
+          <AdminField label="余额有效期（有公开信息再填）">
             <input name="balanceExpiry" defaultValue={station.balanceExpiry || ""} className={adminFieldClassName} />
           </AdminField>
         </div>
@@ -1393,7 +1393,7 @@ function StationEditDialog({
         <AdminField label="站点简介">
           <textarea name="summary" defaultValue={station.summary} className={`${adminFieldClassName} min-h-20 resize-y py-2 leading-6`} />
         </AdminField>
-        <AdminField label="退款说明">
+        <AdminField label="退款说明（有公开信息再填）">
           <textarea name="refundPolicy" defaultValue={station.refundPolicy || ""} className={`${adminFieldClassName} min-h-20 resize-y py-2 leading-6`} />
         </AdminField>
         <AdminField label="后台备注">

@@ -32,6 +32,15 @@ export interface TransitAvailability {
   note?: string;
 }
 
+export interface TransitMultiplierHistoryPoint {
+  observedAt: string;
+  rechargeRatio: string | null;
+  rechargeCoefficient: number | null;
+  modelMultiplier: number | null;
+  combinedRate: number | null;
+  priceSource: string | null;
+}
+
 export interface TransitModelPrice {
   family: TransitModelFamily;
   standardModel:
@@ -54,6 +63,7 @@ export interface TransitModelPrice {
   priceSource: string;
   lastVerifiedAt: string;
   availability: TransitAvailability;
+  history?: TransitMultiplierHistoryPoint[];
 }
 
 export interface TransitFeedbackSummary {

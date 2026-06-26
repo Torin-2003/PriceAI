@@ -44,7 +44,7 @@ export default async function ApiTransitDetailPage({
 }) {
   const { slug } = await params;
   const { back } = await searchParams;
-  const station = await getTransitStationBySlug(slug);
+  const station = await getTransitStationBySlug(slug, { includeHistory: true });
 
   if (!station) notFound();
 

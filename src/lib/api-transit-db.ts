@@ -2,6 +2,7 @@ import "server-only";
 
 import type {
   TransitModelFamily,
+  TransitMultiplierHistoryPoint,
   TransitModelPrice,
   TransitStation,
 } from "@/data/api-transit/types";
@@ -11,10 +12,13 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 let cached: TransitStation[] | null = null;
 let cachedAt = 0;
 let hasWarnedMissingEnhancementColumns = false;
+let hasWarnedMissingHistoryTable = false;
 const CACHE_TTL_MS = 30_000;
 const PUBLIC_TRANSIT_READ_TIMEOUT_MS = 2_500;
 const PUBLIC_TRANSIT_BUILD_READ_TIMEOUT_MS = 15_000;
 const NEXT_PRODUCTION_BUILD_PHASE = "phase-production-build";
+const TRANSIT_HISTORY_DAYS = 45;
+const TRANSIT_HISTORY_STATION_LIMIT = 320;
 
 export function clearTransitStationsCache(): void {
   cached = null;
@@ -30,9 +34,14 @@ export async function getTransitStations(): Promise<TransitStation[]> {
   return cached;
 }
 
-export async function getTransitStationBySlug(slug: string): Promise<TransitStation | undefined> {
+export async function getTransitStationBySlug(
+  slug: string,
+  options: { includeHistory?: boolean } = {}
+): Promise<TransitStation | undefined> {
   const stations = await getTransitStations();
-  return stations.find((station) => station.slug === slug);
+  const station = stations.find((item) => item.slug === slug);
+  if (!station || !options.includeHistory) return station;
+  return enrichStationWithDetailData(station);
 }
 
 async function readStationsFromSupabase(): Promise<TransitStation[]> {
@@ -172,6 +181,130 @@ async function readStationsFromSupabase(): Promise<TransitStation[]> {
       return [];
     }
   }
+
+}
+
+async function enrichStationWithDetailData(station: TransitStation): Promise<TransitStation> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase || !station.prices.length) return station;
+
+  const cutoff = new Date(Date.now() - TRANSIT_HISTORY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const [historyResult, samplesResult] = await Promise.all([
+      supabase
+        .from("api_transit_multiplier_history")
+        .select(
+          [
+            "station_id",
+            "family",
+            "standard_model",
+            "group_name",
+            "recharge_ratio",
+            "recharge_coefficient",
+            "model_multiplier",
+            "combined_rate",
+            "price_source",
+            "observed_at",
+          ].join(",")
+        )
+        .eq("station_id", station.id)
+        .gte("observed_at", cutoff)
+        .order("observed_at", { ascending: false })
+        .limit(TRANSIT_HISTORY_STATION_LIMIT)
+        .abortSignal(publicTransitReadSignal()),
+      supabase
+        .from("api_transit_availability_samples")
+        .select("scope,standard_model,group_name,checked_at")
+        .eq("station_id", station.id)
+        .gte("checked_at", cutoff)
+        .order("checked_at", { ascending: true })
+        .limit(1200)
+        .abortSignal(publicTransitReadSignal()),
+    ]);
+    if (historyResult.error) throw historyResult.error;
+    if (samplesResult.error && !isMissingTableError(samplesResult.error)) throw samplesResult.error;
+
+    const historyByOffer = new Map<string, TransitMultiplierHistoryPoint[]>();
+    for (const row of dbRows(historyResult.data)) {
+      const key = historyKey(row);
+      if (!key) continue;
+      historyByOffer.set(key, [...(historyByOffer.get(key) || []), mapHistoryRow(row)]);
+    }
+    for (const points of historyByOffer.values()) {
+      points.sort((left, right) => new Date(left.observedAt).getTime() - new Date(right.observedAt).getTime());
+    }
+
+    const availabilityWindows = buildAvailabilityWindows(dbRows(samplesResult.data), station.id);
+    const stationWindow = availabilityWindows.get(`${station.id}|station||`);
+
+    return {
+      ...station,
+      availability: {
+        ...station.availability,
+        firstCheckedAt: station.availability.firstCheckedAt || stationWindow?.first || null,
+        lastCheckedAt: station.availability.lastCheckedAt || stationWindow?.last || null,
+      },
+      prices: station.prices.map((price) => ({
+        ...price,
+        availability: {
+          ...price.availability,
+          firstCheckedAt:
+            price.availability.firstCheckedAt ||
+            availabilityWindows.get(availabilityWindowKey(station.id, "offer", price.standardModel, price.groupName))?.first ||
+            null,
+          lastCheckedAt:
+            price.availability.lastCheckedAt ||
+            availabilityWindows.get(availabilityWindowKey(station.id, "offer", price.standardModel, price.groupName))?.last ||
+            null,
+        },
+        history: historyByOffer.get(historyKey({
+          station_id: station.id,
+          family: price.family,
+          standard_model: price.standardModel,
+          group_name: price.groupName,
+        })) || [],
+      })),
+    };
+  } catch (error) {
+    if (!isMissingTableError(error) && !isMissingColumnError(error) && !hasWarnedMissingHistoryTable) {
+      hasWarnedMissingHistoryTable = true;
+      console.warn("API transit multiplier history is unavailable:", error);
+    }
+    return station;
+  }
+}
+
+function buildAvailabilityWindows(rows: DbRow[], stationId: string): Map<string, { first: string; last: string }> {
+  const windows = new Map<string, { first: string; last: string }>();
+
+  for (const row of rows) {
+    const checkedAt = nullableTimestamp(row.checked_at);
+    if (!checkedAt) continue;
+    const key = availabilityWindowKey(
+      stationId,
+      stringValue(row.scope) === "offer" ? "offer" : "station",
+      stringValue(row.standard_model),
+      stringValue(row.group_name)
+    );
+    const existing = windows.get(key);
+    if (!existing) {
+      windows.set(key, { first: checkedAt, last: checkedAt });
+      continue;
+    }
+    if (new Date(checkedAt).getTime() < new Date(existing.first).getTime()) existing.first = checkedAt;
+    if (new Date(checkedAt).getTime() > new Date(existing.last).getTime()) existing.last = checkedAt;
+  }
+
+  return windows;
+}
+
+function availabilityWindowKey(
+  stationId: string,
+  scope: "station" | "offer",
+  standardModel: string,
+  groupName: string
+): string {
+  return [stationId, scope, standardModel || "", groupName || ""].join("|");
 }
 
 type DbRow = Record<string, unknown>;
@@ -189,7 +322,8 @@ function publicTransitReadTimeoutMs(): number {
 function mapStationRow(
   row: DbRow,
   offerRows: DbRow[],
-  enhancementRow?: DbRow
+  enhancementRow?: DbRow,
+  historyByOffer: Map<string, TransitMultiplierHistoryPoint[]> = new Map()
 ): TransitStation {
   const id = stringValue(row.id);
   const updatedAt = timestampValue(row.last_updated_at || row.updated_at);
@@ -224,7 +358,7 @@ function mapStationRow(
       lastCheckedAt: nullableTimestamp(row.availability_last_checked_at),
       note: nullableString(row.availability_note) || undefined,
     },
-    prices: offerRows.map((offer) => mapOfferRow(offer)).filter((price): price is TransitModelPrice => Boolean(price)),
+    prices: offerRows.map((offer) => mapOfferRow(offer, historyByOffer)).filter((price): price is TransitModelPrice => Boolean(price)),
     feedback: {
       pendingCount: integerValue(row.feedback_pending_count) || 0,
       verifiedRiskCount: integerValue(row.feedback_verified_risk_count) || 0,
@@ -239,15 +373,19 @@ function mapStationRow(
   };
 }
 
-function mapOfferRow(row: DbRow): TransitModelPrice | null {
+function mapOfferRow(
+  row: DbRow,
+  historyByOffer: Map<string, TransitMultiplierHistoryPoint[]> = new Map()
+): TransitModelPrice | null {
   const family = modelFamily(row.family);
   const standardModel = standardModelValue(row.standard_model);
   if (!family || !standardModel) return null;
+  const groupName = stringValue(row.group_name) || "默认分组";
 
   return {
     family,
     standardModel,
-    groupName: stringValue(row.group_name) || "默认分组",
+    groupName,
     rechargeRatio: nullableString(row.recharge_ratio),
     modelMultiplier: numberValue(row.model_multiplier),
     inputPrice: numberValue(row.input_price),
@@ -266,6 +404,12 @@ function mapOfferRow(row: DbRow): TransitModelPrice | null {
       lastCheckedAt: nullableTimestamp(row.availability_last_checked_at),
       note: nullableString(row.availability_note) || undefined,
     },
+    history: historyByOffer.get(historyKey({
+      station_id: row.station_id,
+      family,
+      standard_model: standardModel,
+      group_name: groupName,
+    })) || [],
   };
 }
 
@@ -280,6 +424,35 @@ function isMissingColumnError(error: unknown): boolean {
       "code" in error &&
       (error as { code?: unknown }).code === "42703"
   );
+}
+
+function isMissingTableError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "42P01"
+  );
+}
+
+function historyKey(row: DbRow): string {
+  const stationId = stringValue(row.station_id);
+  const family = stringValue(row.family);
+  const standardModel = stringValue(row.standard_model);
+  const groupName = stringValue(row.group_name);
+  if (!stationId || !family || !standardModel || !groupName) return "";
+  return [stationId, family, standardModel, groupName].join("|");
+}
+
+function mapHistoryRow(row: DbRow): TransitMultiplierHistoryPoint {
+  return {
+    observedAt: timestampValue(row.observed_at),
+    rechargeRatio: nullableString(row.recharge_ratio),
+    rechargeCoefficient: numberValue(row.recharge_coefficient),
+    modelMultiplier: numberValue(row.model_multiplier),
+    combinedRate: numberValue(row.combined_rate),
+    priceSource: nullableString(row.price_source),
+  };
 }
 
 function stringValue(value: unknown): string {

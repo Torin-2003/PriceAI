@@ -312,8 +312,7 @@ export function getStationComparisonSummary(
   const stabilitySamples = station.availability.sevenDaySamples;
   const sourceCompleteness = [
     station.minimumTopUp,
-    station.balanceExpiry,
-    station.refundPolicy,
+    station.paymentMethods.length ? "payments" : null,
     station.supportChannels.length ? "support" : null,
     station.channelTypes.length ? "channels" : null,
     station.accountPools.length ? "pools" : null,
