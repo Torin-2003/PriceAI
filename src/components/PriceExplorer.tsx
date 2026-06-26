@@ -809,50 +809,54 @@ export function PriceExplorer({
                 onChange={changePlatform}
               />
             </div>
-            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
-              <div className="inline-flex h-11 min-w-0 items-center rounded-full bg-[#e4e9ea] p-1">
-                <ViewToggleButton
-                  active={scopeMode === "products"}
-                  icon={<PackageCheck size={16} />}
-                  label="标准"
-                  onClick={() => changeScope("products")}
-                />
-                <ViewToggleButton
-                  active={scopeMode === "offers"}
-                  icon={<Database size={16} />}
-                  label="报价"
-                  onClick={() => changeScope("offers")}
-                />
-                <ViewToggleButton
-                  active={scopeMode === "merchants"}
-                  icon={<Store size={16} />}
-                  label="商家"
-                  onClick={() => changeScope("merchants")}
-                />
+            <div className="space-y-2">
+              <div className="-mx-1 overflow-x-auto px-1">
+                <div className="inline-flex h-11 min-w-max items-center rounded-full bg-[#e4e9ea] p-1">
+                  <ViewToggleButton
+                    active={scopeMode === "products"}
+                    icon={<PackageCheck size={16} />}
+                    label="标准"
+                    onClick={() => changeScope("products")}
+                  />
+                  <ViewToggleButton
+                    active={scopeMode === "offers"}
+                    icon={<Database size={16} />}
+                    label="报价"
+                    onClick={() => changeScope("offers")}
+                  />
+                  <ViewToggleButton
+                    active={scopeMode === "merchants"}
+                    icon={<Store size={16} />}
+                    label="商家"
+                    onClick={() => changeScope("merchants")}
+                  />
+                </div>
               </div>
-              <label className="relative inline-flex h-11 min-w-0 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full bg-[#e4e9ea] px-3 text-sm font-semibold text-[#2d3435]">
-                <ArrowUpDown size={16} className="shrink-0" />
-                <span className="truncate">{mobileSortLabel(sort, scopeMode)}</span>
-                <select
-                  aria-label="排序"
-                  value={sort}
-                  onChange={(event) => setSort(event.target.value as SortMode)}
-                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              <div className="grid grid-cols-2 gap-2">
+                <label className="relative inline-flex h-11 min-w-0 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full bg-[#e4e9ea] px-4 text-sm font-semibold text-[#2d3435]">
+                  <ArrowUpDown size={16} className="shrink-0" />
+                  <span className="truncate">{mobileSortLabel(sort, scopeMode)}</span>
+                  <select
+                    aria-label="排序"
+                    value={sort}
+                    onChange={(event) => setSort(event.target.value as SortMode)}
+                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  >
+                    <option value="available_price">{showingMerchants ? "综合观察" : "有货 + 低价"}</option>
+                    <option value="price">价格从低到高</option>
+                    <option value="updated">最近更新</option>
+                    <option value="channels">{showingMerchants ? "覆盖最多" : showingOffers ? "渠道名称" : "渠道数量"}</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen(true)}
+                  className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-[#e4e9ea] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#dde4e5]"
                 >
-                  <option value="available_price">{showingMerchants ? "综合观察" : "有货 + 低价"}</option>
-                  <option value="price">价格从低到高</option>
-                  <option value="updated">最近更新</option>
-                  <option value="channels">{showingMerchants ? "覆盖最多" : showingOffers ? "渠道名称" : "渠道数量"}</option>
-                </select>
-              </label>
-              <button
-                type="button"
-                onClick={() => setFiltersOpen(true)}
-                className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-[#e4e9ea] px-3 text-sm font-semibold text-[#2d3435] transition hover:bg-[#dde4e5]"
-              >
-                <Filter size={16} />
-                筛选{advancedFilterCount({ productType, stock, minPrice, maxPrice, merchantCollector, merchantSignal, showingMerchants }) ? ` ${advancedFilterCount({ productType, stock, minPrice, maxPrice, merchantCollector, merchantSignal, showingMerchants })}` : ""}
-              </button>
+                  <Filter size={16} className="shrink-0" />
+                  筛选{advancedFilterCount({ productType, stock, minPrice, maxPrice, merchantCollector, merchantSignal, showingMerchants }) ? ` ${advancedFilterCount({ productType, stock, minPrice, maxPrice, merchantCollector, merchantSignal, showingMerchants })}` : ""}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1538,9 +1542,7 @@ function MerchantCard({ merchant }: { merchant: PublicMerchantSummary }) {
         {merchantDescription(merchant)}
       </p>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <MerchantSignalBadges merchant={merchant} />
-      </div>
+      <MerchantSignalBadges merchant={merchant} className="mt-3" />
 
       <MerchantTimeSummary merchant={merchant} />
 
@@ -1551,11 +1553,7 @@ function MerchantCard({ merchant }: { merchant: PublicMerchantSummary }) {
         <MobileMerchantMetric label="质保" value={merchant.warrantyLowestHitCount} />
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-1.5">
-        {merchant.platforms.slice(0, 5).map((item) => (
-          <CountBadge key={item} tone="muted">{item}</CountBadge>
-        ))}
-      </div>
+      <MerchantCoverageText merchant={merchant} />
 
       <div className="mt-auto flex items-end justify-between gap-3 pt-5">
         <p className="min-w-0 text-xs leading-5 text-[#5a6061]">
@@ -1585,26 +1583,27 @@ function merchantDescription(merchant: PublicMerchantSummary): string {
   return `覆盖 ${platforms} 等 ${merchant.productCount} 个标准商品，${stockText}${priceText}。`;
 }
 
-function MerchantSignalBadges({ merchant }: { merchant: PublicMerchantSummary }) {
+function MerchantSignalBadges({ merchant, className = "" }: { merchant: PublicMerchantSummary; className?: string }) {
   const observedDays = daysSince(merchant.observationStartedAt);
+  const badges: ReactNode[] = [];
+
+  if (merchant.hasPlatformAftersalesMechanism) {
+    badges.push(<CountBadge key="platform-aftersales" tone="info">平台售后</CountBadge>);
+  }
+
+  if (merchant.riskFeedbackCount > 0) {
+    badges.push(<CountBadge key="risk-feedback" tone="warn">待核验反馈 {merchant.riskFeedbackCount}</CountBadge>);
+  }
+
+  if (observedDays !== null && observedDays >= 30) {
+    badges.push(<CountBadge key="observed-days" tone="muted">观察30天+</CountBadge>);
+  }
+
+  if (!badges.length) return null;
+
   return (
-    <div className="flex flex-wrap gap-1.5 text-xs">
-      {observedDays !== null ? (
-        <CountBadge tone={observedDays >= 30 ? "info" : "muted"}>
-          {observedDays >= 30 ? "观察较久" : "新观察"}
-        </CountBadge>
-      ) : null}
-      {merchant.hasPlatformAftersalesMechanism ? (
-        <CountBadge tone="info">平台售后</CountBadge>
-      ) : null}
-      {merchant.latestSeenAt ? (
-        <CountBadge tone="muted">近期更新</CountBadge>
-      ) : null}
-      {merchant.riskFeedbackCount > 0 ? (
-        <CountBadge tone="warn">待核验反馈 {merchant.riskFeedbackCount}</CountBadge>
-      ) : (
-        <CountBadge tone="muted">暂无待核验</CountBadge>
-      )}
+    <div className={`flex flex-wrap gap-1.5 text-xs ${className}`}>
+      {badges}
     </div>
   );
 }
@@ -1621,7 +1620,7 @@ function MerchantTimeSummary({ merchant, compact = false }: { merchant: PublicMe
       <div className={className}>
         <p>
           <span className="font-semibold text-[#202829]">收录</span>{" "}
-          <RelativeTime value={includedAt} />
+          <MerchantElapsedDays value={includedAt} />
         </p>
         <p>
           <span className="font-semibold text-[#202829]">公开运营</span>{" "}
@@ -1633,7 +1632,7 @@ function MerchantTimeSummary({ merchant, compact = false }: { merchant: PublicMe
 
   return (
     <div className={className}>
-      <MerchantTimeTile label="PriceAI 收录" value={<RelativeTime value={includedAt} />} />
+      <MerchantTimeTile label="PriceAI 收录" value={<MerchantElapsedDays value={includedAt} />} />
       <MerchantTimeTile
         label="公开运营"
         value={shopCreatedAt ? formatMerchantAge(shopCreatedAt) : "未公开"}
@@ -1653,11 +1652,35 @@ function MerchantTimeTile({ label, value, detail }: { label: string; value: Reac
   );
 }
 
+function MerchantCoverageText({ merchant }: { merchant: PublicMerchantSummary }) {
+  const platforms = merchant.platforms.slice(0, 4);
+  if (!platforms.length) return null;
+
+  const suffix = merchant.platformCount > platforms.length ? ` 等 ${merchant.platformCount} 类` : "";
+  return (
+    <p className="mt-4 min-w-0 truncate text-xs leading-5 text-[#5a6061]">
+      <span className="font-semibold text-[#2d3435]">覆盖：</span>
+      {platforms.join(" / ")}{suffix}
+    </p>
+  );
+}
+
+function MerchantElapsedDays({ value }: { value: string | null | undefined }) {
+  return <span suppressHydrationWarning>{formatElapsedDays(value)}</span>;
+}
+
 function daysSince(value: string | null | undefined): number | null {
   if (!value) return null;
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) return null;
   return Math.max(0, Math.floor((Date.now() - timestamp) / 86_400_000));
+}
+
+function formatElapsedDays(value: string | null | undefined): string {
+  const days = daysSince(value);
+  if (days === null) return "未记录";
+  if (days < 1) return "今天";
+  return `${days}天前`;
 }
 
 function formatMerchantAge(value: string | null | undefined): string {
