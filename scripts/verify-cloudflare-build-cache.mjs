@@ -8,7 +8,11 @@ const absoluteCacheRoot = join(root, cacheRoot);
 const forbiddenMarkers = [
   { label: "demo data banner", patterns: ["当前使用内置演示数据", "配置 Supabase"] },
   { label: "seed timestamp", patterns: ["01/01 08:00", "2026-01-01T00:00:00.000Z"] },
-  { label: "configured=false", patterns: ['"configured":false', '\\"configured\\":false'] },
+  {
+    label: "configured=false",
+    patterns: ['"configured":false', '\\"configured\\":false'],
+    isAllowed: isSponsorSettingsDefaultMarker,
+  },
   { label: "static dataset source", patterns: ['"source":"static"', '\\"source\\":\\"static\\"'] },
   { label: "seed offer total", patterns: ['"offerTotal":10', '\\"offerTotal\\":10'] },
   { label: "static source label", patterns: ["数据源：静态样本"] },
@@ -25,7 +29,10 @@ const failures = [];
 for (const file of cacheFiles) {
   const content = readFileSync(file, "utf8");
   for (const marker of forbiddenMarkers) {
-    const matchedPattern = marker.patterns.find((pattern) => content.includes(pattern));
+    const matchedPattern = marker.patterns.find((pattern) => {
+      const index = content.indexOf(pattern);
+      return index >= 0 && !marker.isAllowed?.(content, index);
+    });
     if (!matchedPattern) continue;
 
     failures.push({
@@ -34,6 +41,21 @@ for (const file of cacheFiles) {
       pattern: matchedPattern,
     });
   }
+}
+
+function isSponsorSettingsDefaultMarker(content, index) {
+  const before = content.slice(Math.max(0, index - 80), index);
+  const after = content.slice(index, index + 700);
+  const looksLikeSponsorSettings =
+    before.includes('"sponsorSettings":{') ||
+    before.includes('\\"sponsorSettings\\":{') ||
+    before.includes('"settings":{') ||
+    before.includes('\\"settings\\":{');
+
+  return looksLikeSponsorSettings &&
+    (after.includes('"tableReady":true') || after.includes('\\"tableReady\\":true')) &&
+    after.includes("赞助位配置尚未保存") &&
+    (after.includes('"placements":{') || after.includes('\\"placements\\":{'));
 }
 
 if (failures.length > 0) {
