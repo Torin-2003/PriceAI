@@ -162,6 +162,7 @@ async function readStationsFromSupabase(): Promise<TransitStation[]> {
         .select(
           [
             "id",
+            "logo_url",
             "monitor_url",
             "strengths",
             "cautions",
@@ -174,9 +175,39 @@ async function readStationsFromSupabase(): Promise<TransitStation[]> {
       if (error) throw error;
       return dbRows(data);
     } catch (error) {
+      if (isMissingColumnError(error)) {
+        return readStationEnhancementRowsWithoutLogo();
+      }
       if (!isMissingColumnError(error) && !hasWarnedMissingEnhancementColumns) {
         hasWarnedMissingEnhancementColumns = true;
         console.warn("API transit station enhancement columns are unavailable:", error);
+      }
+      return [];
+    }
+  }
+
+  async function readStationEnhancementRowsWithoutLogo(): Promise<DbRow[]> {
+    try {
+      const { data, error } = await client
+        .from("api_transit_stations")
+        .select(
+          [
+            "id",
+            "monitor_url",
+            "strengths",
+            "cautions",
+            "commercial_offers",
+            "verification_events",
+          ].join(",")
+        )
+        .eq("published", true)
+        .abortSignal(signal);
+      if (error) throw error;
+      return dbRows(data);
+    } catch (fallbackError) {
+      if (!hasWarnedMissingEnhancementColumns) {
+        hasWarnedMissingEnhancementColumns = true;
+        console.warn("API transit station enhancement columns are unavailable:", fallbackError);
       }
       return [];
     }
@@ -334,6 +365,7 @@ function mapStationRow(
     slug: stringValue(row.slug) || id,
     name: stringValue(row.name) || id,
     websiteUrl: stringValue(row.website_url),
+    logoUrl: nullableString(enhancement.logo_url),
     monitorUrl: nullableString(enhancement.monitor_url),
     collectorKind: nullableString(row.collector_kind),
     status: stationStatus(row.status),
@@ -422,7 +454,7 @@ function isMissingColumnError(error: unknown): boolean {
     error &&
       typeof error === "object" &&
       "code" in error &&
-      (error as { code?: unknown }).code === "42703"
+      ((error as { code?: unknown }).code === "42703" || (error as { code?: unknown }).code === "PGRST204")
   );
 }
 

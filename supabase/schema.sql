@@ -1633,6 +1633,7 @@ create table if not exists api_transit_stations (
   slug text not null unique,
   name text not null,
   website_url text not null,
+  logo_url text,
   api_base_url text,
   pricing_url text,
   monitor_url text,

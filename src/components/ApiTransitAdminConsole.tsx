@@ -12,6 +12,7 @@ import {
   Inbox,
   KeyRound,
   Loader2,
+  ImageUp,
   Pencil,
   RefreshCcw,
   Search,
@@ -34,6 +35,7 @@ import type {
   ApiTransitSubmissionReviewStatus,
   ApiTransitVerificationEvent,
 } from "@/lib/api-transit-admin-types";
+import { apiTransitLogoDisplayUrl } from "@/lib/api-transit-logo-url";
 import { formatCurrency, formatRelativeTime } from "@/lib/utils";
 
 type AdminTab = "stations" | "candidates" | "rawOffers" | "submissions" | "runs";
@@ -49,6 +51,7 @@ type ApiTransitStationEditInput = {
   id: string;
   name: string;
   websiteUrl: string;
+  logoUrl: string | null;
   apiBaseUrl: string | null;
   pricingUrl: string | null;
   monitorUrl: string | null;
@@ -1214,6 +1217,7 @@ function StationEditDialog({
             id: station.id,
             name: formText(formData, "name") || station.name,
             websiteUrl: formText(formData, "websiteUrl") || station.websiteUrl,
+            logoUrl: formNullableText(formData, "logoUrl"),
             apiBaseUrl: formNullableText(formData, "apiBaseUrl"),
             pricingUrl: formNullableText(formData, "pricingUrl"),
             monitorUrl: formNullableText(formData, "monitorUrl"),
@@ -1248,6 +1252,9 @@ function StationEditDialog({
           </AdminField>
           <AdminField label="官网 URL">
             <input name="websiteUrl" defaultValue={station.websiteUrl} className={adminFieldClassName} type="url" required />
+          </AdminField>
+          <AdminField label="站点 Logo">
+            <StationLogoField station={station} />
           </AdminField>
           <AdminField label="API Base URL">
             <input name="apiBaseUrl" defaultValue={station.apiBaseUrl || ""} className={adminFieldClassName} type="url" />
@@ -1405,6 +1412,87 @@ function StationEditDialog({
         <AdminDialogActions loading={loading} onClose={onClose} submitLabel="保存站点" />
       </form>
     </AdminEditDialog>
+  );
+}
+
+function StationLogoField({ station }: { station: ApiTransitAdminStation }) {
+  const [logoUrl, setLogoUrl] = useState(station.logoUrl || "");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const previewUrl = apiTransitLogoDisplayUrl(logoUrl);
+
+  async function uploadLogo(file: File | undefined) {
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("stationId", station.id);
+      formData.append("file", file);
+
+      const response = await fetch("/api/admin/api-transit/logo", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      const json = await response.json().catch(() => ({ ok: false, message: response.statusText }));
+      if (!response.ok || !json.ok) {
+        throw new Error(json.message || "Logo 上传失败。");
+      }
+
+      setLogoUrl(String(json.logo?.url || ""));
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Logo 上传失败。");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <input
+          name="logoUrl"
+          value={logoUrl}
+          onChange={(event) => setLogoUrl(event.target.value)}
+          className={adminFieldClassName}
+          placeholder="留空则使用系统默认 Logo"
+        />
+        <label className="inline-flex h-11 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-semibold text-[#2d3435] transition hover:bg-[#f2f4f4]">
+          {uploading ? <Loader2 size={14} className="animate-spin" /> : <ImageUp size={14} />}
+          上传
+          <input
+            type="file"
+            accept="image/svg+xml,image/png,image/jpeg,image/webp"
+            className="sr-only"
+            disabled={uploading}
+            onChange={(event) => {
+              void uploadLogo(event.target.files?.[0]);
+              event.currentTarget.value = "";
+            }}
+          />
+        </label>
+      </div>
+      <div className="flex min-h-8 items-center gap-2 text-xs text-[#5a6061]">
+        {previewUrl ? (
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#dfe4e5] bg-white p-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={previewUrl}
+              alt=""
+              aria-hidden="true"
+              className="h-6 w-6 object-contain"
+            />
+          </span>
+        ) : (
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#f2f4f4] text-[11px] font-bold text-[#5a6061]">
+            默认
+          </span>
+        )}
+        <span>{uploadError || "支持 SVG、PNG、JPG、WebP，建议方形图标。"}</span>
+      </div>
+    </div>
   );
 }
 

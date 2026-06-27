@@ -105,6 +105,7 @@ export interface TransitStation {
   slug: string;
   name: string;
   websiteUrl: string;
+  logoUrl?: string | null;
   monitorUrl?: string | null;
   collectorKind?: string | null;
   stationSystem?: TransitStationSystem;

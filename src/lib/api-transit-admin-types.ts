@@ -42,6 +42,7 @@ export type ApiTransitAdminStation = {
   slug: string;
   name: string;
   websiteUrl: string;
+  logoUrl: string | null;
   apiBaseUrl: string | null;
   pricingUrl: string | null;
   monitorUrl: string | null;

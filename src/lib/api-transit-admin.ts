@@ -118,6 +118,7 @@ export async function updateApiTransitStation(input: {
   id: string;
   name?: string;
   websiteUrl?: string;
+  logoUrl?: string | null;
   apiBaseUrl?: string | null;
   pricingUrl?: string | null;
   monitorUrl?: string | null;
@@ -151,6 +152,7 @@ export async function updateApiTransitStation(input: {
 
   if (input.name !== undefined) row.name = cleanRequired(input.name, "站点名称不能为空。");
   if (input.websiteUrl !== undefined) row.website_url = cleanRequired(input.websiteUrl, "站点 URL 不能为空。");
+  if (input.logoUrl !== undefined) row.logo_url = cleanNullable(input.logoUrl);
   if (input.apiBaseUrl !== undefined) row.api_base_url = cleanNullable(input.apiBaseUrl);
   if (input.pricingUrl !== undefined) {
     row.pricing_url = cleanNullable(input.pricingUrl);
@@ -180,12 +182,29 @@ export async function updateApiTransitStation(input: {
   if (input.commercialOffers !== undefined) row.commercial_offers = sanitizeCommercialOffers(input.commercialOffers);
   if (input.verificationEvents !== undefined) row.verification_events = sanitizeVerificationEvents(input.verificationEvents);
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("api_transit_stations")
     .update(row)
     .eq("id", input.id)
     .select("*")
     .maybeSingle();
+
+  if (error && isMissingColumnError(error) && Object.prototype.hasOwnProperty.call(row, "logo_url")) {
+    const requestedLogoUrl = row.logo_url;
+    delete row.logo_url;
+    if (requestedLogoUrl) {
+      throw new Error("Logo 字段尚未完成数据库迁移，请稍后再保存站点 Logo。");
+    }
+
+    const retryResult = await supabase
+      .from("api_transit_stations")
+      .update(row)
+      .eq("id", input.id)
+      .select("*")
+      .maybeSingle();
+    data = retryResult.data;
+    error = retryResult.error;
+  }
 
   if (error) throw error;
   if (!data) throw new Error("中转站不存在。");
@@ -779,6 +798,7 @@ function mapStation(
     slug: stringValue(row.slug),
     name: stringValue(row.name),
     websiteUrl: stringValue(row.website_url),
+    logoUrl: nullableString(row.logo_url),
     apiBaseUrl: nullableString(row.api_base_url),
     pricingUrl: nullableString(row.pricing_url || row.pricing_endpoint_url),
     monitorUrl: nullableString(row.monitor_url),
@@ -1418,4 +1438,13 @@ function reviewStatus(value: unknown): ApiTransitSubmissionReviewStatus {
 function runStatus(value: unknown): ApiTransitRunStatus {
   const text = stringValue(value);
   return text === "success" || text === "partial" || text === "failed" ? text : "failed";
+}
+
+function isMissingColumnError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      ((error as { code?: unknown }).code === "42703" || (error as { code?: unknown }).code === "PGRST204")
+  );
 }
