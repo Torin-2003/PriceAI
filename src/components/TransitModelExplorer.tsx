@@ -169,6 +169,7 @@ function ModelSummaryRow({
   onToggleModel: () => void;
 }) {
   const bestEntry = summary.prices[0] ?? null;
+  const hasPrices = summary.prices.length > 0;
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTableRowElement>) {
     if (event.key === "Enter" || event.key === " ") {
@@ -203,11 +204,13 @@ function ModelSummaryRow({
         </div>
       </td>
       <td className="px-5 py-4">
-        <p className="font-semibold leading-6 text-[#202829]">{formatRate(summary.bestCombinedRate)}</p>
+        <p className="font-semibold leading-6 text-[#202829]">
+          {hasPrices ? formatRate(summary.bestCombinedRate) : "暂无报价"}
+        </p>
         {summary.worstCombinedRate !== null && summary.worstCombinedRate !== summary.bestCombinedRate ? (
           <p className="mt-1 text-xs text-[#5a6061]">最高 {formatRate(summary.worstCombinedRate)}</p>
         ) : (
-          <p className="mt-1 text-xs text-[#5a6061]">综合倍率</p>
+          <p className="mt-1 text-xs text-[#5a6061]">{hasPrices ? "综合倍率" : "等待站点采集"}</p>
         )}
       </td>
       <td className="px-5 py-4">
@@ -231,7 +234,7 @@ function ModelSummaryRow({
           className="inline-flex h-9 min-w-[76px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-[#2d3435] px-3 text-xs font-semibold text-[#f8f8f8] transition hover:bg-[#1f2526]"
           aria-expanded={expanded}
         >
-          {expanded ? "收起" : "展开"}
+          {expanded ? "收起" : hasPrices ? "展开" : "说明"}
           <ChevronDown size={14} className={`transition ${expanded ? "rotate-180" : ""}`} />
         </button>
       </td>
@@ -241,6 +244,7 @@ function ModelSummaryRow({
 
 function ModelSummaryCard({ summary }: { summary: TransitModelSummary }) {
   const bestEntry = summary.prices[0] ?? null;
+  const hasPrices = summary.prices.length > 0;
   const [expanded, setExpanded] = useState(false);
 
   function toggleModel() {
@@ -260,7 +264,7 @@ function ModelSummaryCard({ summary }: { summary: TransitModelSummary }) {
           <span className="mt-1 block truncate text-xs text-[#5a6061]">{summary.familyLabel} · {summary.stationCount} 个站点</span>
         </span>
         <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${getRateBadgeClass(summary.bestCombinedRate)}`}>
-          {formatRate(summary.bestCombinedRate)}
+          {hasPrices ? formatRate(summary.bestCombinedRate) : "暂无报价"}
         </span>
       </div>
       <div className="mb-3 grid grid-cols-2 gap-2 text-xs text-[#5a6061]">
@@ -271,7 +275,7 @@ function ModelSummaryCard({ summary }: { summary: TransitModelSummary }) {
           样本 <span className="font-semibold text-[#2d3435]">{summary.sampleCount}</span>
         </div>
       </div>
-      {bestEntry ? <RepresentativeStation entry={bestEntry} /> : null}
+      {bestEntry ? <RepresentativeStation entry={bestEntry} /> : <NoPublishedPricesMessage compact />}
       {expanded ? <ModelMobileExpandedPanel summary={summary} stationId="all" /> : null}
       <button
         type="button"
@@ -279,7 +283,7 @@ function ModelSummaryCard({ summary }: { summary: TransitModelSummary }) {
         className="mt-3 inline-flex h-8 items-center gap-1 rounded-full bg-[#2d3435] px-3 text-xs font-semibold text-[#f8f8f8]"
         aria-expanded={expanded}
       >
-        {expanded ? "收起站点报价" : "展开站点报价"}
+        {expanded ? "收起站点报价" : hasPrices ? "展开站点报价" : "查看说明"}
         <ChevronDown size={13} className={`transition ${expanded ? "rotate-180" : ""}`} />
       </button>
     </article>
@@ -299,6 +303,7 @@ function ModelExpandedRow({ summary, stationId }: { summary: TransitModelSummary
 function ModelExpandedPanel({ summary, stationId }: { summary: TransitModelSummary; stationId: string }) {
   const entries = getExpandedEntries(summary, stationId);
   const selectedStation = stationId === "all" ? null : entries[0]?.station ?? null;
+  const hasEntries = entries.length > 0;
 
   return (
     <div className="rounded-lg border border-[#dfe4e5] bg-white">
@@ -334,9 +339,17 @@ function ModelExpandedPanel({ summary, stationId }: { summary: TransitModelSumma
             </tr>
           </thead>
           <tbody className="divide-y divide-[#edf0f1]">
-            {entries.map((entry) => (
-              <ModelExpandedEntryRow key={`${entry.station.id}-${entry.price.groupName}`} entry={entry} />
-            ))}
+            {hasEntries ? (
+              entries.map((entry) => (
+                <ModelExpandedEntryRow key={`${entry.station.id}-${entry.price.groupName}`} entry={entry} />
+              ))
+            ) : (
+              <tr>
+                <td colSpan={8} className="px-4 py-8">
+                  <NoPublishedPricesMessage />
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -409,32 +422,45 @@ function ModelMobileExpandedPanel({ summary, stationId }: { summary: TransitMode
   return (
     <div className="mb-3 rounded-lg border border-[#dfe4e5] bg-[#fbfcfc] p-3">
       <div className="space-y-2">
-        {entries.slice(0, 8).map((entry) => (
-          <button
-            key={`${entry.station.id}-${entry.price.groupName}`}
-            type="button"
-            onClick={() => navigateToStation(entry.station.slug)}
-            className="flex w-full items-start justify-between gap-3 border-b border-[#edf0f1] pb-2 text-left transition hover:bg-[#f7f9f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#45bf78]/35 last:border-0 last:pb-0"
-            aria-label={`查看 ${entry.station.name} 详情`}
-          >
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold text-[#202829]">{entry.station.name}</p>
-              <p className="mt-1 truncate text-[11px] text-[#5a6061]">{entry.price.groupName} · {TRANSIT_CHANNEL_TYPE_LABELS[entry.price.channelType]}</p>
-              <div className="mt-2">
-                <TransitPriceBreakdown station={entry.station} price={entry.price} mode="compact" />
+        {entries.length > 0 ? (
+          entries.slice(0, 8).map((entry) => (
+            <button
+              key={`${entry.station.id}-${entry.price.groupName}`}
+              type="button"
+              onClick={() => navigateToStation(entry.station.slug)}
+              className="flex w-full items-start justify-between gap-3 border-b border-[#edf0f1] pb-2 text-left transition hover:bg-[#f7f9f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#45bf78]/35 last:border-0 last:pb-0"
+              aria-label={`查看 ${entry.station.name} 详情`}
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-semibold text-[#202829]">{entry.station.name}</p>
+                <p className="mt-1 truncate text-[11px] text-[#5a6061]">{entry.price.groupName} · {TRANSIT_CHANNEL_TYPE_LABELS[entry.price.channelType]}</p>
+                <div className="mt-2">
+                  <TransitPriceBreakdown station={entry.station} price={entry.price} mode="compact" />
+                </div>
               </div>
-            </div>
-            <div className="shrink-0 text-right">
-              <p className="text-xs font-bold text-[#202829]">
-                {entry.price.modelMultiplier !== null ? `${entry.price.modelMultiplier.toFixed(2)}x` : "—"}
-              </p>
-              <p className={`mt-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${getRateBadgeClass(entry.combinedRate)}`}>
-                {formatRate(entry.combinedRate)}
-              </p>
-            </div>
-          </button>
-        ))}
+              <div className="shrink-0 text-right">
+                <p className="text-xs font-bold text-[#202829]">
+                  {entry.price.modelMultiplier !== null ? `${entry.price.modelMultiplier.toFixed(2)}x` : "—"}
+                </p>
+                <p className={`mt-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${getRateBadgeClass(entry.combinedRate)}`}>
+                  {formatRate(entry.combinedRate)}
+                </p>
+              </div>
+            </button>
+          ))
+        ) : (
+          <NoPublishedPricesMessage compact />
+        )}
       </div>
+    </div>
+  );
+}
+
+function NoPublishedPricesMessage({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={`text-[#5a6061] ${compact ? "text-xs leading-5" : "text-center text-sm leading-6"}`}>
+      <p className="font-semibold text-[#202829]">暂无已发布报价</p>
+      <p className="mt-1">这个标准模型已纳入中转 API 观察清单，等站点价格完成采集和审核后会补齐倍率与代表站点。</p>
     </div>
   );
 }

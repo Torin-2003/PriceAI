@@ -12,6 +12,8 @@ import {
   TRANSIT_MODEL_FAMILY_OPTIONS,
   TRANSIT_MODEL_FAMILY_LABELS,
   TRANSIT_MODEL_FAMILY_ORDER,
+  TRANSIT_STANDARD_MODELS,
+  TRANSIT_STANDARD_MODEL_FAMILY,
   TRANSIT_COMMERCIAL_LABELS,
 } from "@/data/api-transit/types";
 import { seedStations } from "@/data/api-transit/stations";
@@ -704,6 +706,13 @@ export function getTransitModelSummaries(
   family: "all" | TransitModelFamily = "all"
 ): TransitModelSummary[] {
   const byModel = new Map<TransitModelPrice["standardModel"], TransitModelPriceEntry[]>();
+  const standardModels = TRANSIT_STANDARD_MODELS.filter((standardModel) => {
+    if (family === "all") return true;
+    return TRANSIT_STANDARD_MODEL_FAMILY[standardModel] === family;
+  });
+  const standardModelOrder = new Map(
+    TRANSIT_STANDARD_MODELS.map((standardModel, index) => [standardModel, index])
+  );
 
   stations.forEach((station) => {
     station.prices.forEach((price) => {
@@ -727,8 +736,16 @@ export function getTransitModelSummaries(
     });
   });
 
-  return Array.from(byModel.entries())
-    .map(([standardModel, prices]) => {
+  const summaryModels = [...standardModels];
+  byModel.forEach((_, standardModel) => {
+    if (!summaryModels.includes(standardModel)) {
+      summaryModels.push(standardModel);
+    }
+  });
+
+  return summaryModels
+    .map((standardModel) => {
+      const prices = byModel.get(standardModel) ?? [];
       const finiteRates = prices
         .map((entry) => entry.combinedRate)
         .filter((rate): rate is number => rate !== null && Number.isFinite(rate))
@@ -744,7 +761,7 @@ export function getTransitModelSummaries(
               return total + rate * entry.price.availability.sevenDaySamples;
             }, 0) / sampleCount
           : null;
-      const modelFamily = prices[0].price.family;
+      const modelFamily = prices[0]?.price.family ?? TRANSIT_STANDARD_MODEL_FAMILY[standardModel];
 
       return {
         standardModel,
@@ -763,7 +780,11 @@ export function getTransitModelSummaries(
     .sort((a, b) => {
       const familyOrder = TRANSIT_MODEL_FAMILY_ORDER.indexOf(a.family) - TRANSIT_MODEL_FAMILY_ORDER.indexOf(b.family);
       if (familyOrder !== 0) return familyOrder;
-      return compareNullableNumber(a.bestCombinedRate, b.bestCombinedRate, "asc");
+      return (
+        compareNullableNumber(a.bestCombinedRate, b.bestCombinedRate, "asc") ||
+        (standardModelOrder.get(a.standardModel) ?? Number.MAX_SAFE_INTEGER) -
+          (standardModelOrder.get(b.standardModel) ?? Number.MAX_SAFE_INTEGER)
+      );
     });
 }
 

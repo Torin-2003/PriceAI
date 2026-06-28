@@ -1,10 +1,11 @@
 import Image from "next/image";
-import { Boxes, ImageIcon, Sparkles, Video } from "lucide-react";
+import { Boxes, ImageIcon, Video } from "lucide-react";
 import { BrandIcon } from "@/components/BrandIcon";
 
 const iconByFamily: Record<string, string> = {
   claude: "/brand-icons/claude.svg",
   gemini: "/brand-icons/gemini.svg",
+  glm: "/brand-icons/glm.png",
   deepseek: "/brand-icons/deepseek.png",
 };
 
@@ -25,9 +26,6 @@ export function TransitModelIcon({
   }
   if (normalizedFamily === "video") {
     return <Video className={`${className} shrink-0 text-[#5a6061]`} />;
-  }
-  if (normalizedFamily === "glm") {
-    return <Sparkles className={`${className} shrink-0 text-[#5a6061]`} />;
   }
 
   const src = iconByFamily[normalizedFamily];
