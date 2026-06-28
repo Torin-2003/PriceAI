@@ -939,7 +939,7 @@ function normalizeTitle(title: string): string {
     .replace(/虛擬/g, "虚拟")
     .replace(/[×✕✖✘]/g, "x")
     .replace(/[\ufe0e\ufe0f]/g, "")
-    .replace(/[｜|/【】[\]()（）,，:：\-_/]+/g, " ")
+    .replace(/[｜|/【】[\]()（）,，:：\-_/–—]+/g, " ")
     .replace(/gptplus/g, "gpt plus")
     .replace(/plus月卡/g, "plus 月卡")
     .replace(/普拉斯/g, "plus")
@@ -1571,7 +1571,7 @@ function isChatGptPeripheralService(value: string): boolean {
   if (!hasPaymentLinkExtractionSignal && !matches(value, ["codex", "chatgpt", "gpt", "openai", "plus"])) return false;
   if (hasPaymentLinkExtractionSignal) {
     if (isCodexPhoneVerification(value)) return false;
-    if (matches(value, ["成品号", "账号", "账户", "账密", "月卡", "会员", "直充", "代充", "cdk"])) return false;
+    if (matches(value, ["成品号", "账号", "账户", "账密", "月卡", "会员", "直充", "代充"])) return false;
 
     return true;
   }
@@ -1592,8 +1592,9 @@ function isChatGptPeripheralService(value: string): boolean {
 }
 
 function isChatGptPaymentLinkExtractionService(value: string): boolean {
-  const hasPaymentMethodSignal = matches(value, ["upi", "ideal", "i deal", "ide al"]);
-  if (!hasPaymentMethodSignal) return false;
+  const hasPaymentMethodSignal = matches(value, ["upi", "ideal", "i deal", "ide al", "paypal"]);
+  const hasChatGptSubscriptionSignal = matches(value, ["chatgpt", "gpt", "openai", "plus"]);
+  if (!hasPaymentMethodSignal && !hasChatGptSubscriptionSignal) return false;
 
   return matches(value, [
     "提链",

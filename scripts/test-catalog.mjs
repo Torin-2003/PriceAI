@@ -143,6 +143,8 @@ const cases = [
   ["codex重置额度服务plus pro可用", "chatgpt-codex-service"],
   ["plus pro重置（联系wx客服）", "chatgpt-codex-service"],
   ["GPT-Plus订阅PayPal长链提取服务-10次套餐包", "chatgpt-codex-service"],
+  ["GPT–Plus 荷兰 IDEAL 提链（CDK）", "chatgpt-codex-service"],
+  ["GPT-Plus 提链（CDK）", "chatgpt-codex-service"],
   ["【24小时有效期】每天100刀claude code", "openai-api-cdk"],
   ["【总共50刀】30天有效期-老Plus渠道", "openai-api-cdk"],
   ["【总共100刀】30天有效期-老Plus渠道", "openai-api-cdk"],
