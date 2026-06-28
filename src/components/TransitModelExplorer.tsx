@@ -85,7 +85,7 @@ export default function TransitModelExplorer({ stations }: Props) {
             value={query}
             onChange={setQuery}
             placeholder="搜索标准模型名..."
-            className="flex-1 xl:max-w-[440px]"
+            className="flex-1 xl:max-w-[460px]"
           />
           <TransitViewTabs active="models" className="shrink-0" />
         </div>
