@@ -91,6 +91,10 @@ const crawlLogRouteText = read("src/app/api/admin/crawl-log/route.ts");
 assert(/markPublicApiSnapshotsDirty/.test(crawlLogRouteText), "src/app/api/admin/crawl-log/route.ts: crawl-log writes must only mark public snapshots dirty.");
 assert(!/refreshPublicApiSnapshots/.test(crawlLogRouteText), "src/app/api/admin/crawl-log/route.ts: crawl-log writes must not synchronously refresh all public API snapshots.");
 
+const adminText = read("src/lib/admin.ts");
+assert(/UNCHANGED_OFFER_REFRESH_INTERVAL_MS\s*=\s*25\s*\*\s*60\s*\*\s*1000/.test(adminText), "src/lib/admin.ts: unchanged offers must refresh within one 30-minute collector cycle.");
+assert(/shouldRefreshUnchangedOffer/.test(adminText), "src/lib/admin.ts: unchanged offer refresh logic must stay explicit.");
+
 const snapshotRefreshWorkflowText = read(".github/workflows/refresh-public-api-snapshots.yml");
 assert(snapshotRefreshWorkflowText.includes('cron: "*/30 * * * *"'), ".github/workflows/refresh-public-api-snapshots.yml: GitHub scheduled snapshot refresh must remain a low-frequency fallback.");
 assert(/\/api\/admin\/public-api-snapshots/.test(snapshotRefreshWorkflowText), ".github/workflows/refresh-public-api-snapshots.yml: scheduled refresh must call the protected snapshot endpoint.");
