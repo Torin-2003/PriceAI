@@ -72,6 +72,8 @@ assert(/refreshPublicApiSnapshotsIfDue/.test(dataText), "src/lib/data.ts: public
 assert(/PUBLIC_API_SNAPSHOT_INCREMENTAL_REFRESH_MIN_INTERVAL_MS\s*=\s*3\s*\*\s*60\s*\*\s*1000/.test(dataText), "src/lib/data.ts: public API snapshot incremental refresh must stay on the 3 minute cadence.");
 assert(/PUBLIC_API_SNAPSHOT_GLOBAL_REFRESH_MIN_INTERVAL_MS\s*=\s*5\s*\*\s*60\s*\*\s*1000/.test(dataText), "src/lib/data.ts: explorer/offers snapshot refresh must stay coalesced to 5 minutes.");
 assert(/PUBLIC_API_SNAPSHOT_FULL_REFRESH_MAX_INTERVAL_MS\s*=\s*60\s*\*\s*60\s*\*\s*1000/.test(dataText), "src/lib/data.ts: full public snapshot refresh must remain a low-frequency 60 minute fallback.");
+assert(/PUBLIC_API_SNAPSHOT_MAX_STALE_MS\s*=\s*PRICE_DATA_CACHE_TTL_MS\s*\*\s*2/.test(dataText), "src/lib/data.ts: public API snapshots must stop serving old default snapshots after two public cache TTLs.");
+assert(/isPublicApiSnapshotFresh/.test(dataText), "src/lib/data.ts: default public API snapshot reads must validate snapshot freshness before returning cached data.");
 assert(/affectedProductIds/.test(dataText), "src/lib/data.ts: dirty snapshot state must keep affected product IDs for incremental refresh.");
 assert(/resolvePublicSnapshotProductIds/.test(dataText), "src/lib/data.ts: dirty source/offer scopes must resolve to product snapshot refreshes.");
 assert(!/PUBLIC_PRODUCT_OFFERS_SNAPSHOT_PRODUCT_LIMIT/.test(dataText), "src/lib/data.ts: product offer snapshots must warm all products with offers, not only a small top-N subset.");
@@ -90,8 +92,13 @@ assert(/markPublicApiSnapshotsDirty/.test(crawlLogRouteText), "src/app/api/admin
 assert(!/refreshPublicApiSnapshots/.test(crawlLogRouteText), "src/app/api/admin/crawl-log/route.ts: crawl-log writes must not synchronously refresh all public API snapshots.");
 
 const snapshotRefreshWorkflowText = read(".github/workflows/refresh-public-api-snapshots.yml");
-assert(snapshotRefreshWorkflowText.includes('cron: "*/3 * * * *"'), ".github/workflows/refresh-public-api-snapshots.yml: public snapshot refresh must run on the unified 3 minute incremental cadence.");
+assert(snapshotRefreshWorkflowText.includes('cron: "*/30 * * * *"'), ".github/workflows/refresh-public-api-snapshots.yml: GitHub scheduled snapshot refresh must remain a low-frequency fallback.");
 assert(/\/api\/admin\/public-api-snapshots/.test(snapshotRefreshWorkflowText), ".github/workflows/refresh-public-api-snapshots.yml: scheduled refresh must call the protected snapshot endpoint.");
+
+const snapshotRefreshScriptText = read("scripts/refresh-public-api-snapshots.mjs");
+assert(/PRICEAI_BASE_URL/.test(snapshotRefreshScriptText), "scripts/refresh-public-api-snapshots.mjs: server snapshot refresh must support an explicit production base URL.");
+assert(/CRON_SECRET/.test(snapshotRefreshScriptText), "scripts/refresh-public-api-snapshots.mjs: server snapshot refresh must use the protected cron secret.");
+assert(/PRICEAI_ALERT_WEBHOOK_URL/.test(snapshotRefreshScriptText), "scripts/refresh-public-api-snapshots.mjs: server snapshot refresh must alert on failures or dirty backlog.");
 
 const publicApiSnapshotsMigrationText = read("supabase/migrations/20260624083000_public_api_snapshots.sql");
 assert(/create table if not exists public_api_snapshots/.test(publicApiSnapshotsMigrationText), "public API snapshots migration must create the snapshot table.");
@@ -149,6 +156,7 @@ assert(/fetchWithTimeout/.test(smokeText), "scripts/smoke-cloudflare.mjs: smoke 
 
 const packageText = read("package.json");
 assert(/"check:performance"\s*:\s*"node scripts\/check-performance-guards\.mjs"/.test(packageText), "package.json: add npm run check:performance.");
+assert(/"refresh:snapshots"\s*:\s*"node scripts\/refresh-public-api-snapshots\.mjs"/.test(packageText), "package.json: add npm run refresh:snapshots for the server timer.");
 
 const buildCloudflareText = read("scripts/build-cloudflare.mjs");
 assert(/check-performance-guards\.mjs/.test(buildCloudflareText), "scripts/build-cloudflare.mjs: run performance guards before OpenNext build.");

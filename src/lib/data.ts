@@ -80,6 +80,7 @@ const PUBLIC_API_SNAPSHOT_REFRESH_STATE_KEY = "public-prices";
 const PUBLIC_API_SNAPSHOT_INCREMENTAL_REFRESH_MIN_INTERVAL_MS = 3 * 60 * 1000;
 const PUBLIC_API_SNAPSHOT_GLOBAL_REFRESH_MIN_INTERVAL_MS = 5 * 60 * 1000;
 const PUBLIC_API_SNAPSHOT_FULL_REFRESH_MAX_INTERVAL_MS = 60 * 60 * 1000;
+const PUBLIC_API_SNAPSHOT_MAX_STALE_MS = PRICE_DATA_CACHE_TTL_MS * 2;
 const PUBLIC_API_SNAPSHOT_MAX_AFFECTED_ITEMS = 200;
 const PUBLIC_API_SNAPSHOT_SOURCE_PRODUCT_LOOKUP_LIMIT = 1000;
 const RAW_OFFER_PUBLIC_SELECT_FIELDS = [
@@ -1072,7 +1073,7 @@ async function loadPublicOfferData(): Promise<PublicOfferData> {
 
 export async function getExplorerData(): Promise<ExplorerData> {
   const now = Date.now();
-  if (explorerDataCache && explorerDataCache.expiresAt > now) {
+  if (explorerDataCache && explorerDataCache.expiresAt > now && isReusableGeneratedValue(explorerDataCache.value)) {
     return explorerDataCache.value;
   }
 
@@ -1096,14 +1097,18 @@ export async function getExplorerData(): Promise<ExplorerData> {
 }
 
 async function buildExplorerData(options: { skipSnapshot?: boolean } = {}): Promise<ExplorerData> {
+  let staleSnapshotValue: ExplorerData | null = null;
   if (!options.skipSnapshot) {
     const snapshot = await readPublicApiSnapshot<ExplorerData>("explorer", PUBLIC_EXPLORER_SNAPSHOT_KEY);
     if (snapshot && isExplorerDataSnapshot(snapshot.value)) {
-      return hydrateGeneratedAt(snapshot);
+      const value = hydrateGeneratedAt(snapshot);
+      if (isPublicApiSnapshotFresh(snapshot)) return value;
+      staleSnapshotValue = value;
     }
   }
 
   const value = await buildExplorerDataFromSource();
+  const nextValue = staleSnapshotValue ? preferStaleExplorerData(staleSnapshotValue, value) : value;
   if (!options.skipSnapshot && !value.degraded) {
     await writePublicApiSnapshot({
       kind: "explorer",
@@ -1113,7 +1118,7 @@ async function buildExplorerData(options: { skipSnapshot?: boolean } = {}): Prom
     });
   }
 
-  return value;
+  return nextValue;
 }
 
 async function buildExplorerDataFromSource(): Promise<ExplorerData> {
@@ -1638,6 +1643,19 @@ function hydrateGeneratedAt<T extends { generatedAt: string }>(snapshot: PublicA
     ...snapshot.value,
     generatedAt: snapshot.generatedAt || snapshot.value.generatedAt,
   };
+}
+
+function isPublicApiSnapshotFresh<T extends { generatedAt: string }>(snapshot: PublicApiSnapshotPayload<T>): boolean {
+  return isGeneratedAtFresh(snapshot.generatedAt || snapshot.value.generatedAt);
+}
+
+function isReusableGeneratedValue(value: { degraded?: boolean; generatedAt?: string | null }): boolean {
+  return value.degraded === true || isGeneratedAtFresh(value.generatedAt);
+}
+
+function isGeneratedAtFresh(value: string | null | undefined): boolean {
+  const generatedAt = timestampMs(value);
+  return generatedAt > 0 && Date.now() - generatedAt <= PUBLIC_API_SNAPSHOT_MAX_STALE_MS;
 }
 
 function isExplorerDataSnapshot(value: unknown): value is ExplorerData {
@@ -2337,7 +2355,7 @@ export async function listPublicProductOffers(id: string, filters: ProductOfferL
   const now = Date.now();
   const cached = productOffersCache.get(cacheKey);
 
-  if (cached && cached.expiresAt > now) {
+  if (cached && cached.expiresAt > now && isReusableGeneratedValue(cached.value)) {
     return cached.value;
   }
 
@@ -2371,13 +2389,16 @@ async function loadPublicProductOffers(
   },
 ) : Promise<PublicProductOffersResult> {
   const snapshotEligible = isDefaultProductOffersSnapshotRequest(filters);
+  let staleSnapshotValue: PublicProductOffersResult | null = null;
   if (snapshotEligible && !filters.skipSnapshot) {
     const snapshot = await readPublicApiSnapshot<PublicProductOffersResult>(
       "product_offers",
       publicProductOffersSnapshotKey(id),
     );
     if (snapshot && isProductOffersSnapshot(snapshot.value)) {
-      return hydrateGeneratedAt(snapshot);
+      const value = hydrateGeneratedAt(snapshot);
+      if (isPublicApiSnapshotFresh(snapshot)) return value;
+      staleSnapshotValue = value;
     }
   }
 
@@ -2391,7 +2412,7 @@ async function loadPublicProductOffers(
         generatedAt: rpcData.generatedAt,
       });
     }
-    return rpcData;
+    return staleSnapshotValue ? preferStaleProductOffers(staleSnapshotValue, rpcData) : rpcData;
   }
 
   const { limit, offset, filterTags, query, excludeQuery } = filters;
@@ -2444,7 +2465,7 @@ async function loadPublicProductOffers(
     });
   }
 
-  return fallbackValue;
+  return staleSnapshotValue ? preferStaleProductOffers(staleSnapshotValue, fallbackValue) : fallbackValue;
 }
 
 async function getPublicProductOffersFromDatabase(
@@ -2606,24 +2627,34 @@ export async function listPublicOffers(filters: OfferListFilters = {}) {
   };
   const snapshotEligible = isDefaultOfferListSnapshotRequest(normalizedFilters);
   const now = Date.now();
-  if (snapshotEligible && publicOffersCache && publicOffersCache.expiresAt > now) {
+  if (
+    snapshotEligible &&
+    publicOffersCache &&
+    publicOffersCache.expiresAt > now &&
+    isReusableGeneratedValue(publicOffersCache.value)
+  ) {
     return publicOffersCache.value;
   }
 
+  let staleSnapshotValue = snapshotEligible ? publicOffersCache?.value || null : null;
   if (snapshotEligible && !normalizedFilters.skipSnapshot) {
     const snapshot = await readPublicApiSnapshot<PublicOffersResult>("offers", PUBLIC_OFFERS_SNAPSHOT_KEY);
     if (snapshot && isPublicOffersSnapshot(snapshot.value)) {
       const value = hydrateGeneratedAt(snapshot);
-      publicOffersCache = {
-        expiresAt: Date.now() + PUBLIC_DATA_CACHE_TTL_MS,
-        value,
-      };
-      return value;
+      if (!isPublicApiSnapshotFresh(snapshot)) {
+        staleSnapshotValue = value;
+      } else {
+        publicOffersCache = {
+          expiresAt: Date.now() + PUBLIC_DATA_CACHE_TTL_MS,
+          value,
+        };
+        return value;
+      }
     }
   }
 
   const value = await loadPublicOffers(normalizedFilters);
-  const nextValue = snapshotEligible ? preferStalePublicOffers(publicOffersCache?.value || null, value) : value;
+  const nextValue = snapshotEligible ? preferStalePublicOffers(staleSnapshotValue, value) : value;
   if (snapshotEligible && !normalizedFilters.skipSnapshot && !value.degraded) {
     await writePublicApiSnapshot({
       kind: "offers",
@@ -2650,7 +2681,11 @@ export async function listPublicMerchants(filters: MerchantListFilters = {}): Pr
 
 async function loadPublicMerchantCatalog(): Promise<PublicMerchantsResult> {
   const now = Date.now();
-  if (publicMerchantsCache && publicMerchantsCache.expiresAt > now) {
+  if (
+    publicMerchantsCache &&
+    publicMerchantsCache.expiresAt > now &&
+    isReusableGeneratedValue(publicMerchantsCache.value)
+  ) {
     return publicMerchantsCache.value;
   }
 
@@ -2674,10 +2709,13 @@ async function loadPublicMerchantCatalog(): Promise<PublicMerchantsResult> {
 }
 
 async function buildPublicMerchants(options: { skipSnapshot?: boolean } = {}): Promise<PublicMerchantsResult> {
+  let staleSnapshotValue: PublicMerchantsResult | null = null;
   if (!options.skipSnapshot) {
     const snapshot = await readPublicApiSnapshot<PublicMerchantsResult>("merchants", PUBLIC_MERCHANTS_SNAPSHOT_KEY);
     if (snapshot && isPublicMerchantsSnapshot(snapshot.value)) {
-      return hydrateGeneratedAt(snapshot);
+      const value = hydrateGeneratedAt(snapshot);
+      if (isPublicApiSnapshotFresh(snapshot)) return value;
+      staleSnapshotValue = value;
     }
   }
 
@@ -2692,7 +2730,7 @@ async function buildPublicMerchants(options: { skipSnapshot?: boolean } = {}): P
         generatedAt: compactRpcData.generatedAt,
       });
     }
-    return compactRpcData;
+    return staleSnapshotValue ? preferStalePublicMerchants(staleSnapshotValue, compactRpcData) : compactRpcData;
   }
 
   const publicData = await readPublicOfferData();
@@ -2721,7 +2759,7 @@ async function buildPublicMerchants(options: { skipSnapshot?: boolean } = {}): P
     });
   }
 
-  return value;
+  return staleSnapshotValue ? preferStalePublicMerchants(staleSnapshotValue, value) : value;
 }
 
 function paginatePublicMerchants(value: PublicMerchantsResult, filters: MerchantListFilters): PublicMerchantsResult {

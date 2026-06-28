@@ -54,7 +54,9 @@ PRICE_DATA_CACHE_TTL_MS = PRICE_DATA_EDGE_SECONDS * 1000
 - 写入路径应尽量传入 `affectedProductIds` / `affectedOfferIds` / `affectedSourceIds`，让统一任务只刷新受影响商品快照。
 - `POST /api/admin/public-api-snapshots` 默认调用 `refreshPublicApiSnapshotsIfDue()`，只在 dirty 且超过统一冷却时间时刷新；手动 `force=1` 才做强制全量刷新。
 - 手动排障或运营强制刷新时才允许传 `force=1`。
-- 默认自动刷新节奏是 3 分钟增量合并；商品详情快照按受影响商品增量刷新，`explorer`/默认 `offers` 最多 5 分钟合并刷新一次，全量快照 60 分钟低频兜底。公开读 TTL 仍是 300 秒，stale 窗口仍是 1800 秒。
+- 默认自动刷新由云服务器 `npm run refresh:snapshots` / systemd timer 承担，建议 1-3 分钟触发一次；商品详情快照按受影响商品增量刷新，`explorer`/默认 `offers` 最多 5 分钟合并刷新一次，全量快照 60 分钟低频兜底。
+- GitHub Actions 的 `refresh-public-api-snapshots.yml` 只作为 30 分钟低频兜底和手动排障入口，不作为分钟级主调度。
+- 公开读 TTL 仍是 300 秒，stale 窗口仍是 1800 秒；默认高频快照超过两个公开读 TTL（约 10 分钟）后不得直接返回，必须先回源重建，回源失败时才可作为降级旧数据展示。
 
 ### 3. Contracts
 

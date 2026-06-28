@@ -2,7 +2,8 @@ name: Refresh Public API Snapshots
 
 on:
   schedule:
-    - cron: "*/3 * * * *"
+    # 主刷新由云服务器 systemd timer 承担；GitHub 只保留低频兜底。
+    - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
       force:

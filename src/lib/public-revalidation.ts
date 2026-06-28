@@ -8,6 +8,7 @@ const publicOfferPaths = [
   "/platforms/claude",
   "/platforms/gemini",
   "/platforms/api",
+  "/channels",
   "/about",
   "/sitemap.xml",
 ] as const;
