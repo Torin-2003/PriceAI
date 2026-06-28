@@ -18,7 +18,7 @@ on:
       run_direct:
         description: "Run collection directly in GitHub Actions instead of enqueueing a job"
         required: false
-        default: false
+        default: true
         type: boolean
 
 concurrency:
@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   enqueue:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_direct != true }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_direct != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -91,7 +91,7 @@ jobs:
           NODE
 
   direct-collect:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_direct == true }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_direct == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -107,13 +107,18 @@ jobs:
       - name: Collect and write official prices
         env:
           REQUESTED_MODE: ${{ github.event.inputs.mode }}
+          SCHEDULE: ${{ github.event.schedule }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -euo pipefail
 
-          MODE="${REQUESTED_MODE:-weekly_full}"
+          MODE="${REQUESTED_MODE:-fx_only}"
+          if [ "$SCHEDULE" = "30 18 * * 0" ]; then
+            MODE="weekly_full"
+          fi
+
           if [ "$MODE" = "fx_only" ]; then
             npm run collect:official -- --fx-only --post --mode=worker
           else
