@@ -295,14 +295,13 @@ export default function TransitStationExplorer({ stations }: Props) {
       ) : (
         <>
           <DataTableShell className="hidden md:block">
-            <table className="w-full min-w-[1040px] border-collapse text-left text-sm" role="table">
+            <table className="w-full min-w-[920px] border-collapse text-left text-sm" role="table">
                 <thead className="bg-[#f2f4f4] text-[0.68rem] font-semibold text-[#5a6061]">
                   <tr role="row">
                     <DataTableHead>站点</DataTableHead>
                     <DataTableHead explanation="综合倍率 = 充值折算系数 × 模型分组倍率；越低表示按官方价折算后越便宜。">
                       {familyFilter === "all" ? "最低综合" : `${TRANSIT_MODEL_FAMILY_LABELS[familyFilter]} 综合`}
                     </DataTableHead>
-                    <DataTableHead explanation="站点当前收录并可比较的标准模型家族，例如 ChatGPT、Claude、Gemini。">覆盖模型</DataTableHead>
                     <DataTableHead explanation="站内充值额度与人民币的折算关系，会影响实际扣费倍率。">充值倍率</DataTableHead>
                     <DataTableHead explanation="近 7 日 PriceAI 可用性探测样本汇总；样本越多、时间跨度越完整，参考价值越高。">稳定性</DataTableHead>
                     <DataTableHead explanation="公开披露或 PriceAI 推断的上游来源与号池类型，用于判断风险边界。">来源渠道</DataTableHead>
@@ -510,9 +509,6 @@ function StationRow({
         <CombinedRateCell station={station} family={activeFamily} />
       </td>
       <td className="px-5 py-4">
-        <FamilyCoverage station={station} activeFamily={activeFamily} />
-      </td>
-      <td className="px-5 py-4">
         <PriceBreakdownCell station={station} activeFamily={activeFamily} />
       </td>
       <td className="px-5 py-4">
@@ -572,12 +568,14 @@ function StationCard({
       aria-label={`查看 ${station.name} 详情`}
     >
       <div className="mb-3 flex items-center gap-3">
-        <StationIdentity station={station} compact />
+        <StationIdentity station={station} />
       </div>
 
-      <div className="mb-3 grid grid-cols-2 gap-2 text-xs">
-        <InfoTile label={activeFamily === "all" ? "最低综合" : `${TRANSIT_MODEL_FAMILY_LABELS[activeFamily]} 综合`} value={<CombinedRateCell station={station} family={activeFamily} compact />} />
-        <InfoTile label="覆盖模型" value={<FamilyCoverage station={station} activeFamily={activeFamily} compact />} />
+      <div className="mb-3 flex items-center justify-between gap-3 border-t border-[#edf0f1] pt-3 text-xs">
+        <span className="text-[10px] font-bold text-[#5a6061]">
+          {activeFamily === "all" ? "最低综合" : `${TRANSIT_MODEL_FAMILY_LABELS[activeFamily]} 综合`}
+        </span>
+        <CombinedRateCell station={station} family={activeFamily} compact />
       </div>
       <div className="mb-3">
         <PriceBreakdownCell station={station} activeFamily={activeFamily} compact />
@@ -632,13 +630,7 @@ function UpdatedAtCell({ station }: { station: TransitStation }) {
   );
 }
 
-function StationIdentity({
-  station,
-  compact = false,
-}: {
-  station: TransitStation;
-  compact?: boolean;
-}) {
+function StationIdentity({ station }: { station: TransitStation }) {
   const offer = getPrimaryTransitCommercialOffer(station);
   const offerLabel = offer ? formatListOfferLabel(offer) : null;
   const offerTitle = offer ? offer.title : "";
@@ -660,7 +652,6 @@ function StationIdentity({
               <span className="truncate">{offerLabel}</span>
             </span>
           ) : null}
-          <ModelCoverage station={station} compact={compact} />
         </div>
       </div>
     </div>
@@ -689,61 +680,6 @@ function extractRegistrationBonusAmount(text: string): string | null {
   if (dollarMatch?.[1]) return dollarMatch[1];
 
   return null;
-}
-
-function ModelCoverage({ station, compact = false }: { station: TransitStation; compact?: boolean }) {
-  return <FamilyCoverage station={station} activeFamily="all" compact={compact} />;
-}
-
-function FamilyCoverage({
-  station,
-  activeFamily,
-  compact = false,
-}: {
-  station: TransitStation;
-  activeFamily: "all" | TransitModelFamily;
-  compact?: boolean;
-}) {
-  const families = TRANSIT_MODEL_FAMILY_ORDER.filter((family) =>
-    station.prices.some((price) => price.family === family)
-  );
-  const visibleFamilies = activeFamily === "all"
-    ? families.slice(0, compact ? 3 : 4)
-    : families.filter((family) => family === activeFamily);
-
-  if (!visibleFamilies.length) {
-    return (
-      <div className="flex min-w-0 shrink-0 gap-1.5">
-        <CoverageBadge label={activeFamily === "all" ? "模型" : TRANSIT_MODEL_FAMILY_LABELS[activeFamily]} covered={false} compact={compact} />
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex min-w-0 shrink-0 flex-wrap gap-1.5">
-      {visibleFamilies.map((family) => (
-        <CoverageBadge
-          key={family}
-          label={TRANSIT_MODEL_FAMILY_LABELS[family]}
-          covered
-          compact={compact}
-        />
-      ))}
-      {activeFamily === "all" && families.length > visibleFamilies.length ? (
-        <StatusChip tone="muted" className="h-5 justify-center px-2 py-0 text-[10px]">
-          +{families.length - visibleFamilies.length}
-        </StatusChip>
-      ) : null}
-    </div>
-  );
-}
-
-function CoverageBadge({ covered, label, compact }: { covered: boolean; label: string; compact: boolean }) {
-  return (
-    <StatusChip tone={covered ? "success" : "muted"} className={compact ? "h-5 min-w-[64px] justify-center px-1.5 py-0 text-[10px]" : "h-5 min-w-[64px] justify-center px-1.5 py-0 text-[10px]"}>
-      {label}{covered ? "" : " 未收录"}
-    </StatusChip>
-  );
 }
 
 function PillList({ items, max = items.length }: { items: { id: string; label: string }[]; max?: number }) {
@@ -780,21 +716,6 @@ function SourceChannelCell({ station }: { station: TransitStation }) {
           ))}
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function InfoTile({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0 rounded-lg bg-[#f2f4f4] p-2">
-      <div className="mb-1 text-[10px] font-bold text-[#5a6061]">{label}</div>
-      {value}
     </div>
   );
 }
