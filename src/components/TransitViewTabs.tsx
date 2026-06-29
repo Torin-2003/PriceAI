@@ -2,20 +2,19 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Building2, Boxes, ShieldCheck } from "lucide-react";
+import { Building2, Boxes } from "lucide-react";
 import { isTransitModelFamily } from "@/data/api-transit/types";
 
 export function TransitViewTabs({
   active,
   className = "",
 }: {
-  active: "stations" | "models" | "detector";
+  active: "stations" | "models";
   className?: string;
 }) {
   const searchParams = useSearchParams();
   const stationHref = buildViewHref("/api-transit", searchParams);
   const modelHref = buildViewHref("/api-transit/models", searchParams);
-  const detectorHref = buildViewHref("/api-transit/detector", searchParams);
 
   return (
     <nav className={`inline-flex h-11 items-center gap-1 rounded-full bg-[#e4e9ea] p-1 ${className}`} aria-label="中转 API 视图切换">
@@ -42,18 +41,6 @@ export function TransitViewTabs({
       >
         <Boxes className="h-4 w-4" />
         模型
-      </Link>
-      <Link
-        href={detectorHref}
-        className={`inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-semibold transition-colors ${
-          active === "detector"
-            ? "bg-white text-[#202829] shadow-[0_8px_24px_rgba(45,52,53,0.08)]"
-            : "text-[#5a6061] hover:text-[#202829]"
-        }`}
-        aria-current={active === "detector" ? "page" : undefined}
-      >
-        <ShieldCheck className="h-4 w-4" />
-        检测
       </Link>
     </nav>
   );
