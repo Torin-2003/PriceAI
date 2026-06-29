@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ArrowRight, ExternalLink, Megaphone, X } from "lucide-react";
-import { useCallback, useSyncExternalStore } from "react";
+import { type ComponentProps, type ReactNode, useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import {
   defaultFooterSponsorCreatives,
   getVisibleSponsorCreatives,
@@ -10,6 +11,7 @@ import {
   type SponsorPlacementKind,
   type SponsorSettingsSummary,
 } from "@/lib/sponsor-settings-shared";
+import { trackAnalyticsEvent } from "@/lib/analytics";
 
 type SponsoredPlacementPreviewProps = {
   kind: SponsorPlacementKind;
@@ -36,6 +38,7 @@ const showSponsorPreview = process.env.NEXT_PUBLIC_PRICEAI_SHOW_SPONSOR_PREVIEW 
 const dismissStoragePrefix = "priceai.sponsor.preview.dismissed";
 const dismissEventName = "priceai:sponsor-dismissed";
 const inMemoryDismissedKeys = new Set<string>();
+const sponsorRel = "sponsored nofollow noopener noreferrer";
 
 const placementCopy: Record<SponsorPlacementKind, PlacementCopy> = {
   topBanner: {
@@ -127,33 +130,53 @@ const placementCopy: Record<SponsorPlacementKind, PlacementCopy> = {
 export function SponsoredPlacementPreview({ kind, settings = null, className = "" }: SponsoredPlacementPreviewProps) {
   const copy = placementCopy[kind];
   const dismissStorageKey = `${dismissStoragePrefix}.${copy.id}.v2`;
+  const pathname = usePathname();
   const previewEnabled = useSponsorPreviewEnabled();
   const dismissed = useDismissedState(dismissStorageKey);
   const visibleCreatives = getVisibleSponsorCreatives(settings, kind);
   const previewCreatives = previewEnabled ? getPreviewCreatives(kind) : [];
   const creatives = visibleCreatives.length ? visibleCreatives : previewCreatives;
+  const impressionKey = creatives.map((creative) => creative.id).join("|");
 
   const dismiss = useCallback(() => {
-    inMemoryDismissedKeys.add(dismissStorageKey);
+    const value = localDateKey();
+    inMemoryDismissedKeys.add(`${dismissStorageKey}:${value}`);
     try {
-      window.localStorage.setItem(dismissStorageKey, "1");
+      window.localStorage.setItem(dismissStorageKey, value);
     } catch {
       // localStorage may be unavailable in private or restricted browser contexts.
     }
+    trackAnalyticsEvent("sponsor_dismiss", {
+      placement: kind,
+      placement_id: copy.id,
+      creative_ids: impressionKey,
+      path: pathname,
+    });
     window.dispatchEvent(new Event(dismissEventName));
-  }, [dismissStorageKey]);
+  }, [copy.id, dismissStorageKey, impressionKey, kind, pathname]);
+
+  useEffect(() => {
+    if (!creatives.length || dismissed) return;
+    trackAnalyticsEvent("sponsor_impression", {
+      placement: kind,
+      placement_id: copy.id,
+      creative_ids: impressionKey,
+      creative_count: creatives.length,
+      path: pathname,
+    });
+  }, [copy.id, creatives.length, dismissed, impressionKey, kind, pathname]);
 
   if (!creatives.length || dismissed) return null;
 
   if (kind === "topBanner") {
-    return <TopNoticeAd copy={copy} creative={creatives[0]} className={className} onDismiss={dismiss} />;
+    return <TopNoticeAd copy={copy} creative={creatives[0]} kind={kind} className={className} onDismiss={dismiss} pathname={pathname} />;
   }
 
   if (kind === "listFooter") {
-    return <FooterSponsorSection copy={copy} creatives={creatives} className={className} onDismiss={dismiss} />;
+    return <FooterSponsorSection copy={copy} creatives={creatives} kind={kind} className={className} onDismiss={dismiss} pathname={pathname} />;
   }
 
-  return <DisplayAdCard copy={copy} creative={creatives[0]} className={className} onDismiss={dismiss} />;
+  return <DisplayAdCard copy={copy} creative={creatives[0]} kind={kind} className={className} onDismiss={dismiss} pathname={pathname} />;
 }
 
 function useSponsorPreviewEnabled() {
@@ -181,13 +204,17 @@ function isLocalPreviewHostname(hostname: string) {
 function TopNoticeAd({
   copy,
   creative,
+  kind,
   className,
   onDismiss,
+  pathname,
 }: {
   copy: PlacementCopy;
   creative: SponsorCreative;
+  kind: SponsorPlacementKind;
   className: string;
   onDismiss: () => void;
+  pathname: string;
 }) {
   return (
     <section
@@ -195,8 +222,11 @@ function TopNoticeAd({
       className={`border-b border-[#d8e3df] bg-[#edf7f3] text-[#202829] ${className}`}
     >
       <div className="mx-auto flex min-h-11 max-w-[1500px] items-center gap-3 px-4 sm:px-8">
-        <Link
-          href={creative.targetUrl || "/commercial#slots"}
+        <SponsorLink
+          creative={creative}
+          placement={kind}
+          placementId={copy.id}
+          path={pathname}
           className="flex min-w-0 flex-1 items-center justify-center gap-2 text-sm leading-6 text-[#2f6247] transition hover:text-[#1d4d34]"
         >
           <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold text-[#2f7a4b] ring-1 ring-[#b9d8c9]">
@@ -209,7 +239,7 @@ function TopNoticeAd({
             {creative.description || copy.body}
           </span>
           <ArrowRight className="h-4 w-4 shrink-0" />
-        </Link>
+        </SponsorLink>
         <button
           type="button"
           onClick={onDismiss}
@@ -226,13 +256,17 @@ function TopNoticeAd({
 function DisplayAdCard({
   copy,
   creative,
+  kind,
   className,
   onDismiss,
+  pathname,
 }: {
   copy: PlacementCopy;
   creative: SponsorCreative;
+  kind: SponsorPlacementKind;
   className: string;
   onDismiss: () => void;
+  pathname: string;
 }) {
   return (
     <section
@@ -267,13 +301,16 @@ function DisplayAdCard({
           <h2 className="mt-3 text-lg font-extrabold leading-tight text-[#202829] md:text-xl">{creative.title || copy.title}</h2>
           <p className="mt-2 max-w-[76ch] text-sm leading-7 text-[#5a6061]">{creative.description || copy.body}</p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Link
-              href={creative.targetUrl || "/commercial#slots"}
+            <SponsorLink
+              creative={creative}
+              placement={kind}
+              placementId={copy.id}
+              path={pathname}
               className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#2d3435] px-3 text-xs font-bold text-[#f8f8f8] transition hover:bg-[#1f2526]"
             >
               {copy.cta}
               <ExternalLink className="h-3.5 w-3.5" />
-            </Link>
+            </SponsorLink>
             <Link
               href="/commercial#rules"
               className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#dde4e5] px-3 text-xs font-bold text-[#2d3435] transition hover:bg-[#cfd8d9]"
@@ -284,8 +321,11 @@ function DisplayAdCard({
           </div>
         </div>
 
-        <Link
-          href={creative.targetUrl || "/commercial#slots"}
+        <SponsorLink
+          creative={creative}
+          placement={kind}
+          placementId={copy.id}
+          path={pathname}
           className={`block min-h-[128px] overflow-hidden rounded-md ring-1 ring-[#dfe4e5] transition hover:ring-[#adb3b4] ${visualToneClass(creative.tone || copy.tone)}`}
           aria-label={`查看${copy.eyebrow}投放要求`}
         >
@@ -315,7 +355,7 @@ function DisplayAdCard({
               ))}
             </div>
           </div>
-        </Link>
+        </SponsorLink>
       </div>
     </section>
   );
@@ -324,13 +364,17 @@ function DisplayAdCard({
 function FooterSponsorSection({
   copy,
   creatives,
+  kind,
   className,
   onDismiss,
+  pathname,
 }: {
   copy: PlacementCopy;
   creatives: SponsorCreative[];
+  kind: SponsorPlacementKind;
   className: string;
   onDismiss: () => void;
+  pathname: string;
 }) {
   return (
     <section
@@ -379,9 +423,12 @@ function FooterSponsorSection({
 
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {creatives.map((card) => (
-            <Link
+            <SponsorLink
               key={card.id}
-              href={card.targetUrl || "/commercial#slots"}
+              creative={card}
+              placement={kind}
+              placementId={copy.id}
+              path={pathname}
               className="group overflow-hidden rounded-lg bg-white text-[#202829] ring-1 ring-[#dfe4e5] transition hover:-translate-y-0.5 hover:ring-[#adb3b4]"
               aria-label={`${card.title}广告位，查看投放要求`}
             >
@@ -423,11 +470,46 @@ function FooterSponsorSection({
                   <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
                 </span>
               </div>
-            </Link>
+            </SponsorLink>
           ))}
         </div>
       </div>
     </section>
+  );
+}
+
+type SponsorLinkProps = Omit<ComponentProps<typeof Link>, "href" | "onClick"> & {
+  creative: SponsorCreative;
+  placement: SponsorPlacementKind;
+  placementId: string;
+  path: string;
+  children: ReactNode;
+};
+
+function SponsorLink({ creative, placement, placementId, path, children, ...props }: SponsorLinkProps) {
+  const href = useMemo(() => sponsorHref(creative.targetUrl || "/commercial#slots", placement, creative), [creative, placement]);
+  const isExternal = typeof href === "string" && /^https?:\/\//i.test(href);
+
+  return (
+    <Link
+      {...props}
+      href={href}
+      target={isExternal ? "_blank" : props.target}
+      rel={isExternal ? sponsorRel : props.rel}
+      onClick={() => {
+        trackAnalyticsEvent("sponsor_click", {
+          placement,
+          placement_id: placementId,
+          creative_id: creative.id,
+          sponsor_name: creative.sponsorName || creative.title,
+          campaign_id: creative.campaignId || campaignSlug(placement, creative),
+          target_url: href,
+          path,
+        });
+      }}
+    >
+      {children}
+    </Link>
   );
 }
 
@@ -449,6 +531,8 @@ function getPreviewCreatives(kind: SponsorPlacementKind): SponsorCreative[] {
     title: copy.title,
     description: copy.body,
     targetUrl: "/commercial#slots",
+    sponsorName: "PriceAI",
+    campaignId: `${copy.id}-preview`,
     visualTitle: copy.visualTitle,
     visualMeta: copy.visualBody,
     tone: copy.tone,
@@ -462,14 +546,45 @@ function visualToneClass(tone: PlacementCopy["tone"]) {
 }
 
 function readDismissed(storageKey: string) {
-  if (inMemoryDismissedKeys.has(storageKey)) return true;
+  const today = localDateKey();
+  if (inMemoryDismissedKeys.has(`${storageKey}:${today}`)) return true;
   if (typeof window === "undefined") return false;
 
   try {
-    return window.localStorage.getItem(storageKey) === "1";
+    return window.localStorage.getItem(storageKey) === today;
   } catch {
     return false;
   }
+}
+
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function sponsorHref(targetUrl: string, placement: SponsorPlacementKind, creative: SponsorCreative): string {
+  if (targetUrl.startsWith("/")) {
+    return targetUrl;
+  }
+
+  try {
+    const url = new URL(targetUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return targetUrl;
+    url.searchParams.set("utm_source", "priceai");
+    url.searchParams.set("utm_medium", "sponsor");
+    url.searchParams.set("utm_campaign", creative.campaignId || campaignSlug(placement, creative));
+    url.searchParams.set("utm_content", `${placement}_${creative.id}`);
+    return url.toString();
+  } catch {
+    return targetUrl;
+  }
+}
+
+function campaignSlug(placement: SponsorPlacementKind, creative: SponsorCreative): string {
+  const source = creative.sponsorName || creative.title || creative.id || placement;
+  return `${placement}-${source}`.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || placement;
 }
 
 function useDismissedState(storageKey: string) {

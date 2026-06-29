@@ -17,6 +17,8 @@ const creativeSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240).default(""),
   targetUrl: z.string().trim().min(1).max(2048).default("/commercial#slots"),
+  sponsorName: z.string().trim().max(80).nullable().optional(),
+  campaignId: z.string().trim().max(120).nullable().optional(),
   imageUrl: z.string().trim().max(2048).nullable().optional(),
   visualTitle: z.string().trim().max(80).nullable().optional(),
   visualMeta: z.string().trim().max(120).nullable().optional(),
@@ -69,7 +71,7 @@ export async function PATCH(request: Request) {
 }
 
 function revalidateSponsorPages() {
-  for (const path of ["/", "/channels", "/api-transit", "/api-transit/models", "/api-models", "/commercial"]) {
+  for (const path of ["/", "/channels", "/api-transit", "/api-transit/models", "/api-models", "/commercial", "/api/sponsor-settings"]) {
     revalidatePath(path);
   }
 }

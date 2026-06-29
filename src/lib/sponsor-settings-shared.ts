@@ -18,6 +18,8 @@ export type SponsorCreative = {
   title: string;
   description: string;
   targetUrl: string;
+  sponsorName?: string | null;
+  campaignId?: string | null;
   imageUrl?: string | null;
   visualTitle?: string | null;
   visualMeta?: string | null;

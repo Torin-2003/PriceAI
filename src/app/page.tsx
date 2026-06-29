@@ -436,7 +436,6 @@ export default async function Home() {
             </a>
           </div>
           <p className="max-w-[72ch]">PriceAI 不参与交易。购买前请回到原平台核验价格、库存、交付方式和售后规则。</p>
-          <SponsoredPlacementPreview kind="listFooter" settings={sponsorSettings} className="w-full max-w-5xl" />
         </div>
       </footer>
     </div>

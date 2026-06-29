@@ -27,6 +27,8 @@ import {
   Search,
   Server,
   Store,
+  ArrowDown,
+  ArrowUp,
   TerminalSquare,
   X,
 } from "lucide-react";
@@ -44,7 +46,7 @@ import {
   isCollectorKind,
   knownAutoCollectorHosts as createKnownAutoCollectorHosts,
 } from "@/lib/collector-registry";
-import { sponsorPlacementLabels } from "@/lib/sponsor-settings-shared";
+import { sponsorPlacementLabels, type SponsorCreative } from "@/lib/sponsor-settings-shared";
 import type {
   AdminSummary,
   ChannelSubmission,
@@ -1579,9 +1581,9 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     }
   }
 
-  async function saveSponsorSettings(formData: FormData) {
+  async function saveSponsorSettings(settings: SponsorSettings) {
     setLoadingAction("sponsor-settings");
-    const payload = buildSponsorSettingsPayload(formData, sponsorSettings);
+    const payload = buildSponsorSettingsPayload(settings);
     const result = await requestWithMethod("/api/admin/sponsor-settings", "PATCH", password, payload);
     setLoadingAction(null);
 
@@ -2910,6 +2912,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
             {activeTab === "sponsors" && (
               <div role="tabpanel" id="tabpanel-sponsors">
                 <SponsorSettingsPanel
+                  key={sponsorSettings.updatedAt || sponsorSettings.message || "sponsor-settings"}
                   settings={sponsorSettings}
                   loading={loadingAction === "sponsor-settings"}
                   onSave={saveSponsorSettings}
@@ -4638,9 +4641,12 @@ function SponsorSettingsPanel({
 }: {
   settings: SponsorSettings;
   loading: boolean;
-  onSave: (formData: FormData) => Promise<void>;
+  onSave: (settings: SponsorSettings) => Promise<void>;
 }) {
-  const statusClass = settings.enabled
+  const [draft, setDraft] = useState<SponsorSettings>(settings);
+
+  const activeDraftPlacementCount = activeSponsorPlacementCount(draft);
+  const statusClass = draft.enabled
     ? "bg-[#e8f3ec] text-[#2f7a4b]"
     : "bg-[#f2f4f4] text-[#5a6061]";
 
@@ -4652,14 +4658,14 @@ function SponsorSettingsPanel({
             <Megaphone size={15} className="text-[#5a6061]" />
             <h3 className="text-sm font-semibold text-[#202829]">赞助位配置</h3>
             <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusClass}`}>
-              {settings.enabled ? "总开关已开启" : "总开关已关闭"}
+              {draft.enabled ? "总开关已开启" : "总开关已关闭"}
             </span>
             <span className="rounded-full bg-[#eef3f8] px-2 py-0.5 text-xs font-semibold text-[#47657a]">
-              {activeSponsorPlacementCount(settings)} 个站位启用
+              {activeDraftPlacementCount} 个站位启用
             </span>
           </div>
           <p className="mt-1 max-w-[78ch] text-xs leading-5 text-[#5a6061]">
-            控制前台赞助展示。关闭总开关时所有赞助位隐藏；每个站位仍会保留素材草稿。广告标识和“不影响排序”的边界由前台组件固定展示。
+            控制前台赞助展示。关闭总开关时所有赞助位隐藏；每个站位仍会保留素材草稿。真实外链会自动追加 PriceAI sponsor UTM，并记录曝光、点击和关闭事件。
           </p>
           {settings.message ? <p className="mt-1 text-xs text-[#9b3328]">{settings.message}</p> : null}
         </div>
@@ -4672,16 +4678,21 @@ function SponsorSettingsPanel({
         className="mt-4 space-y-4"
         onSubmit={async (event) => {
           event.preventDefault();
-          await onSave(new FormData(event.currentTarget));
+          await onSave(draft);
         }}
       >
         <label className="flex items-center gap-2 rounded-lg bg-[#f2f4f4] px-3 py-2 text-sm font-medium text-[#2d3435]">
-          <input name="enabled" type="checkbox" defaultChecked={settings.enabled} className="h-4 w-4 accent-[#2d3435]" />
+          <input
+            type="checkbox"
+            checked={draft.enabled}
+            onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))}
+            className="h-4 w-4 accent-[#2d3435]"
+          />
           开启全站赞助展示
         </label>
 
         <div className="grid gap-3 xl:grid-cols-2">
-          {Object.entries(settings.placements).map(([kind, placement]) => {
+          {Object.entries(draft.placements).map(([kind, placement]) => {
             return (
               <fieldset key={kind} className="rounded-lg border border-[#adb3b4]/20 bg-[#f9f9f9] p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -4694,7 +4705,12 @@ function SponsorSettingsPanel({
                     </p>
                   </div>
                   <label className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-[#2d3435] ring-1 ring-[#adb3b4]/20">
-                    <input name={`${kind}.enabled`} type="checkbox" defaultChecked={placement.enabled} className="h-4 w-4 accent-[#2d3435]" />
+                    <input
+                      type="checkbox"
+                      checked={placement.enabled}
+                      onChange={(event) => setDraft((current) => updateSponsorPlacement(current, kind, { enabled: event.target.checked }))}
+                      className="h-4 w-4 accent-[#2d3435]"
+                    />
                     启用站位
                   </label>
                 </div>
@@ -4703,18 +4719,77 @@ function SponsorSettingsPanel({
                   <div className="mt-4 space-y-3">
                     {placement.creatives.map((creative, index) => (
                       <div key={creative.id} className="rounded-lg bg-white p-3 ring-1 ring-[#adb3b4]/20">
-                        <input type="hidden" name={`${kind}.${index}.id`} defaultValue={creative.id} />
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-xs font-semibold text-[#2d3435]">素材 {index + 1}</span>
-                          <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2d3435]">
-                            <input name={`${kind}.${index}.enabled`} type="checkbox" defaultChecked={creative.enabled} className="h-4 w-4 accent-[#2d3435]" />
-                            启用素材
-                          </label>
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <span className="text-xs font-semibold text-[#2d3435]">素材 {index + 1}</span>
+                            <span className="max-w-[16rem] truncate rounded-full bg-[#f2f4f4] px-2 py-0.5 text-[11px] font-semibold text-[#5a6061]">
+                              {creative.campaignId || creative.id}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setDraft((current) => moveSponsorCreative(current, kind, index, -1))}
+                              disabled={index === 0}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[#f2f4f4] text-[#5a6061] transition hover:bg-[#e4e9ea] hover:text-[#202829] disabled:cursor-not-allowed disabled:opacity-40"
+                              aria-label="上移素材"
+                            >
+                              <ArrowUp size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDraft((current) => moveSponsorCreative(current, kind, index, 1))}
+                              disabled={index === placement.creatives.length - 1}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[#f2f4f4] text-[#5a6061] transition hover:bg-[#e4e9ea] hover:text-[#202829] disabled:cursor-not-allowed disabled:opacity-40"
+                              aria-label="下移素材"
+                            >
+                              <ArrowDown size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDraft((current) => removeSponsorCreative(current, kind, index))}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[#fbe9e7] text-[#9b3328] transition hover:bg-[#f5d4d0]"
+                              aria-label="删除素材"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                            <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2d3435]">
+                              <input
+                                type="checkbox"
+                                checked={creative.enabled}
+                                onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { enabled: event.target.checked }))}
+                                className="h-4 w-4 accent-[#2d3435]"
+                              />
+                              启用素材
+                            </label>
+                          </div>
                         </div>
                         <div className="grid gap-3 md:grid-cols-2">
                           <label className="block">
+                            <span className="mb-1 block text-xs font-medium text-[#5a6061]">赞助方</span>
+                            <input
+                              value={creative.sponsorName || ""}
+                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { sponsorName: event.target.value }))}
+                              className={adminInputClassName}
+                              placeholder="例如 Vultr / OneHop"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="mb-1 block text-xs font-medium text-[#5a6061]">Campaign ID</span>
+                            <input
+                              value={creative.campaignId || ""}
+                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { campaignId: event.target.value }))}
+                              className={adminInputClassName}
+                              placeholder="例如 vultr-2026-07"
+                            />
+                          </label>
+                          <label className="block">
                             <span className="mb-1 block text-xs font-medium text-[#5a6061]">素材状态</span>
-                            <select name={`${kind}.${index}.status`} defaultValue={creative.status} className={adminInputClassName}>
+                            <select
+                              value={creative.status}
+                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { status: event.target.value as SponsorCreative["status"] }))}
+                              className={adminInputClassName}
+                            >
                               <option value="live">上线</option>
                               <option value="draft">草稿</option>
                               <option value="paused">暂停</option>
@@ -4723,7 +4798,11 @@ function SponsorSettingsPanel({
                           </label>
                           <label className="block">
                             <span className="mb-1 block text-xs font-medium text-[#5a6061]">色调</span>
-                            <select name={`${kind}.${index}.tone`} defaultValue={creative.tone} className={adminInputClassName}>
+                            <select
+                              value={creative.tone}
+                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { tone: event.target.value as SponsorCreative["tone"] }))}
+                              className={adminInputClassName}
+                            >
                               <option value="green">绿色</option>
                               <option value="blue">蓝色</option>
                               <option value="amber">琥珀色</option>
@@ -4731,31 +4810,72 @@ function SponsorSettingsPanel({
                           </label>
                           <label className="block md:col-span-2">
                             <span className="mb-1 block text-xs font-medium text-[#5a6061]">标题</span>
-                            <input name={`${kind}.${index}.title`} defaultValue={creative.title} className={adminInputClassName} />
+                            <input
+                              value={creative.title}
+                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { title: event.target.value }))}
+                              className={adminInputClassName}
+                            />
                           </label>
                           <label className="block md:col-span-2">
                             <span className="mb-1 block text-xs font-medium text-[#5a6061]">说明</span>
-                            <textarea name={`${kind}.${index}.description`} defaultValue={creative.description} rows={2} className={`${adminInputClassName} h-auto min-h-20 resize-y py-2 leading-6`} />
+                            <textarea
+                              value={creative.description}
+                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { description: event.target.value }))}
+                              rows={2}
+                              className={`${adminInputClassName} h-auto min-h-20 resize-y py-2 leading-6`}
+                            />
                           </label>
                           <label className="block md:col-span-2">
                             <span className="mb-1 block text-xs font-medium text-[#5a6061]">跳转链接</span>
-                            <input name={`${kind}.${index}.targetUrl`} defaultValue={creative.targetUrl} className={adminInputClassName} />
+                            <input
+                              value={creative.targetUrl}
+                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { targetUrl: event.target.value }))}
+                              className={adminInputClassName}
+                            />
+                            <span className="mt-1 block text-[11px] leading-5 text-[#8a9293]">外部链接会自动追加 utm_source=priceai、utm_medium=sponsor、utm_campaign 和 utm_content。</span>
                           </label>
                           <label className="block md:col-span-2">
                             <span className="mb-1 block text-xs font-medium text-[#5a6061]">图片 URL</span>
-                            <input name={`${kind}.${index}.imageUrl`} defaultValue={creative.imageUrl || ""} placeholder="可留空，前台显示占位图形" className={adminInputClassName} />
+                            <input
+                              value={creative.imageUrl || ""}
+                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { imageUrl: event.target.value }))}
+                              placeholder="可留空，前台显示占位图形"
+                              className={adminInputClassName}
+                            />
                           </label>
                           <label className="block">
                             <span className="mb-1 block text-xs font-medium text-[#5a6061]">图片主标题</span>
-                            <input name={`${kind}.${index}.visualTitle`} defaultValue={creative.visualTitle || ""} className={adminInputClassName} />
+                            <input
+                              value={creative.visualTitle || ""}
+                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { visualTitle: event.target.value }))}
+                              className={adminInputClassName}
+                            />
                           </label>
                           <label className="block">
                             <span className="mb-1 block text-xs font-medium text-[#5a6061]">图片副信息</span>
-                            <input name={`${kind}.${index}.visualMeta`} defaultValue={creative.visualMeta || ""} className={adminInputClassName} />
+                            <input
+                              value={creative.visualMeta || ""}
+                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { visualMeta: event.target.value }))}
+                              className={adminInputClassName}
+                            />
                           </label>
-                          <label className="block md:col-span-2">
+                          <label className="block">
+                            <span className="mb-1 block text-xs font-medium text-[#5a6061]">开始时间</span>
+                            <input
+                              value={formatDateTimeLocalValue(creative.startsAt)}
+                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { startsAt: event.target.value || null }))}
+                              type="datetime-local"
+                              className={adminInputClassName}
+                            />
+                          </label>
+                          <label className="block">
                             <span className="mb-1 block text-xs font-medium text-[#5a6061]">到期时间</span>
-                            <input name={`${kind}.${index}.endsAt`} defaultValue={formatDateTimeLocalValue(creative.endsAt)} type="datetime-local" className={adminInputClassName} />
+                            <input
+                              value={formatDateTimeLocalValue(creative.endsAt)}
+                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { endsAt: event.target.value || null }))}
+                              type="datetime-local"
+                              className={adminInputClassName}
+                            />
                           </label>
                         </div>
                       </div>
@@ -4766,6 +4886,14 @@ function SponsorSettingsPanel({
                     当前站位没有默认素材。
                   </p>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setDraft((current) => addSponsorCreative(current, kind))}
+                  className="mt-3 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-3 text-xs font-semibold text-[#2d3435] ring-1 ring-[#adb3b4]/25 transition hover:bg-[#f2f4f4]"
+                >
+                  <Plus size={14} />
+                  新增素材
+                </button>
               </fieldset>
             );
           })}
@@ -4821,44 +4949,127 @@ function riskReviewSettingSourceLabel(value: RiskReviewSettings["source"]): stri
   return "未配置";
 }
 
-function buildSponsorSettingsPayload(formData: FormData, settings: SponsorSettings) {
+function buildSponsorSettingsPayload(settings: SponsorSettings) {
   const placements = Object.fromEntries(
-    Object.entries(settings.placements).map(([kind, placement]) => {
-      const creatives = placement.creatives.map((creative, index) => ({
-        id: sponsorFormText(formData, `${kind}.${index}.id`) || creative.id,
-        enabled: formData.get(`${kind}.${index}.enabled`) === "on",
-        status: sponsorFormText(formData, `${kind}.${index}.status`) || creative.status,
-        title: sponsorFormText(formData, `${kind}.${index}.title`) || creative.title,
-        description: sponsorFormText(formData, `${kind}.${index}.description`) || "",
-        targetUrl: sponsorFormText(formData, `${kind}.${index}.targetUrl`) || "/commercial#slots",
-        imageUrl: sponsorFormText(formData, `${kind}.${index}.imageUrl`) || null,
-        visualTitle: sponsorFormText(formData, `${kind}.${index}.visualTitle`) || null,
-        visualMeta: sponsorFormText(formData, `${kind}.${index}.visualMeta`) || null,
-        tone: sponsorFormText(formData, `${kind}.${index}.tone`) || creative.tone,
-        startsAt: creative.startsAt || null,
-        endsAt: sponsorFormText(formData, `${kind}.${index}.endsAt`) || null,
-      }));
-
-      return [kind, {
-        enabled: formData.get(`${kind}.enabled`) === "on",
-        creatives,
-      }];
-    }),
+    Object.entries(settings.placements).map(([kind, placement]) => [kind, {
+      enabled: placement.enabled,
+      creatives: placement.creatives.map((creative) => ({
+        id: creative.id,
+        enabled: creative.enabled,
+        status: creative.status,
+        title: creative.title,
+        description: creative.description || "",
+        targetUrl: creative.targetUrl || "/commercial#slots",
+        sponsorName: emptyToNull(creative.sponsorName),
+        campaignId: emptyToNull(creative.campaignId),
+        imageUrl: emptyToNull(creative.imageUrl),
+        visualTitle: emptyToNull(creative.visualTitle),
+        visualMeta: emptyToNull(creative.visualMeta),
+        label: emptyToNull(creative.label),
+        tone: creative.tone,
+        startsAt: emptyToNull(creative.startsAt),
+        endsAt: emptyToNull(creative.endsAt),
+      })),
+    }]),
   );
 
   return {
-    enabled: formData.get("enabled") === "on",
+    enabled: settings.enabled,
     placements,
   };
 }
 
-function sponsorFormText(formData: FormData, key: string): string {
-  const value = formData.get(key);
-  return typeof value === "string" ? value.trim() : "";
-}
-
 function activeSponsorPlacementCount(settings: SponsorSettings): number {
   return Object.values(settings.placements).filter((placement) => placement.enabled).length;
+}
+
+function updateSponsorPlacement(settings: SponsorSettings, kind: string, patch: Partial<SponsorSettings["placements"][keyof SponsorSettings["placements"]]>): SponsorSettings {
+  const placement = settings.placements[kind as keyof SponsorSettings["placements"]];
+  if (!placement) return settings;
+
+  return {
+    ...settings,
+    placements: {
+      ...settings.placements,
+      [kind]: {
+        ...placement,
+        ...patch,
+      },
+    },
+  };
+}
+
+function updateSponsorCreative(settings: SponsorSettings, kind: string, index: number, patch: Partial<SponsorCreative>): SponsorSettings {
+  const placement = settings.placements[kind as keyof SponsorSettings["placements"]];
+  if (!placement?.creatives[index]) return settings;
+
+  const creatives = placement.creatives.map((creative, creativeIndex) => (
+    creativeIndex === index ? { ...creative, ...patch } : creative
+  ));
+
+  return updateSponsorPlacement(settings, kind, { creatives });
+}
+
+function addSponsorCreative(settings: SponsorSettings, kind: string): SponsorSettings {
+  const placement = settings.placements[kind as keyof SponsorSettings["placements"]];
+  if (!placement) return settings;
+
+  const creative: SponsorCreative = {
+    id: createSponsorCreativeId(kind, placement.creatives),
+    enabled: true,
+    status: "draft",
+    title: "新赞助素材",
+    description: "",
+    targetUrl: "/commercial#slots",
+    sponsorName: "",
+    campaignId: "",
+    imageUrl: null,
+    visualTitle: "",
+    visualMeta: "",
+    tone: "green",
+    startsAt: null,
+    endsAt: null,
+  };
+
+  return updateSponsorPlacement(settings, kind, { creatives: [...placement.creatives, creative] });
+}
+
+function removeSponsorCreative(settings: SponsorSettings, kind: string, index: number): SponsorSettings {
+  const placement = settings.placements[kind as keyof SponsorSettings["placements"]];
+  if (!placement?.creatives[index]) return settings;
+
+  return updateSponsorPlacement(settings, kind, {
+    creatives: placement.creatives.filter((_, creativeIndex) => creativeIndex !== index),
+  });
+}
+
+function moveSponsorCreative(settings: SponsorSettings, kind: string, index: number, direction: -1 | 1): SponsorSettings {
+  const placement = settings.placements[kind as keyof SponsorSettings["placements"]];
+  const nextIndex = index + direction;
+  if (!placement?.creatives[index] || nextIndex < 0 || nextIndex >= placement.creatives.length) return settings;
+
+  const creatives = [...placement.creatives];
+  const [creative] = creatives.splice(index, 1);
+  creatives.splice(nextIndex, 0, creative);
+
+  return updateSponsorPlacement(settings, kind, { creatives });
+}
+
+function createSponsorCreativeId(kind: string, creatives: SponsorCreative[]): string {
+  const base = `${kind}-sponsor-${Date.now().toString(36)}`;
+  const existing = new Set(creatives.map((creative) => creative.id));
+  let candidate = base;
+  let index = 2;
+  while (existing.has(candidate)) {
+    candidate = `${base}-${index}`;
+    index += 1;
+  }
+  return candidate;
+}
+
+function emptyToNull(value: string | null | undefined): string | null {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text || null;
 }
 
 function sponsorPlacementLabel(kind: string): string {

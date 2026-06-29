@@ -23,7 +23,6 @@ import { BrandIcon } from "@/components/BrandIcon";
 import { CategoryTabBar, CategoryTabStrip, type CategoryTabItem } from "@/components/CategoryTabBar";
 import { OfferActions, OfferFeedbackButton, OfferFeedbackDialog, OfferLink } from "@/components/ProductOffersPanel";
 import { SiteHeader } from "@/components/SiteHeader";
-import { SponsoredPlacementPreview } from "@/components/SponsoredPlacementPreview";
 import { listDetailNavigationHref, shouldHandleListDetailClick } from "@/lib/list-return";
 import {
   allPlatformOptions,
@@ -39,7 +38,6 @@ import { createTimeoutSignal, isGeneratedDatasetStale, newestGeneratedDataset } 
 import { PRICE_DATA_CACHE_TTL_MS } from "@/lib/public-cache-policy";
 import { PUBLIC_MERCHANT_PAGE_SIZE } from "@/lib/public-merchant-policy";
 import { PUBLIC_OFFER_DEFAULT_LIMIT } from "@/lib/public-offer-query";
-import type { SponsorSettingsSummary } from "@/lib/sponsor-settings-shared";
 import type {
   CanonicalProduct,
   ExplorerData,
@@ -163,14 +161,12 @@ export function PriceExplorer({
   data,
   initialOffers = null,
   initialMerchants = null,
-  sponsorSettings = null,
   initialState = {},
   restoreStateFromUrl = false,
 }: {
   data?: ExplorerData;
   initialOffers?: OfferListResponse | null;
   initialMerchants?: MerchantListResponse | null;
-  sponsorSettings?: SponsorSettingsSummary | null;
   initialState?: ExplorerInitialState;
   restoreStateFromUrl?: boolean;
 }) {
@@ -1174,7 +1170,6 @@ export function PriceExplorer({
 
       <footer className="px-5 py-8 text-center text-xs leading-6 text-[#5a6061] sm:px-8">
         <p>价格仅供参考，实际价格、库存和售后规则以原平台为准。本工具不构成购买建议。</p>
-        <SponsoredPlacementPreview kind="listFooter" settings={sponsorSettings} className="mx-auto mt-6 max-w-5xl" />
       </footer>
     </div>
   );
