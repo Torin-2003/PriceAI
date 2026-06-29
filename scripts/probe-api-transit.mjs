@@ -529,24 +529,26 @@ async function refreshAvailabilityRollup(supabase, stationId) {
   const samplesByOfferKey = new Map();
   const legacySamplesByModel = new Map();
   const offerGroupsByModel = groupOfferRowsByModel(offerRows);
-  let firstCheckedAt = null;
-  let lastCheckedAt = null;
+  const activeOfferScope = buildActiveOfferScope(offerRows);
+  const stationWindow = { first: null, last: null };
 
   for (const row of dbRows(samplesResult.data)) {
     const checkedAt = stringValue(row.checked_at);
-    if (checkedAt && (!firstCheckedAt || checkedAt < firstCheckedAt)) firstCheckedAt = checkedAt;
-    if (checkedAt && (!lastCheckedAt || checkedAt > lastCheckedAt)) lastCheckedAt = checkedAt;
     const sample = { ok: Boolean(row.ok), checkedAt };
     const scope = stringValue(row.scope);
 
     if (scope === "station") {
+      if (!availabilitySampleMatchesActiveOfferScope(row, activeOfferScope)) continue;
       stationSamples.push(sample);
+      extendSampleWindow(stationWindow, checkedAt);
       continue;
     }
 
     if (scope !== "offer") continue;
     const standardModel = stringValue(row.standard_model);
     if (!standardModel) continue;
+    if (!availabilitySampleMatchesActiveOfferScope(row, activeOfferScope)) continue;
+    extendSampleWindow(stationWindow, checkedAt);
     const groupName = stringValue(row.group_name);
     if (!groupName) {
       const existing = legacySamplesByModel.get(standardModel) || [];
@@ -564,8 +566,8 @@ async function refreshAvailabilityRollup(supabase, stationId) {
   const stationUpdate = {
     availability_seven_day_rate: stationAvailability.rate,
     availability_seven_day_samples: stationAvailability.samples,
-    availability_first_checked_at: stationAvailability.samples ? stationFirstCheckedAt || firstCheckedAt : null,
-    availability_last_checked_at: lastCheckedAt,
+    availability_first_checked_at: stationAvailability.samples ? stationFirstCheckedAt || stationWindow.first : null,
+    availability_last_checked_at: stationAvailability.samples ? stationWindow.last : null,
     availability_note: availabilityNote("站点", stationAvailability),
     last_updated_at: new Date().toISOString(),
   };
@@ -613,7 +615,7 @@ async function refreshAvailabilityRollup(supabase, stationId) {
     stationId,
     station: stationAvailability,
     offers: offerRollups,
-    lastCheckedAt,
+    lastCheckedAt: stationWindow.last,
   };
 }
 
@@ -804,6 +806,33 @@ function groupOfferRowsByModel(offerRows) {
     output.set(standardModel, groups);
   }
   return output;
+}
+
+function buildActiveOfferScope(offerRows) {
+  const offerKeys = new Set();
+  const modelTokens = new Set();
+  for (const offer of offerRows) {
+    const standardModel = stringValue(offer.standard_model);
+    if (!standardModel) continue;
+    offerKeys.add(offerAvailabilityKey(standardModel, stringValue(offer.group_name)));
+    modelTokens.add(normalizeLooseToken(standardModel));
+  }
+  return { offerKeys, modelTokens };
+}
+
+function availabilitySampleMatchesActiveOfferScope(row, activeOfferScope) {
+  const standardModel = stringValue(row.standard_model);
+  if (!standardModel) return true;
+  const groupName = stringValue(row.group_name);
+  if (groupName) return activeOfferScope.offerKeys.has(offerAvailabilityKey(standardModel, groupName));
+  return activeOfferScope.modelTokens.has(normalizeLooseToken(standardModel));
+}
+
+function extendSampleWindow(window, checkedAt) {
+  const value = stringValue(checkedAt);
+  if (!value) return;
+  if (!window.first || value < window.first) window.first = value;
+  if (!window.last || value > window.last) window.last = value;
 }
 
 function offerAvailabilityKey(standardModel, groupName) {
