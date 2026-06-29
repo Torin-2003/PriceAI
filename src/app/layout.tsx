@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { GlobalSponsorFooter } from "@/components/GlobalSponsorFooter";
 import { GoogleAnalytics } from "@/components/GoogleAnalytics";
 import { SiteNoticePrompt } from "@/components/SiteNoticePrompt";
 import { UmamiAnalytics } from "@/components/UmamiAnalytics";
@@ -67,6 +68,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <Script id="priceai-theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         {children}
+        <GlobalSponsorFooter />
         <SiteNoticePrompt />
         <GoogleAnalytics />
         <UmamiAnalytics />

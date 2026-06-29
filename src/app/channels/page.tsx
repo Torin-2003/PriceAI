@@ -5,7 +5,6 @@ import { SubmissionFloater } from "@/components/SubmissionFloater";
 import { getExplorerData, listPublicMerchants, listPublicOffers } from "@/lib/data";
 import { PUBLIC_MERCHANT_PAGE_SIZE } from "@/lib/public-merchant-policy";
 import { PUBLIC_OFFER_DEFAULT_LIMIT } from "@/lib/public-offer-query";
-import { getSponsorSettingsSummary } from "@/lib/sponsor-settings";
 
 export const revalidate = 1800;
 
@@ -25,11 +24,10 @@ export const metadata: Metadata = {
 };
 
 export default async function ChannelsPage() {
-  const [data, initialOffers, initialMerchants, sponsorSettings] = await Promise.all([
+  const [data, initialOffers, initialMerchants] = await Promise.all([
     getExplorerData(),
     listPublicOffers({ limit: PUBLIC_OFFER_DEFAULT_LIMIT, offset: 0 }),
     listPublicMerchants({ limit: PUBLIC_MERCHANT_PAGE_SIZE, offset: 0 }),
-    getSponsorSettingsSummary().catch(() => null),
   ]);
 
   return (
@@ -39,7 +37,6 @@ export default async function ChannelsPage() {
         data={data}
         initialOffers={initialOffers}
         initialMerchants={initialMerchants}
-        sponsorSettings={sponsorSettings}
         restoreStateFromUrl
       />
       <SubmissionFloater />

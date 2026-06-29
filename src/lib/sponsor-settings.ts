@@ -201,6 +201,8 @@ function normalizeCreative(value: unknown, fallback: SponsorCreative | undefined
     title,
     description: cleanText(record.description, fallback?.description || ""),
     targetUrl: cleanTargetUrl(record.targetUrl, fallback?.targetUrl || "/commercial#slots"),
+    sponsorName: cleanText(record.sponsorName, fallback?.sponsorName || null, 80),
+    campaignId: cleanIdOrNull(record.campaignId, fallback?.campaignId || null),
     imageUrl: cleanAssetUrl(record.imageUrl, fallback?.imageUrl || null),
     visualTitle: cleanText(record.visualTitle, fallback?.visualTitle || title),
     visualMeta: cleanText(record.visualMeta, fallback?.visualMeta || ""),
@@ -230,6 +232,11 @@ function readStatus(value: unknown, fallback: SponsorCreativeStatus): SponsorCre
 function cleanId(value: unknown, fallback: string): string {
   const text = cleanText(value, fallback).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
   return text || fallback;
+}
+
+function cleanIdOrNull(value: unknown, fallback: string | null): string | null {
+  const text = cleanText(value, fallback, 120).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return text || null;
 }
 
 function cleanText(value: unknown, fallback: string | null, maxLength = 240): string {
