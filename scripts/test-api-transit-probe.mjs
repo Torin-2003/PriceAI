@@ -53,4 +53,16 @@ assert.equal(__test.shouldRestrictToRunnableStations({ post: true }), true);
 assert.equal(__test.shouldRestrictToRunnableStations({ post: true, station: "pending-with-key" }), false);
 assert.equal(__test.shouldRestrictToRunnableStations({ post: true, dryRun: true }), false);
 
+assert.deepEqual(__test.completionBody({ protocol: "anthropic_compatible" }, "claude-opus-4-8"), {
+  model: "claude-opus-4-8",
+  max_tokens: 1,
+  messages: [{ role: "user", content: "ping" }],
+});
+assert.deepEqual(__test.completionBody({ protocol: "openai_compatible" }, "gpt-5.5"), {
+  model: "gpt-5.5",
+  messages: [{ role: "user", content: "ping" }],
+  max_tokens: 1,
+  stream: false,
+});
+
 console.log("api transit probe target test passed");

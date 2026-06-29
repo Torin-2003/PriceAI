@@ -544,7 +544,6 @@ function completionBody(profile, modelId) {
     model: modelId,
     messages: [{ role: "user", content: "ping" }],
     max_tokens: 1,
-    temperature: 0,
     stream: false,
   };
 }
@@ -1452,6 +1451,7 @@ function errorMessage(error) {
 }
 
 export const __test = {
+  completionBody,
   filterProfilesByRunnableStationIds,
   keywordsForStandardModel,
   normalizeFamily,
