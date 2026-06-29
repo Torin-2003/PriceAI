@@ -3,12 +3,14 @@
 import { type FormEvent, useMemo, useRef, useState } from "react";
 import {
   Clock3,
+  FileJson,
   KeyRound,
   Link2,
   Network,
   Play,
   ShieldAlert,
 } from "lucide-react";
+import { buildDetectorReportAssetUrl, buildPriceAiDetectorReportHref } from "@/lib/transit-detector-report";
 
 type DetectorProtocol = "openai" | "claude" | "gemini";
 type DetectorMode = "quick" | "standard" | "deep";
@@ -58,6 +60,8 @@ interface DetectionResult {
   submittedAt: string;
   jobId?: string;
   resultUrl?: string;
+  jsonUrl?: string;
+  imageUrl?: string;
 }
 
 const presetModels: PresetModel[] = [
@@ -230,15 +234,15 @@ export function TransitDetectorClient({ serviceUrl = "" }: DetectorClientProps) 
       }
 
       if (data.status === "done") {
-        const nextResultUrl = data.result_url
-          ? data.result_url.startsWith("http")
-            ? data.result_url
-            : `${normalizedServiceUrl}${data.result_url}`
-          : "";
+        const nextResultUrl = data.job_id ? buildPriceAiDetectorReportHref(data.job_id) : "";
+        const nextJsonUrl = data.json_url ? buildDetectorReportAssetUrl(normalizedServiceUrl, data.json_url) : "";
+        const nextImageUrl = data.image_url ? buildDetectorReportAssetUrl(normalizedServiceUrl, data.image_url) : "";
         if (runIdRef.current !== runId) return;
         setTaskStatus("done");
         updateResult(localId, {
           resultUrl: nextResultUrl,
+          jsonUrl: nextJsonUrl,
+          imageUrl: nextImageUrl,
           status: "done",
           message: "检测完成，已生成报告。",
         });
@@ -485,14 +489,26 @@ export function TransitDetectorClient({ serviceUrl = "" }: DetectorClientProps) 
                     <td className="px-5 py-4 whitespace-nowrap text-[#5a6061]">{item.submittedAt}</td>
                     <td className="px-5 py-4 text-right">
                       {item.resultUrl ? (
-                        <a
-                          href={item.resultUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex h-9 items-center justify-center rounded-full bg-[#202829] px-4 text-xs font-semibold text-white transition hover:bg-[#2d3435]"
-                        >
-                          打开报告
-                        </a>
+                        <div className="flex items-center justify-end gap-2">
+                          {item.jsonUrl ? (
+                            <a
+                              href={item.jsonUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#5a6061] ring-1 ring-[#adb3b4]/18 transition hover:bg-[#f5f7f7] hover:text-[#202829]"
+                              aria-label="打开报告 JSON"
+                              title="打开报告 JSON"
+                            >
+                              <FileJson className="h-4 w-4" />
+                            </a>
+                          ) : null}
+                          <a
+                            href={item.resultUrl}
+                            className="inline-flex h-9 items-center justify-center rounded-full bg-[#202829] px-4 text-xs font-semibold text-white transition hover:bg-[#2d3435]"
+                          >
+                            打开报告
+                          </a>
+                        </div>
                       ) : (
                         <span className="text-xs text-[#7a8284]">等待返回</span>
                       )}
