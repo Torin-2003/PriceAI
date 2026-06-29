@@ -29,6 +29,7 @@ const STATION_CORE_COLUMNS = [
   "slug",
   "name",
   "website_url",
+  "api_base_url",
   "status",
   "source_type",
   "commercial_relation",
@@ -58,6 +59,39 @@ const STATION_CORE_COLUMNS = [
   "updated_at",
 ].join(",");
 const STATION_CORE_COLUMNS_WITHOUT_FIRST_CHECKED = [
+  "id",
+  "slug",
+  "name",
+  "website_url",
+  "api_base_url",
+  "status",
+  "source_type",
+  "commercial_relation",
+  "summary",
+  "collector_kind",
+  "channel_types",
+  "account_pools",
+  "payment_methods",
+  "minimum_top_up",
+  "balance_expiry",
+  "support_channels",
+  "refund_policy",
+  "risk_labels",
+  "usage_advice",
+  "data_status",
+  "availability_seven_day_rate",
+  "availability_seven_day_samples",
+  "availability_last_checked_at",
+  "availability_note",
+  "feedback_pending_count",
+  "feedback_verified_risk_count",
+  "feedback_merchant_responded_count",
+  "feedback_main_themes",
+  "feedback_public_notes",
+  "last_updated_at",
+  "updated_at",
+].join(",");
+const STATION_CORE_COLUMNS_WITHOUT_API_BASE_URL = [
   "id",
   "slug",
   "name",
@@ -385,7 +419,14 @@ async function queryPublishedStationRows(
     return await queryStationRows(client, signal, STATION_CORE_COLUMNS, slug);
   } catch (error) {
     if (isMissingColumnError(error)) {
-      return queryStationRows(client, publicTransitReadSignal(), STATION_CORE_COLUMNS_WITHOUT_FIRST_CHECKED, slug);
+      try {
+        return await queryStationRows(client, publicTransitReadSignal(), STATION_CORE_COLUMNS_WITHOUT_FIRST_CHECKED, slug);
+      } catch (fallbackError) {
+        if (isMissingColumnError(fallbackError)) {
+          return queryStationRows(client, publicTransitReadSignal(), STATION_CORE_COLUMNS_WITHOUT_API_BASE_URL, slug);
+        }
+        throw fallbackError;
+      }
     }
     throw error;
   }
@@ -627,6 +668,7 @@ function mapStationRow(
     slug: stringValue(row.slug) || id,
     name: stringValue(row.name) || id,
     websiteUrl: stringValue(row.website_url),
+    apiBaseUrl: nullableString(row.api_base_url),
     logoUrl: nullableString(enhancement.logo_url),
     monitorUrl: nullableString(enhancement.monitor_url),
     collectorKind: nullableString(row.collector_kind),

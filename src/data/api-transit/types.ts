@@ -122,6 +122,7 @@ export interface TransitStation {
   slug: string;
   name: string;
   websiteUrl: string;
+  apiBaseUrl?: string | null;
   logoUrl?: string | null;
   monitorUrl?: string | null;
   collectorKind?: string | null;

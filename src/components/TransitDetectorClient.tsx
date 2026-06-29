@@ -8,12 +8,16 @@ import {
   Link2,
   Network,
   Play,
+  ShieldCheck,
   ShieldAlert,
 } from "lucide-react";
+import type { TransitStandardModel } from "@/data/api-transit/types";
+import { getOfficialTransitModelPrice } from "@/lib/api-transit";
 import { buildDetectorReportAssetUrl, buildPriceAiDetectorReportHref } from "@/lib/transit-detector-report";
 
 type DetectorProtocol = "openai_chat" | "openai_responses" | "claude" | "gemini";
-type DetectorMode = "quick" | "standard" | "deep";
+type DetectorIntensity = "quick" | "standard" | "deep" | "long_context";
+type BackendMode = "quick" | "standard" | "full";
 type UpstreamType =
   | "unknown"
   | "official_api"
@@ -38,6 +42,7 @@ interface DetectorStatusPayload {
 
 interface DetectorClientProps {
   serviceUrl?: string;
+  stations?: DetectorStationOption[];
 }
 
 interface PresetModel {
@@ -46,6 +51,8 @@ interface PresetModel {
   model: string;
   protocol: DetectorProtocol;
   badge?: string;
+  standardModel?: TransitStandardModel;
+  priceNote?: string;
 }
 
 interface DetectionResult {
@@ -58,20 +65,56 @@ interface DetectionResult {
   status: DetectionStatus;
   message: string;
   submittedAt: string;
+  costEstimateLabel: string;
   jobId?: string;
   resultUrl?: string;
   jsonUrl?: string;
   imageUrl?: string;
 }
 
+export interface DetectorStationOption {
+  id: string;
+  slug: string;
+  name: string;
+  apiBaseUrl: string | null;
+  websiteUrl: string;
+  sourceLabel: string;
+}
+
+interface IntensityOption {
+  value: DetectorIntensity;
+  label: string;
+  hint: string;
+  inputTokens: number;
+  outputTokens: number;
+  requests: number;
+}
+
+interface CostEstimate {
+  inputLabel: string;
+  outputLabel: string;
+  totalLabel: string;
+  detailLabel: string;
+  sourceLabel: string;
+  priceNote: string;
+}
+
 const presetModels: PresetModel[] = [
-  { id: "gpt-5-5", label: "GPT 5.5", model: "gpt-5.5", protocol: "openai_chat", badge: "常用" },
-  { id: "gpt-5-4", label: "GPT 5.4", model: "gpt-5.4", protocol: "openai_chat" },
-  { id: "gpt-5-codex", label: "Codex", model: "gpt-5.3-codex", protocol: "openai_responses", badge: "Responses" },
-  { id: "claude-opus-4-8", label: "Opus 4.8", model: "claude-opus-4-8", protocol: "claude" },
-  { id: "claude-opus-4-7", label: "Opus 4.7", model: "claude-opus-4-7", protocol: "claude" },
-  { id: "claude-sonnet-4-6", label: "Sonnet 4.6", model: "claude-sonnet-4-6", protocol: "claude" },
-  { id: "gemini-3-1-pro", label: "Gemini 3.1 Pro", model: "gemini-3.1-pro", protocol: "gemini" },
+  { id: "gpt-5-5", label: "GPT 5.5", model: "gpt-5.5", protocol: "openai_chat", badge: "常用", standardModel: "GPT 5.5" },
+  { id: "gpt-5-4", label: "GPT 5.4", model: "gpt-5.4", protocol: "openai_chat", standardModel: "GPT 5.4" },
+  {
+    id: "gpt-5-codex",
+    label: "Codex",
+    model: "gpt-5.3-codex",
+    protocol: "openai_responses",
+    badge: "Responses",
+    standardModel: "GPT 5.4",
+    priceNote: "按 GPT 5.4 文本价估算",
+  },
+  { id: "claude-opus-4-8", label: "Opus 4.8", model: "claude-opus-4-8", protocol: "claude", standardModel: "Claude Opus 4.8" },
+  { id: "claude-opus-4-7", label: "Opus 4.7", model: "claude-opus-4-7", protocol: "claude", standardModel: "Claude Opus 4.7" },
+  { id: "claude-sonnet-4-6", label: "Sonnet 4.6", model: "claude-sonnet-4-6", protocol: "claude", standardModel: "Claude Sonnet 4.6" },
+  { id: "gemini-3-1-pro", label: "Gemini 3.1 Pro", model: "gemini-3.1-pro", protocol: "gemini", standardModel: "Gemini 3.1 Pro" },
   { id: "custom", label: "自定义", model: "", protocol: "openai_chat" },
 ];
 
@@ -96,10 +139,11 @@ const detectorProtocolEndpoints: Record<DetectorProtocol, string> = {
   gemini: "gemini",
 };
 
-const modeOptions: Array<{ value: DetectorMode; label: string; hint: string }> = [
-  { value: "quick", label: "快速", hint: "协议、模型名、基础响应" },
-  { value: "standard", label: "标准", hint: "能力指纹和计费口径" },
-  { value: "deep", label: "深度", hint: "多轮、长上下文、稳定性采样" },
+const intensityOptions: IntensityOption[] = [
+  { value: "quick", label: "快速", hint: "协议、模型名、基础响应", inputTokens: 2000, outputTokens: 700, requests: 2 },
+  { value: "standard", label: "标准", hint: "能力指纹和计费口径", inputTokens: 9000, outputTokens: 3500, requests: 5 },
+  { value: "deep", label: "深度", hint: "多轮、工具和稳定性采样", inputTokens: 26000, outputTokens: 9000, requests: 10 },
+  { value: "long_context", label: "长上下文", hint: "额外确认上下文上限", inputTokens: 180000, outputTokens: 6000, requests: 4 },
 ];
 
 const upstreamOptions: Array<{ value: UpstreamType; label: string; detail: string }> = [
@@ -112,27 +156,34 @@ const upstreamOptions: Array<{ value: UpstreamType; label: string; detail: strin
   { value: "mixed_pool", label: "混合线路", detail: "需要多次采样，不同请求可能命中不同上游。" },
 ];
 
-export function TransitDetectorClient({ serviceUrl = "" }: DetectorClientProps) {
+export function TransitDetectorClient({ serviceUrl = "", stations = [] }: DetectorClientProps) {
   const runIdRef = useRef(0);
   const defaultPreset = presetModels[0];
+  const apiKeyInputRef = useRef<HTMLInputElement>(null);
+  const manualKeyId = "manual-api-key-entry";
   const [selectedModelId, setSelectedModelId] = useState(defaultPreset.id);
   const [protocol, setProtocol] = useState<DetectorProtocol>(defaultPreset.protocol);
-  const [mode, setMode] = useState<DetectorMode>("standard");
+  const [intensity, setIntensity] = useState<DetectorIntensity>("standard");
   const [upstream, setUpstream] = useState<UpstreamType>("unknown");
+  const [selectedStationId, setSelectedStationId] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState(defaultPreset.model);
   const [apiKey, setApiKey] = useState("");
-  const [longContext, setLongContext] = useState(false);
+  const [manualKeyOpen, setManualKeyOpen] = useState(false);
   const [taskStatus, setTaskStatus] = useState<DetectionStatus | "idle">("idle");
   const [results, setResults] = useState<DetectionResult[]>([]);
 
   const normalizedServiceUrl = serviceUrl.trim().replace(/\/$/, "");
   const serviceConnected = Boolean(normalizedServiceUrl);
   const selectedPreset = presetModels.find((item) => item.id === selectedModelId) ?? defaultPreset;
-  const selectedMode = modeOptions.find((item) => item.value === mode) ?? modeOptions[1];
+  const selectedIntensity = intensityOptions.find((item) => item.value === intensity) ?? intensityOptions[1];
   const selectedUpstream = upstreamOptions.find((item) => item.value === upstream) ?? upstreamOptions[0];
+  const selectedStation = stations.find((station) => station.id === selectedStationId);
+  const effectiveStandardModel = selectedPreset.standardModel ?? guessStandardModel(model, protocol);
+  const costEstimate = buildCostEstimate(selectedIntensity, effectiveStandardModel, selectedPreset.priceNote);
   const activeDetection = taskStatus === "queued" || taskStatus === "running";
   const canSubmit = serviceConnected && Boolean(baseUrl.trim() && apiKey.trim() && model.trim()) && !activeDetection;
+  const apiKeyHint = apiKey ? `已填入，尾号 ${maskSecretSuffix(apiKey)}` : "未填入";
 
   const summaryText = useMemo(() => {
     if (!results.length) return "暂无检测记录";
@@ -145,9 +196,7 @@ export function TransitDetectorClient({ serviceUrl = "" }: DetectorClientProps) 
     setSelectedModelId(preset.id);
     setProtocol(preset.protocol);
     setModel(preset.model);
-    if (preset.protocol === "gemini") {
-      setLongContext(false);
-    }
+    if (preset.protocol === "gemini" && intensity === "long_context") setIntensity("standard");
   }
 
   function handleModelInput(nextModel: string) {
@@ -155,6 +204,32 @@ export function TransitDetectorClient({ serviceUrl = "" }: DetectorClientProps) 
     if (selectedModelId !== "custom") {
       setSelectedModelId("custom");
     }
+  }
+
+  function handleStationChange(stationId: string) {
+    setSelectedStationId(stationId);
+    const station = stations.find((item) => item.id === stationId);
+    if (station?.apiBaseUrl) setBaseUrl(station.apiBaseUrl);
+  }
+
+  async function handlePasteApiKey() {
+    try {
+      const text = await navigator.clipboard.readText();
+      const nextKey = text.trim();
+      if (!nextKey) return;
+      setApiKey(nextKey);
+      setManualKeyOpen(false);
+      apiKeyInputRef.current?.blur();
+    } catch {
+      setManualKeyOpen(true);
+      window.setTimeout(() => apiKeyInputRef.current?.focus(), 0);
+    }
+  }
+
+  function handleClearApiKey() {
+    setApiKey("");
+    setManualKeyOpen(false);
+    apiKeyInputRef.current?.blur();
   }
 
   function updateResult(localId: string, patch: Partial<DetectionResult>) {
@@ -175,11 +250,12 @@ export function TransitDetectorClient({ serviceUrl = "" }: DetectorClientProps) 
       modelLabel: selectedPreset.id === "custom" ? "自定义模型" : selectedPreset.label,
       model: model.trim(),
       protocolLabel: protocolLabels[protocol],
-      modeLabel: selectedMode.label,
+      modeLabel: selectedIntensity.label,
       upstreamLabel: selectedUpstream.label,
       status: "queued",
       message: "正在提交检测任务。",
       submittedAt,
+      costEstimateLabel: costEstimate.totalLabel,
     };
     setResults((current) => [nextResult, ...current].slice(0, 12));
 
@@ -196,9 +272,9 @@ export function TransitDetectorClient({ serviceUrl = "" }: DetectorClientProps) 
       payload.set("base_url", baseUrl.trim());
       payload.set("api_key", apiKey.trim());
       payload.set("model", model.trim());
-      payload.set("mode", mode === "deep" ? "full" : mode);
+      payload.set("mode", backendModeForIntensity(intensity));
       if (protocol !== "gemini") {
-        payload.set("include_long_context", longContext ? "true" : "false");
+        payload.set("include_long_context", intensity === "long_context" ? "true" : "false");
         payload.set("include_long_context_extreme", "false");
       }
 
@@ -298,30 +374,90 @@ export function TransitDetectorClient({ serviceUrl = "" }: DetectorClientProps) 
         </div>
 
         <form className="space-y-5 px-5 py-5" onSubmit={handleSubmit}>
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.42fr)]">
+          <div className="grid gap-3 lg:grid-cols-[minmax(220px,0.32fr)_minmax(0,1fr)_minmax(320px,0.42fr)]">
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-[#202829]">已收录站点</span>
+              <select
+                value={selectedStationId}
+                onChange={(event) => handleStationChange(event.target.value)}
+                className="h-11 w-full rounded-lg border border-[#dfe4e5] bg-white px-3 text-sm font-medium text-[#202829] outline-none transition focus:border-[#45bf78]"
+              >
+                <option value="">手动填写接口</option>
+                {stations.map((station) => (
+                  <option key={station.id} value={station.id}>
+                    {station.name}{station.apiBaseUrl ? "" : "（未公开接口）"}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1.5 block truncate text-xs text-[#5a6061]">
+                {selectedStation ? selectedStation.sourceLabel : "只使用公开站点信息"}
+              </span>
+            </label>
             <label className="block">
               <span className="mb-2 block text-sm font-semibold text-[#202829]">API 接口地址</span>
               <input
                 value={baseUrl}
                 onChange={(event) => setBaseUrl(event.target.value)}
-                placeholder="输入中转站接口地址"
+                placeholder={selectedStation && !selectedStation.apiBaseUrl ? "该站点未公开接口地址，请手动填写" : "输入中转站接口地址"}
                 className="h-11 w-full rounded-lg border border-[#dfe4e5] bg-white px-3 text-sm text-[#202829] outline-none transition placeholder:text-[#7a8284] focus:border-[#45bf78]"
               />
+              <span className="mt-1.5 block text-xs leading-5 text-[#5a6061]">可从中转榜公开字段带出，也可以直接粘贴 Base URL。</span>
             </label>
-            <label className="block">
+            <div className="block">
               <span className="mb-2 block text-sm font-semibold text-[#202829]">API Key</span>
-              <div className="relative">
-                <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#5a6061]" />
-                <input
-                  value={apiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
-                  type="password"
-                  autoComplete="off"
-                  placeholder="粘贴临时 Key"
-                  className="h-11 w-full rounded-lg border border-[#dfe4e5] bg-white pl-9 pr-3 text-sm text-[#202829] outline-none transition placeholder:text-[#7a8284] focus:border-[#45bf78]"
-                />
+              <div className="rounded-lg border border-[#dfe4e5] bg-[#f9f9f9] px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="h-4 w-4 shrink-0 text-[#5a6061]" />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-[#202829]">{apiKeyHint}</span>
+                  {apiKey ? (
+                    <button
+                      type="button"
+                      onClick={handleClearApiKey}
+                      className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-white px-3 text-xs font-semibold text-[#5a6061] ring-1 ring-[#adb3b4]/18 transition hover:text-[#202829]"
+                    >
+                      清空
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={handlePasteApiKey}
+                    className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-[#202829] px-3 text-xs font-semibold text-white transition hover:bg-[#2d3435]"
+                  >
+                    粘贴 Key
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManualKeyOpen((current) => !current);
+                    window.setTimeout(() => apiKeyInputRef.current?.focus(), 0);
+                  }}
+                  className="mt-2 text-xs font-semibold text-[#47657a] transition hover:text-[#202829]"
+                  aria-controls={manualKeyId}
+                  aria-expanded={manualKeyOpen}
+                >
+                  {manualKeyOpen ? "收起手动输入" : "无法读取剪贴板时手动输入"}
+                </button>
+                {manualKeyOpen ? (
+                  <input
+                    id={manualKeyId}
+                    ref={apiKeyInputRef}
+                    value={apiKey}
+                    onChange={(event) => setApiKey(event.target.value)}
+                    onBlur={() => setManualKeyOpen(false)}
+                    type="password"
+                    autoComplete="off"
+                    placeholder="粘贴临时 Key"
+                    className="mt-2 h-10 w-full rounded-lg border border-[#dfe4e5] bg-white px-3 text-sm text-[#202829] outline-none transition placeholder:text-[#7a8284] focus:border-[#45bf78]"
+                  />
+                ) : null}
               </div>
-            </label>
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-[#fff7e8] px-4 py-3 text-xs leading-5 text-[#7a541b] ring-1 ring-[#e7b65d]/25">
+            请使用单独创建的低额度测试 Key，不要使用主账号或长期高额度 Key；检测完成后建议到原中转站删除或撤销该 Key。
+            原始 Key 只会提交给独立检测服务，报告和 PriceAI 主站不会保存原始 Key。
           </div>
 
           <div>
@@ -371,7 +507,7 @@ export function TransitDetectorClient({ serviceUrl = "" }: DetectorClientProps) 
                 onChange={(event) => {
                   const nextProtocol = event.target.value as DetectorProtocol;
                   setProtocol(nextProtocol);
-                  if (nextProtocol === "gemini") setLongContext(false);
+                  if (nextProtocol === "gemini" && intensity === "long_context") setIntensity("standard");
                 }}
                 className="h-11 w-full rounded-lg border border-[#dfe4e5] bg-white px-3 text-sm font-medium text-[#202829] outline-none transition focus:border-[#45bf78]"
               >
@@ -398,53 +534,56 @@ export function TransitDetectorClient({ serviceUrl = "" }: DetectorClientProps) 
             </label>
           </div>
 
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px]">
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-[#202829]">检测强度</label>
-              <div className="grid gap-2 md:grid-cols-3">
-                {modeOptions.map((item) => (
+          <div>
+            <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <label className="text-sm font-semibold text-[#202829]">检测强度与预计消耗</label>
+              <span className="text-xs leading-5 text-[#5a6061]">按当前模型官方标准价估算，实际以中转站扣费为准。</span>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+              {intensityOptions.map((item) => {
+                const itemEstimate = buildCostEstimate(item, effectiveStandardModel, selectedPreset.priceNote);
+                const disabled = item.value === "long_context" && protocol === "gemini";
+                return (
                   <button
                     key={item.value}
                     type="button"
-                    onClick={() => setMode(item.value)}
-                    className={`rounded-lg border px-3 py-3 text-left transition ${
-                      mode === item.value
+                    onClick={() => {
+                      if (!disabled) setIntensity(item.value);
+                    }}
+                    disabled={disabled}
+                    className={`min-h-[118px] rounded-lg border px-3 py-3 text-left transition ${
+                      intensity === item.value
                         ? "border-[#45bf78]/60 bg-[#edf8f1] text-[#202829]"
                         : "border-[#dfe4e5] bg-[#f9f9f9] text-[#5a6061] hover:border-[#adb3b4]"
-                    }`}
+                    } disabled:cursor-not-allowed disabled:opacity-55`}
                   >
-                    <span className="block text-sm font-semibold">{item.label}</span>
-                    <span className="mt-1 block text-xs leading-5">{item.hint}</span>
+                    <span className="flex items-start justify-between gap-2">
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold">{item.label}</span>
+                        <span className="mt-1 block text-xs leading-5">{disabled ? "Gemini 暂不启用" : item.hint}</span>
+                      </span>
+                      {intensity === item.value ? <ShieldCheck className="h-4 w-4 shrink-0 text-[#45bf78]" /> : null}
+                    </span>
+                    <span className="mt-3 block text-xs leading-5 text-[#5a6061]">
+                      约 {itemEstimate.inputLabel} 输入 / {itemEstimate.outputLabel} 输出
+                    </span>
+                    <span className="mt-1 block text-sm font-semibold text-[#202829]">{itemEstimate.totalLabel}</span>
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
-            <label
-              className={`flex min-h-[82px] items-center justify-between gap-3 rounded-lg border border-[#dfe4e5] bg-[#f9f9f9] px-3 py-3 text-sm text-[#202829] ${
-                protocol === "gemini" ? "opacity-65" : "cursor-pointer"
-              }`}
-            >
-              <span className="min-w-0">
-                <span className="block font-semibold">长上下文</span>
-                <span className="mt-0.5 block text-xs leading-5 text-[#5a6061]">
-                  {protocol === "gemini" ? "Gemini 暂不启用" : "确认上下文上限"}
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                checked={longContext}
-                disabled={protocol === "gemini"}
-                onChange={(event) => setLongContext(event.target.checked)}
-                className="h-4 w-4 shrink-0 accent-[#45bf78]"
-              />
-            </label>
           </div>
 
           <div className="flex flex-col gap-3 border-t border-[#edf0f1] pt-4 lg:flex-row lg:items-center lg:justify-between">
-            <p className="max-w-[720px] text-xs leading-5 text-[#5a6061]">
-              当前选择：{protocolLabels[protocol]} · {protocolHints[protocol]} · {selectedUpstream.detail}
-              Key 会随请求提交给独立检测服务，不会写入 PriceAI 数据库。
-            </p>
+            <div className="max-w-[860px] space-y-1 text-xs leading-5 text-[#5a6061]">
+              <p>
+                当前选择：{protocolLabels[protocol]} · {protocolHints[protocol]} · {selectedUpstream.detail}
+              </p>
+              <p>
+                预计消耗：{costEstimate.detailLabel}，约 {costEstimate.totalLabel}；{costEstimate.sourceLabel}
+                {costEstimate.priceNote ? `，${costEstimate.priceNote}` : ""}。
+              </p>
+            </div>
             <button
               type="submit"
               className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#202829] px-5 text-sm font-semibold text-white transition hover:bg-[#2d3435] disabled:cursor-not-allowed disabled:bg-[#adb3b4]"
@@ -474,6 +613,7 @@ export function TransitDetectorClient({ serviceUrl = "" }: DetectorClientProps) 
                   <th className="px-5 py-3">模型</th>
                   <th className="px-5 py-3">协议</th>
                   <th className="px-5 py-3">检测强度</th>
+                  <th className="px-5 py-3">预计消耗</th>
                   <th className="px-5 py-3">线路类型</th>
                   <th className="px-5 py-3">状态</th>
                   <th className="px-5 py-3">提交时间</th>
@@ -489,6 +629,7 @@ export function TransitDetectorClient({ serviceUrl = "" }: DetectorClientProps) 
                     </td>
                     <td className="px-5 py-4 text-[#2d3435]">{item.protocolLabel}</td>
                     <td className="px-5 py-4 text-[#2d3435]">{item.modeLabel}</td>
+                    <td className="px-5 py-4 text-[#2d3435]">{item.costEstimateLabel}</td>
                     <td className="px-5 py-4 text-[#2d3435]">{item.upstreamLabel}</td>
                     <td className="px-5 py-4">
                       <div className="flex flex-col gap-1">
@@ -561,6 +702,70 @@ function normalizeDetectorError(error: unknown) {
     return "无法连接检测后端。请确认本地 8017 服务已启动，并允许来自当前页面的跨域请求。";
   }
   return error.message;
+}
+
+function backendModeForIntensity(intensity: DetectorIntensity): BackendMode {
+  if (intensity === "quick") return "quick";
+  if (intensity === "standard") return "standard";
+  return "full";
+}
+
+function guessStandardModel(model: string, protocol: DetectorProtocol): TransitStandardModel {
+  const value = model.toLowerCase();
+  if (value.includes("opus-4-8")) return "Claude Opus 4.8";
+  if (value.includes("opus-4-7")) return "Claude Opus 4.7";
+  if (value.includes("opus")) return "Claude Opus 4.8";
+  if (value.includes("sonnet")) return "Claude Sonnet 4.6";
+  if (value.includes("gemini")) return "Gemini 3.1 Pro";
+  if (value.includes("5.5")) return "GPT 5.5";
+  if (value.includes("5.4") || value.includes("codex")) return "GPT 5.4";
+  if (protocol === "claude") return "Claude Sonnet 4.6";
+  if (protocol === "gemini") return "Gemini 3.1 Pro";
+  return "GPT 5.4";
+}
+
+function buildCostEstimate(
+  intensity: IntensityOption,
+  standardModel: TransitStandardModel,
+  priceNote = ""
+): CostEstimate {
+  const price = getOfficialTransitModelPrice(standardModel);
+  const inputCost = ((price.input ?? 0) * intensity.inputTokens) / 1_000_000;
+  const outputCost = ((price.output ?? 0) * intensity.outputTokens) / 1_000_000;
+  const totalCost = inputCost + outputCost;
+  const currencyPrefix = price.currency === "CNY" ? "¥" : "$";
+  const currencySuffix = price.currency === "CNY" ? " CNY" : " USD";
+
+  return {
+    inputLabel: formatTokenCount(intensity.inputTokens),
+    outputLabel: formatTokenCount(intensity.outputTokens),
+    totalLabel: `约 ${currencyPrefix}${formatCost(totalCost)}${currencySuffix}`,
+    detailLabel: `${formatTokenCount(intensity.inputTokens)} 输入 / ${formatTokenCount(intensity.outputTokens)} 输出 / ${intensity.requests} 次请求`,
+    sourceLabel: `${price.sourceLabel} ${standardModel} 标准价`,
+    priceNote,
+  };
+}
+
+function formatTokenCount(value: number): string {
+  if (value >= 10_000) return `${trimNumber(value / 10_000)} 万 token`;
+  if (value >= 1000) return `${trimNumber(value / 1000)}k token`;
+  return `${value} token`;
+}
+
+function formatCost(value: number): string {
+  if (value === 0) return "0";
+  if (value < 0.01) return value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+  return value.toFixed(2);
+}
+
+function trimNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
+}
+
+function maskSecretSuffix(value: string): string {
+  const text = value.trim();
+  if (!text) return "----";
+  return text.slice(-4).padStart(4, "•");
 }
 
 function StatusPill({ tone, children }: { tone: StatusTone; children: string }) {

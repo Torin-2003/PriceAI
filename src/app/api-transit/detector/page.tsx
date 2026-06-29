@@ -3,9 +3,11 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { ArrowLeft, Network, ShieldCheck } from "lucide-react";
 import { getTransitModelFamilyOptions } from "@/lib/api-transit";
+import { getTransitStations } from "@/lib/api-transit-db";
+import { TRANSIT_CHANNEL_TYPE_LABELS } from "@/data/api-transit/types";
 import { SiteHeader } from "@/components/SiteHeader";
 import { TransitFamilyTabs } from "@/components/TransitFamilyTabs";
-import { TransitDetectorClient } from "@/components/TransitDetectorClient";
+import { TransitDetectorClient, type DetectorStationOption } from "@/components/TransitDetectorClient";
 import { JsonLd } from "@/components/JsonLd";
 
 export const metadata: Metadata = {
@@ -20,9 +22,27 @@ export const metadata: Metadata = {
   },
 };
 
-export default function ApiTransitDetectorPage() {
+export const revalidate = 300;
+
+export default async function ApiTransitDetectorPage() {
   const familyOptions = getTransitModelFamilyOptions();
   const detectorServiceUrl = process.env.NEXT_PUBLIC_TRANSIT_DETECTOR_API_BASE_URL ?? "";
+  const stations = await getTransitStations();
+  const stationOptions: DetectorStationOption[] = stations
+    .filter((station) => station.status !== "unavailable")
+    .map((station) => ({
+      id: station.id,
+      slug: station.slug,
+      name: station.name,
+      apiBaseUrl: station.apiBaseUrl ?? null,
+      websiteUrl: station.websiteUrl,
+      sourceLabel: station.channelTypes
+        .slice(0, 2)
+        .map((type) => TRANSIT_CHANNEL_TYPE_LABELS[type])
+        .join(" / ") || "来源未披露",
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"))
+    .slice(0, 120);
 
   return (
     <div className="min-h-screen bg-[#f9f9f9] text-[#2d3435]">
@@ -78,7 +98,7 @@ export default function ApiTransitDetectorPage() {
           </div>
         </div>
 
-        <TransitDetectorClient serviceUrl={detectorServiceUrl} />
+        <TransitDetectorClient serviceUrl={detectorServiceUrl} stations={stationOptions} />
       </main>
     </div>
   );
