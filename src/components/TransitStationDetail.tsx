@@ -344,7 +344,7 @@ export default function TransitStationDetail({ station, children }: Props) {
           messagePrefix={[
             "【API 中转站数据反馈】",
             `站点：${station.name}`,
-            `前台入口：${outboundUrl || "未配置优惠/AFF 链接"}`,
+            `官网：${station.websiteUrl}`,
             `系统：${getTransitStationSystemLabel(station)}`,
           ].join("\n")}
         />
