@@ -217,8 +217,6 @@ export type PublicApiSnapshotRefreshResult = {
   explorer?: boolean;
   offers?: boolean;
   merchants?: boolean;
-  offerViews?: Array<{ key: string; ok: boolean }>;
-  merchantViews?: Array<{ key: string; ok: boolean }>;
   productOffers: Array<{ key: string; ok: boolean }>;
   productIds: string[];
 };
@@ -778,7 +776,6 @@ export async function refreshPublicApiSnapshots(): Promise<PublicApiSnapshotRefr
     payload: offersData,
     generatedAt: offersData.generatedAt,
   });
-  const offerViews = await refreshPublicOfferListSnapshots();
 
   const merchantsData = await buildPublicMerchants({ skipSnapshot: true });
   const merchants = !merchantsData.degraded && await writePublicApiSnapshot({
@@ -787,7 +784,6 @@ export async function refreshPublicApiSnapshots(): Promise<PublicApiSnapshotRefr
     payload: merchantsData,
     generatedAt: merchantsData.generatedAt,
   });
-  const merchantViews = await refreshPublicMerchantListSnapshots(merchantsData);
 
   const productRefs = explorerData.products
     .sort((a, b) => a.id.localeCompare(b.id))
@@ -800,8 +796,6 @@ export async function refreshPublicApiSnapshots(): Promise<PublicApiSnapshotRefr
     explorer,
     offers,
     merchants,
-    offerViews,
-    merchantViews,
     productOffers,
     productIds: productRefs.map((product) => product.id),
   };
@@ -817,8 +811,6 @@ async function refreshPublicApiSnapshotsForScope({
   let explorer: boolean | undefined;
   let offers: boolean | undefined;
   let merchants: boolean | undefined;
-  let offerViews: Array<{ key: string; ok: boolean }> | undefined;
-  let merchantViews: Array<{ key: string; ok: boolean }> | undefined;
   let explorerProducts: Array<{ id: string; slug?: string | null }> = [];
 
   if (refreshGlobal) {
@@ -842,7 +834,6 @@ async function refreshPublicApiSnapshotsForScope({
       payload: offersData,
       generatedAt: offersData.generatedAt,
     });
-    offerViews = await refreshPublicOfferListSnapshots();
 
     const merchantsData = await buildPublicMerchants({ skipSnapshot: true });
     merchants = !merchantsData.degraded && await writePublicApiSnapshot({
@@ -851,7 +842,6 @@ async function refreshPublicApiSnapshotsForScope({
       payload: merchantsData,
       generatedAt: merchantsData.generatedAt,
     });
-    merchantViews = await refreshPublicMerchantListSnapshots(merchantsData);
   }
 
   const productRefs = await resolvePublicSnapshotProductRefs(productIds, explorerProducts);
@@ -863,8 +853,6 @@ async function refreshPublicApiSnapshotsForScope({
     explorer,
     offers,
     merchants,
-    offerViews,
-    merchantViews,
     productOffers,
     productIds: productRefs.map((product) => product.id),
   };
@@ -899,130 +887,8 @@ async function refreshPublicProductOfferSnapshots(
       });
     }
     productOffers.push({ key: defaultKey, ok: defaultOk });
-
-    const tagsWithOffers = new Set(
-      defaultValue.filterFacets
-        .filter((facet) => facet.count > 0)
-        .map((facet) => facet.id),
-    );
-    const snapshotTags = PUBLIC_PRODUCT_OFFERS_SNAPSHOT_TAGS.filter((tag) => tagsWithOffers.has(tag));
-    for (const tag of snapshotTags) {
-      const filterTags: OfferFilterTagId[] = [tag];
-      const value = await loadPublicProductOffers(product.id, {
-        limit: PUBLIC_PRODUCT_OFFERS_SNAPSHOT_LIMIT,
-        offset: PUBLIC_PRODUCT_OFFERS_SNAPSHOT_OFFSET,
-        filterTags,
-        query: "",
-        excludeQuery: "",
-        skipSnapshot: true,
-      });
-      const key = publicProductOffersSnapshotKey(product.id, filterTags);
-      let ok = !value.degraded && await writePublicApiSnapshot({
-        kind: "product_offers",
-        key,
-        payload: value,
-        generatedAt: value.generatedAt,
-      });
-      if (product.slug && product.slug !== product.id) {
-        ok = ok && await writePublicApiSnapshot({
-          kind: "product_offers",
-          key: publicProductOffersSnapshotKey(product.slug, filterTags),
-          payload: value,
-          generatedAt: value.generatedAt,
-        });
-      }
-      productOffers.push({ key, ok });
-    }
   }
   return productOffers;
-}
-
-async function refreshPublicOfferListSnapshots(): Promise<Array<{ key: string; ok: boolean }>> {
-  const outputs: Array<{ key: string; ok: boolean }> = [];
-  for (const filters of publicOfferListSnapshotWarmupFilters()) {
-    const key = publicOfferListSnapshotKeyForRequest(filters);
-    if (!key || isDefaultOfferListSnapshotKey(key)) continue;
-
-    const value = await loadPublicOffers({ ...filters, skipSnapshot: true });
-    const ok = !value.degraded && await writePublicApiSnapshot({
-      kind: "offers",
-      key,
-      payload: value,
-      generatedAt: value.generatedAt,
-    });
-    outputs.push({ key, ok });
-  }
-  return outputs;
-}
-
-async function refreshPublicMerchantListSnapshots(
-  catalog?: PublicMerchantsResult,
-): Promise<Array<{ key: string; ok: boolean }>> {
-  const merchantCatalog = catalog ?? await loadPublicMerchantCatalog();
-  const outputs: Array<{ key: string; ok: boolean }> = [];
-  for (const filters of publicMerchantListSnapshotWarmupFilters()) {
-    const key = publicMerchantListSnapshotKeyForRequest(filters);
-    if (!key || isDefaultMerchantListSnapshotKey(key)) continue;
-
-    const value = paginatePublicMerchants(merchantCatalog, filters);
-    const ok = !value.degraded && await writePublicApiSnapshot({
-      kind: "merchants",
-      key,
-      payload: value,
-      generatedAt: value.generatedAt,
-    });
-    outputs.push({ key, ok });
-  }
-  return outputs;
-}
-
-function publicOfferListSnapshotWarmupFilters(): OfferListFilters[] {
-  const base = {
-    limit: PUBLIC_OFFERS_SNAPSHOT_LIMIT,
-    offset: PUBLIC_OFFERS_SNAPSHOT_OFFSET,
-  };
-  const filters: OfferListFilters[] = [];
-  const platforms = publicSnapshotPlatforms();
-
-  for (const platform of platforms) {
-    filters.push({ ...base, platform });
-  }
-  for (const stock of PUBLIC_LIST_SNAPSHOT_STOCKS) {
-    filters.push({ ...base, stock });
-  }
-  for (const sort of PUBLIC_LIST_SNAPSHOT_SORTS) {
-    filters.push({ ...base, sort });
-  }
-  for (const [platform, productTypes] of Object.entries(PUBLIC_HOT_OFFER_PRODUCT_TYPES_BY_PLATFORM)) {
-    if (!platforms.includes(platform)) continue;
-    for (const productType of productTypes) {
-      filters.push({ ...base, platform, productType });
-    }
-  }
-
-  return filters;
-}
-
-function publicMerchantListSnapshotWarmupFilters(): MerchantListFilters[] {
-  const base = {
-    limit: PUBLIC_OFFERS_SNAPSHOT_LIMIT,
-    offset: PUBLIC_OFFERS_SNAPSHOT_OFFSET,
-  };
-  const filters: MerchantListFilters[] = [];
-  const platforms = publicSnapshotPlatforms();
-
-  for (const platform of platforms) {
-    filters.push({ ...base, platform });
-  }
-  filters.push({ ...base, stock: "available" });
-  for (const collector of PUBLIC_MERCHANT_SNAPSHOT_COLLECTORS) {
-    filters.push({ ...base, collector });
-  }
-  for (const signal of PUBLIC_MERCHANT_SNAPSHOT_SIGNALS) {
-    filters.push({ ...base, signal });
-  }
-
-  return filters;
 }
 
 async function resolvePublicSnapshotProductRefs(
@@ -2059,10 +1925,6 @@ function encodePublicSnapshotKeyPart(value: string): string {
 
 function isDefaultOfferListSnapshotKey(key: string | null): boolean {
   return key === PUBLIC_OFFERS_SNAPSHOT_KEY;
-}
-
-function isDefaultMerchantListSnapshotKey(key: string | null): boolean {
-  return key === PUBLIC_MERCHANTS_SNAPSHOT_KEY;
 }
 
 function publicProductOffersSnapshotKey(id: string, filterTags: OfferFilterTagId[] = []): string {
