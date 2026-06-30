@@ -20,10 +20,6 @@ import {
 } from "lucide-react";
 import { DataTableHead, StatusChip } from "@/components/ComparisonUi";
 import { FeedbackDialog, transitStationFeedbackTypes } from "@/components/FeedbackLink";
-import {
-  getTransitStationOutboundUrl,
-  useTransitAffPreference,
-} from "@/components/TransitAffPreference";
 import { TransitAvailabilityStrip } from "@/components/TransitAvailabilityStrip";
 import { TransitPriceBreakdown } from "@/components/TransitPriceBreakdown";
 import { TransitStationSystemIcon } from "@/components/TransitStationSystemIcon";
@@ -57,6 +53,7 @@ import {
   getFamilyRateSummary,
   getPrimaryTransitCommercialOffer,
   getRechargeCoefficientFromRatio,
+  getTransitStationOutboundUrl,
   getNormalizedSourceTags,
   getRateBadgeClass,
   getStationRechargeCoefficient,
@@ -64,6 +61,8 @@ import {
   getTransitReviewTags,
   getTransitStationSystemLabel,
   getUsageAdviceBadgeClass,
+  hasTransitAffRelation,
+  isTransitStationOutboundAff,
 } from "@/lib/api-transit";
 import { sanitizeListReturnHref } from "@/lib/list-return";
 
@@ -110,7 +109,6 @@ const TRANSIT_RISK_WARNING_TEXT =
 
 export default function TransitStationDetail({ station, children }: Props) {
   const router = useRouter();
-  const [affEnabled] = useTransitAffPreference();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [copiedOfferId, setCopiedOfferId] = useState<string | null>(null);
   const [pendingOutbound, setPendingOutbound] = useState<TransitOutboundIntent | null>(null);
@@ -119,8 +117,9 @@ export default function TransitStationDetail({ station, children }: Props) {
   const primaryOffer = getPrimaryTransitCommercialOffer(station);
   const commercialOffers = getActiveTransitCommercialOffers(station);
   const verificationEvents = getTransitVerificationEvents(station);
-  const outboundUrl = getTransitStationOutboundUrl(station, primaryOffer, affEnabled);
-  const hasAffLink = affEnabled && station.commercialRelation === "affiliate" && Boolean(primaryOffer?.url);
+  const outboundUrl = getTransitStationOutboundUrl(station, primaryOffer);
+  const hasAffRelation = hasTransitAffRelation(station);
+  const isAffOutbound = isTransitStationOutboundAff(station, primaryOffer);
 
   const handleBack = useCallback(() => {
     const back = typeof window === "undefined"
@@ -203,7 +202,7 @@ export default function TransitStationDetail({ station, children }: Props) {
                   href={outboundUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={(event) => requestOutboundVisit(event, { url: outboundUrl, isAff: hasAffLink })}
+                  onClick={(event) => requestOutboundVisit(event, { url: outboundUrl, isAff: isAffOutbound })}
                   aria-label={`访问 ${station.name} 官网`}
                   className="mt-1 inline-flex max-w-full items-center gap-1 text-sm font-semibold text-[#5a6061] transition-colors hover:text-[#2d3435]"
                 >
@@ -249,7 +248,6 @@ export default function TransitStationDetail({ station, children }: Props) {
           <div className="rounded-lg bg-[#f7f9f9] p-4 ring-1 ring-[#adb3b4]/15">
             <CommercialOfferCard
               offers={commercialOffers}
-              affEnabled={affEnabled}
               copiedOfferId={copiedOfferId}
               onCopy={copyOfferCode}
             />
@@ -258,16 +256,16 @@ export default function TransitStationDetail({ station, children }: Props) {
                 href={outboundUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={(event) => requestOutboundVisit(event, { url: outboundUrl, isAff: hasAffLink })}
+                onClick={(event) => requestOutboundVisit(event, { url: outboundUrl, isAff: isAffOutbound })}
                 className="inline-flex h-10 items-center gap-1.5 rounded-full bg-[#2d3435] px-4 text-sm font-bold text-[#f8f8f8] transition-colors hover:bg-[#202829]"
               >
                 访问官网
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
-              {hasAffLink ? (
+              {hasAffRelation ? (
                 <span
                   className="inline-flex h-10 items-center rounded-full border border-dashed border-[#adb3b4]/70 px-3 text-xs font-extrabold text-[#5a6061]"
-                  title="该优惠访问链接为 AFF 链接，不影响页面价格口径。"
+                  title="后台标记该站点存在 AFF 关系，不影响页面价格口径。"
                 >
                   AFF
                 </span>
@@ -687,18 +685,15 @@ function getUrlHost(url: string) {
 
 function CommercialOfferCard({
   offers,
-  affEnabled,
   copiedOfferId,
   onCopy,
 }: {
   offers: NonNullable<TransitStation["commercialOffers"]>;
-  affEnabled: boolean;
   copiedOfferId: string | null;
   onCopy: (offerId: string, code: string) => void;
 }) {
   const offer = offers[0];
-  const shouldShowDisclosure =
-    Boolean(offer?.disclosure) && (affEnabled || !/\bAFF\b/i.test(offer?.disclosure || ""));
+  const shouldShowDisclosure = Boolean(offer?.disclosure);
 
   if (!offer) {
     return (
