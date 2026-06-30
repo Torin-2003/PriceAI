@@ -12,9 +12,6 @@ import {
   SelectFilter,
   StatusChip,
 } from "@/components/ComparisonUi";
-import {
-  TransitAffPreferenceToggle,
-} from "@/components/TransitAffPreference";
 import { TransitAvailabilityStrip } from "@/components/TransitAvailabilityStrip";
 import { TransitStationSystemIcon } from "@/components/TransitStationSystemIcon";
 import { TransitViewTabs } from "@/components/TransitViewTabs";
@@ -45,6 +42,7 @@ import {
   getPrimaryTransitCommercialOffer,
   getStationComparisonSummary,
   getStationRechargeCoefficient,
+  hasTransitAffRelation,
   getTransitReviewTags,
   getTransitStationSystemLabel,
   parseRechargeRatio,
@@ -233,7 +231,6 @@ export default function TransitStationExplorer({ stations }: Props) {
               <Filter className="h-3.5 w-3.5" />
               筛选{activeFilterCount > 0 ? ` ${activeFilterCount}` : ""}
             </button>
-            <TransitAffPreferenceToggle />
           </div>
         </div>
         {showFilters ? (
@@ -642,6 +639,7 @@ function StationIdentity({
   const offer = getPrimaryTransitCommercialOffer(station);
   const offerLabel = offer ? formatListOfferLabel(offer) : null;
   const offerTitle = offer ? offer.title : "";
+  const hasAff = hasTransitAffRelation(station);
 
   return (
     <div className="flex min-w-0 items-center gap-3">
@@ -652,6 +650,14 @@ function StationIdentity({
           <span className="inline-flex h-5 w-[72px] shrink-0 items-center justify-center rounded-full bg-[#f2f4f4] px-2 text-[10px] font-bold text-[#5a6061]">
             <span className="truncate">{getTransitStationSystemLabel(station)}</span>
           </span>
+          {hasAff ? (
+            <span
+              className="inline-flex h-5 shrink-0 items-center justify-center rounded-full border border-dashed border-[#adb3b4]/70 px-2 text-[10px] font-extrabold text-[#5a6061]"
+              title="后台标记该站点存在 AFF 关系，不影响页面价格口径。"
+            >
+              AFF
+            </span>
+          ) : null}
           {offerLabel ? (
             <span
               className="inline-flex h-5 max-w-[116px] shrink-0 items-center justify-center rounded-full bg-[#fff7e8] px-2 text-[10px] font-bold text-[#7a541b]"

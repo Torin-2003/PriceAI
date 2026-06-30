@@ -556,6 +556,26 @@ export function getActiveTransitCommercialOffers(
   return (station.commercialOffers || []).filter((offer) => offer.enabled);
 }
 
+export function hasTransitAffRelation(station: TransitStation): boolean {
+  return station.commercialRelation === "affiliate" ||
+    getActiveTransitCommercialOffers(station).some((offer) => offer.type === "affiliate");
+}
+
+export function getTransitStationOutboundUrl(
+  station: TransitStation,
+  offer: TransitCommercialOffer | null | undefined
+): string {
+  return offer?.url || station.websiteUrl;
+}
+
+export function isTransitStationOutboundAff(
+  station: TransitStation,
+  offer: TransitCommercialOffer | null | undefined
+): boolean {
+  return Boolean(offer?.url) &&
+    (station.commercialRelation === "affiliate" || offer?.type === "affiliate");
+}
+
 export function getPrimaryTransitCommercialOffer(
   station: TransitStation
 ): TransitCommercialOffer | null {
