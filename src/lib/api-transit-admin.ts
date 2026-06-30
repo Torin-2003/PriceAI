@@ -298,21 +298,26 @@ export async function updateApiTransitStation(input: {
 export async function updateApiTransitOffers(input: {
   ids: string[];
   status?: ApiTransitOfferStatus;
-}): Promise<{ updatedCount: number }> {
+}): Promise<{ updatedCount: number; stationSlugs: string[] }> {
   const ids = uniqueText(input.ids);
-  if (!ids.length) return { updatedCount: 0 };
+  const emptyResult = { updatedCount: 0, stationSlugs: [] };
+  if (!ids.length) return emptyResult;
 
   const supabase = getSupabaseOrThrow();
-  if (!input.status) return { updatedCount: 0 };
+  if (!input.status) return emptyResult;
   const { data, error } = await supabase
     .from("api_transit_offers")
     .update({ status: input.status })
     .in("id", ids)
-    .select("id");
+    .select("id,api_transit_stations!inner(slug)");
 
   if (error) throw error;
   clearTransitStationsCache();
-  return { updatedCount: dbRows(data).length };
+  const rows = dbRows(data);
+  return {
+    updatedCount: rows.length,
+    stationSlugs: uniqueText(rows.map((row) => stringValue(nestedRow(row.api_transit_stations)?.slug))),
+  };
 }
 
 export async function updateApiTransitOffer(input: {
@@ -384,7 +389,7 @@ export async function updateApiTransitOffer(input: {
         "status",
         "created_at",
         "updated_at",
-        "api_transit_stations!inner(name,published,removed_at)",
+        "api_transit_stations!inner(slug,name,published,removed_at)",
       ].join(",")
     )
     .is("api_transit_stations.removed_at", null)
@@ -776,7 +781,7 @@ async function listAdminTransitOffers(): Promise<ApiTransitAdminOffer[]> {
         "status",
         "created_at",
         "updated_at",
-        "api_transit_stations!inner(name,published,removed_at)",
+        "api_transit_stations!inner(slug,name,published,removed_at)",
       ].join(",")
     )
     .is("api_transit_stations.removed_at", null)
@@ -975,6 +980,7 @@ function mapOffer(row: DbRow): ApiTransitAdminOffer {
   return {
     id: stringValue(row.id),
     stationId: stringValue(row.station_id),
+    stationSlug: stringValue(station?.slug),
     stationName: stringValue(station?.name) || stringValue(row.station_id),
     stationPublished: Boolean(station?.published),
     family: stringValue(row.family),

@@ -1,9 +1,9 @@
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getAdminPasswordFromRequest } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { clearAdminDataCache } from "@/lib/data";
 import { requireAdminPassword } from "@/lib/env";
+import { prewarmPublicPaths, revalidateSponsorPublicPaths } from "@/lib/public-revalidation";
 import { getSponsorSettingsSummary, updateSponsorSettings } from "@/lib/sponsor-settings";
 import { SPONSOR_PLACEMENT_KINDS } from "@/lib/sponsor-settings-shared";
 
@@ -59,7 +59,8 @@ export async function PATCH(request: Request) {
     const payload = patchSchema.parse(await request.json());
     const settings = await updateSponsorSettings(payload);
     clearAdminDataCache();
-    revalidateSponsorPages();
+    const publicPaths = revalidateSponsorPublicPaths();
+    await prewarmPublicPaths(request, publicPaths);
     return Response.json({ ok: true, settings });
   } catch (error) {
     logApiError("admin sponsor settings update", error);
@@ -67,11 +68,5 @@ export async function PATCH(request: Request) {
       { ok: false, message: safeApiErrorMessage(error, "保存赞助位配置失败。") },
       { status: error instanceof z.ZodError ? 400 : 500 },
     );
-  }
-}
-
-function revalidateSponsorPages() {
-  for (const path of ["/", "/channels", "/api-transit", "/api-transit/models", "/api-models", "/commercial", "/api/sponsor-settings"]) {
-    revalidatePath(path);
   }
 }

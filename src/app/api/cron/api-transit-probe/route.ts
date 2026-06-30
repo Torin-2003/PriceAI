@@ -4,6 +4,7 @@ import { probeApiTransitStations } from "../../../../../scripts/probe-api-transi
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { clearTransitStationsCache } from "@/lib/api-transit-db";
 import { authorizeCronRequest, cronMethodNotAllowed } from "@/lib/cron-auth";
+import { prewarmPublicPaths, revalidateApiTransitPublicPaths } from "@/lib/public-revalidation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,10 +45,8 @@ async function runApiTransitProbe(request: Request) {
       clearTransitStationsCache();
       revalidatePath("/admin");
       revalidatePath("/admin/api-transit");
-      revalidatePath("/api-transit");
-      revalidatePath("/api-transit/models");
-      revalidatePath("/api-transit/[slug]", "page");
-      revalidatePath("/sitemap.xml");
+      const publicPaths = revalidateApiTransitPublicPaths();
+      await prewarmPublicPaths(request, publicPaths);
     }
 
     return Response.json({

@@ -6,6 +6,7 @@ import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { updateApiTransitOffer, updateApiTransitOffers } from "@/lib/api-transit-admin";
 import { clearAdminDataCache } from "@/lib/data";
 import { requireAdminPassword } from "@/lib/env";
+import { prewarmPublicPaths, revalidateApiTransitPublicPaths } from "@/lib/public-revalidation";
 
 const patchSchema = z.union([
   z.object({
@@ -41,12 +42,12 @@ export async function PATCH(request: Request) {
 
     if ("ids" in payload) {
       const result = await updateApiTransitOffers(payload);
-      clearApiTransitAdminCaches();
+      await clearApiTransitAdminCaches(request, result.stationSlugs);
       return Response.json({ ok: true, ...result });
     }
 
     const offer = await updateApiTransitOffer(payload);
-    clearApiTransitAdminCaches();
+    await clearApiTransitAdminCaches(request, [offer.stationSlug]);
     return Response.json({ ok: true, offer });
   } catch (error) {
     logApiError("admin api transit offers update", error);
@@ -57,14 +58,12 @@ export async function PATCH(request: Request) {
   }
 }
 
-function clearApiTransitAdminCaches(): void {
+async function clearApiTransitAdminCaches(request: Request, slugs: string[] = []): Promise<void> {
   clearAdminDataCache();
   revalidatePath("/admin");
   revalidatePath("/admin/api-transit");
-  revalidatePath("/api-transit");
-  revalidatePath("/api-transit/models");
-  revalidatePath("/api-transit/[slug]", "page");
-  revalidatePath("/sitemap.xml");
+  const publicPaths = revalidateApiTransitPublicPaths(slugs);
+  await prewarmPublicPaths(request, publicPaths);
 }
 
 function errorStatus(error: unknown): number {

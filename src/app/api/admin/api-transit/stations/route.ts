@@ -10,6 +10,7 @@ import {
 } from "@/lib/api-transit-admin";
 import { clearAdminDataCache } from "@/lib/data";
 import { requireAdminPassword } from "@/lib/env";
+import { prewarmPublicPaths, revalidateApiTransitPublicPaths } from "@/lib/public-revalidation";
 
 const patchSchema = z.discriminatedUnion("action", [
   z.object({
@@ -91,7 +92,7 @@ export async function PATCH(request: Request) {
         stationId: payload.id,
         offerIds: payload.offerIds,
       });
-      clearApiTransitAdminCaches();
+      await clearApiTransitAdminCaches(request, [result.station.slug]);
       return Response.json({ ok: true, ...result });
     }
 
@@ -100,13 +101,13 @@ export async function PATCH(request: Request) {
         id: payload.id,
         reason: payload.reason,
       });
-      clearApiTransitAdminCaches();
+      await clearApiTransitAdminCaches(request, [station.slug]);
       return Response.json({ ok: true, station });
     }
 
     if (payload.action === "restore") {
       const station = await restoreApiTransitStation({ id: payload.id });
-      clearApiTransitAdminCaches();
+      await clearApiTransitAdminCaches(request, [station.slug]);
       return Response.json({ ok: true, station });
     }
 
@@ -144,7 +145,7 @@ export async function PATCH(request: Request) {
       commercialOffers: payload.commercialOffers,
       verificationEvents: payload.verificationEvents,
     });
-    clearApiTransitAdminCaches();
+    await clearApiTransitAdminCaches(request, [station.slug]);
     return Response.json({ ok: true, station });
   } catch (error) {
     logApiError("admin api transit station update", error);
@@ -155,14 +156,12 @@ export async function PATCH(request: Request) {
   }
 }
 
-function clearApiTransitAdminCaches(): void {
+async function clearApiTransitAdminCaches(request: Request, slugs: string[] = []): Promise<void> {
   clearAdminDataCache();
   revalidatePath("/admin");
   revalidatePath("/admin/api-transit");
-  revalidatePath("/api-transit");
-  revalidatePath("/api-transit/models");
-  revalidatePath("/api-transit/[slug]", "page");
-  revalidatePath("/sitemap.xml");
+  const publicPaths = revalidateApiTransitPublicPaths(slugs);
+  await prewarmPublicPaths(request, publicPaths);
 }
 
 function errorStatus(error: unknown): number {

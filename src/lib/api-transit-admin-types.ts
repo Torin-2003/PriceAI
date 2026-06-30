@@ -92,6 +92,7 @@ export type ApiTransitAdminStation = {
 export type ApiTransitAdminOffer = {
   id: string;
   stationId: string;
+  stationSlug: string;
   stationName: string;
   stationPublished: boolean;
   family: string;

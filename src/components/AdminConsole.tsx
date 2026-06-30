@@ -1589,7 +1589,8 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
 
     if (result.ok && result.settings) {
       setSponsorSettings(result.settings as SponsorSettings);
-      setGlobalMessage({ type: "success", text: "赞助位配置已保存，相关页面会在缓存刷新后生效。" });
+      setGlobalMessage({ type: "success", text: "赞助位配置已保存，相关前台页面正在刷新。" });
+      router.refresh();
     } else {
       setGlobalMessage({ type: "error", text: result.message || "保存赞助位配置失败。" });
     }

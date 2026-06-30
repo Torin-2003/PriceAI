@@ -18,14 +18,18 @@ export function publicDataCacheHeaders({
   };
 }
 
+export function noStoreCacheHeaders(): HeadersInit {
+  return {
+    "Cache-Control": "no-store, max-age=0",
+    "CDN-Cache-Control": "no-store",
+    "Cloudflare-CDN-Cache-Control": "no-store",
+    "Vercel-CDN-Cache-Control": "no-store",
+  };
+}
+
 export function priceDataCacheHeaders(): HeadersInit {
   if (PRICE_DATA_EDGE_SECONDS <= 0) {
-    return {
-      "Cache-Control": "no-store, max-age=0",
-      "CDN-Cache-Control": "no-store",
-      "Cloudflare-CDN-Cache-Control": "no-store",
-      "Vercel-CDN-Cache-Control": "no-store",
-    };
+    return noStoreCacheHeaders();
   }
 
   return publicDataCacheHeaders({
