@@ -1,11 +1,10 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { TRANSIT_MODEL_FAMILY_ORDER } from "@/data/api-transit/types";
-import { getAdminPasswordFromRequest } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { updateApiTransitOffer, updateApiTransitOffers } from "@/lib/api-transit-admin";
 import { clearAdminDataCache } from "@/lib/data";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 import { prewarmPublicPaths, revalidateApiTransitPublicPaths } from "@/lib/public-revalidation";
 
 const patchSchema = z.union([
@@ -37,7 +36,7 @@ const patchSchema = z.union([
 
 export async function PATCH(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const payload = patchSchema.parse(await request.json());
 
     if ("ids" in payload) {

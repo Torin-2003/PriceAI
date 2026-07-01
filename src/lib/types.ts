@@ -1,5 +1,6 @@
 import type { ApiBillingMode, ApiPriceValue, ApiProviderType } from "@/lib/api-models";
 import type { ApiTransitAdminData } from "@/lib/api-transit-admin-types";
+import type { AdminPasswordStatus } from "@/lib/admin-auth";
 import type { SponsorSettingsSummary } from "@/lib/sponsor-settings-shared";
 
 export type OfferStatus = "in_stock" | "low_stock" | "out_of_stock" | "unknown";
@@ -228,6 +229,7 @@ export type AdminSummary = DashboardData & {
   feedbackRawOffers: RawOffer[];
   riskReviewSettings: RiskReviewSettingsSummary;
   sponsorSettings: SponsorSettingsSummary;
+  passwordStatus: AdminPasswordStatus;
 };
 
 export type RiskReviewSettingsSummary = {
@@ -274,7 +276,11 @@ export type CrawlRun = {
 
 export type CollectionJob = {
   id: string;
-  jobType: "all" | "source" | "official_prices" | "api_models";
+  jobType:
+    | "all"
+    | "source"
+    | "official_prices"
+    | "api_models";
   sourceId?: string | null;
   sourceName?: string | null;
   status: "pending" | "running" | "success" | "failed" | "cancelled";

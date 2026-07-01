@@ -1,6 +1,5 @@
-import { getAdminPasswordFromRequest } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
-import { requireAdminOrCronPassword } from "@/lib/env";
+import { requireAdminOrCronRequest } from "@/lib/env";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { z } from "zod";
 
@@ -25,7 +24,7 @@ const querySchema = z.object({
 
 export async function GET(request: Request) {
   try {
-    requireAdminOrCronPassword(getAdminPasswordFromRequest(request));
+    await requireAdminOrCronRequest(request);
 
     const supabase = getSupabaseServerClient();
     if (!supabase) throw new Error("Supabase 尚未配置，无法下发采集任务。");

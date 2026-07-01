@@ -1,7 +1,6 @@
-import { getAdminPasswordFromRequest } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { listAdminOfferMaintenancePage } from "@/lib/data";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 import { z } from "zod";
 
 const querySchema = z.object({
@@ -13,7 +12,7 @@ const querySchema = z.object({
 
 export async function GET(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
 
     const url = new URL(request.url);
     const input = querySchema.parse({

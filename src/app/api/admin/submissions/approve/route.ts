@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { approveSubmission, getAdminPasswordFromRequest } from "@/lib/admin";
+import { approveSubmission } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { normalizeCollectorKind } from "@/lib/collector-registry";
 import { clearPublicDataCache, markPublicApiSnapshotsDirty } from "@/lib/data";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 import { revalidatePublicOfferPaths } from "@/lib/public-revalidation";
 import type { CollectorKind } from "@/lib/types";
 
@@ -19,7 +19,7 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const payload = schema.parse(await request.json());
     const result = await approveSubmission(payload.id, {
       name: payload.name ?? null,

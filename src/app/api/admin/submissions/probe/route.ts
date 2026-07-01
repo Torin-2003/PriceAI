@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { probeSource } from "../../../../../../scripts/collect-prices.mjs";
-import { getAdminPasswordFromRequest, recordSubmissionProbeResult } from "@/lib/admin";
+import { recordSubmissionProbeResult } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 import { getSupabaseServerClient } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const payload = schema.parse(await request.json());
     const supabase = getSupabaseServerClient();
     if (!supabase) throw new Error("Supabase 尚未配置。");

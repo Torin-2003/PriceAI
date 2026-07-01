@@ -1,7 +1,6 @@
-import { getAdminPasswordFromRequest } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { clearAdminDataCache } from "@/lib/data";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 import { clearOfficialPricesCache } from "@/lib/official-prices-db";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
@@ -35,7 +34,7 @@ const patchSchema = z.discriminatedUnion("target", [
 
 export async function PATCH(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const payload = patchSchema.parse(await request.json());
     const supabase = getSupabaseServerClient();
     if (!supabase) throw new Error("Supabase 尚未配置，无法更新官方地区价。");

@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { getAdminPasswordFromRequest } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { clearAdminDataCache } from "@/lib/data";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 import { getRiskReviewSettingsSummary, updateRiskReviewSettings } from "@/lib/risk-review-settings";
 
 const patchSchema = z.object({
@@ -15,7 +14,7 @@ const patchSchema = z.object({
 
 export async function GET(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     return Response.json({ ok: true, settings: await getRiskReviewSettingsSummary() });
   } catch (error) {
     logApiError("admin risk review settings get", error);
@@ -28,7 +27,7 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const payload = patchSchema.parse(await request.json());
     const settings = await updateRiskReviewSettings({
       provider: payload.provider,

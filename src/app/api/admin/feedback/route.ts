@@ -1,6 +1,5 @@
 import {
   createFeedbackRecollectionJob,
-  getAdminPasswordFromRequest,
   listOfferFeedback,
   runOfferFeedbackRiskPrecheck,
   updateOfferFeedbackStatus,
@@ -9,7 +8,7 @@ import {
 } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { clearPublicDataCache, listRawOffersByIds, markPublicApiSnapshotsDirty } from "@/lib/data";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 import { z } from "zod";
 
 const statusSchema = z.enum(["pending", "resolved", "ignored"]);
@@ -45,7 +44,7 @@ const patchSchema = z.object({
 
 export async function GET(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const { searchParams } = new URL(request.url);
     const status = statusSchema.catch("pending").parse(searchParams.get("status") || "pending");
     const feedback = await listOfferFeedback(status);
@@ -66,7 +65,7 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const payload = patchSchema.parse(await request.json());
     const action = payload.action || "status";
     if (action === "recollect") {

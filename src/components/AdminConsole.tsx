@@ -97,6 +97,7 @@ type ApiProviderCandidate = ApiModelAdminData["providerCandidates"][number];
 type ApiProviderSubmission = ApiModelAdminData["providerSubmissions"][number];
 type RiskReviewSettings = AdminSummary["riskReviewSettings"];
 type SponsorSettings = AdminSummary["sponsorSettings"];
+type PasswordStatus = AdminSummary["passwordStatus"];
 type CollectorHealthData = AdminSummary["collectorHealth"];
 type CollectorHealthSourceRow = CollectorHealthData["sources"][number];
 type CollectorHealthNodeRow = CollectorHealthData["nodeSummaries"][number];
@@ -106,6 +107,12 @@ type ApiModelEditablePayload = Record<string, unknown> & {
   target: ApiModelEditableTarget;
   id: string;
 };
+type PasswordDraft = {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+};
+type BadgeTone = "default" | "info" | "warn" | "success" | "danger" | "muted";
 
 const ADMIN_LIST_PREVIEW_ROWS = 8;
 
@@ -200,7 +207,7 @@ type ApiModelProbeResult = {
   };
 };
 
-type AdminTab = "review" | "todo" | "feedback" | "sponsors" | "history" | "collect" | "health" | "official" | "apiModels" | "apiTransit" | "sources" | "manual" | "logs";
+type AdminTab = "review" | "todo" | "feedback" | "sponsors" | "security" | "history" | "collect" | "health" | "official" | "apiModels" | "apiTransit" | "sources" | "manual" | "logs";
 
 type RowFeedback = {
   id: string;
@@ -296,6 +303,12 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
   const [apiProviderSubmissions, setApiProviderSubmissions] = useState<ApiProviderSubmission[]>(data.apiModels.providerSubmissions || []);
   const [riskReviewSettings, setRiskReviewSettings] = useState<RiskReviewSettings>(data.riskReviewSettings);
   const [sponsorSettings, setSponsorSettings] = useState<SponsorSettings>(data.sponsorSettings);
+  const [passwordStatus, setPasswordStatus] = useState<PasswordStatus>(data.passwordStatus);
+  const [passwordDraft, setPasswordDraft] = useState<PasswordDraft>({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
   const [activeTab, setActiveTab] = useState<AdminTab>("review");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -677,6 +690,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       { id: "todo", label: "待办", count: collectorTodoSubmissions.length, icon: <ClipboardList size={15} /> },
       { id: "feedback", label: "反馈", count: pendingFeedbackCount, icon: <Flag size={15} /> },
       { id: "sponsors", label: "赞助", count: sponsorSettings.enabled ? activeSponsorPlacementCount(sponsorSettings) || null : null, icon: <Megaphone size={15} /> },
+      { id: "security", label: "安全", count: null, icon: <KeyRound size={15} /> },
       { id: "history", label: "历史", count: null, icon: <History size={15} /> },
       { id: "collect", label: "采集", count: failedRunCount || null, icon: <RefreshCcw size={15} /> },
       { id: "health", label: "健康", count: collectorHealthIssueCount || null, icon: <Activity size={15} /> },
@@ -1596,6 +1610,47 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     }
   }
 
+  async function saveAdminPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const currentPassword = passwordDraft.currentPassword.trim();
+    const newPassword = passwordDraft.newPassword.trim();
+    const confirmPassword = passwordDraft.confirmPassword.trim();
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setGlobalMessage({ type: "error", text: "请完整填写当前密码、新密码和确认密码。" });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setGlobalMessage({ type: "error", text: "两次输入的新密码不一致。" });
+      return;
+    }
+    if (newPassword.length < passwordStatus.minLength) {
+      setGlobalMessage({ type: "error", text: `新密码至少需要 ${passwordStatus.minLength} 个字符。` });
+      return;
+    }
+
+    setLoadingAction("admin-password");
+    setGlobalMessage(null);
+    const result = await requestWithMethod("/api/admin/password", "PATCH", password, {
+      currentPassword,
+      newPassword,
+    });
+    setLoadingAction(null);
+
+    if (result.ok && result.passwordStatus) {
+      setPasswordStatus(result.passwordStatus as PasswordStatus);
+      setPassword("");
+      setPasswordDraft({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      setGlobalMessage({ type: "success", text: "后台密码已更新，当前会话已续签。" });
+      router.refresh();
+    } else {
+      setGlobalMessage({ type: "error", text: result.message || "修改后台密码失败。" });
+    }
+  }
+
   function toggleFeedbackSelect(id: string) {
     setSelectedFeedbackIds((prev) => {
       const next = new Set(prev);
@@ -2376,7 +2431,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
               后台密码
             </div>
             <p className="mt-2 text-sm text-[#5a6061]">
-              使用环境变量 `ADMIN_PASSWORD`。登录后后台操作会走安全 Cookie，不会在每个请求里重复携带明文密码。
+              使用后台密码登录。登录后后台操作会走安全 Cookie，不会在每个请求里重复携带明文密码。
             </p>
             <form onSubmit={login} className="mt-4 flex gap-2">
               <label htmlFor="admin-password" className="sr-only">
@@ -2917,6 +2972,19 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                   settings={sponsorSettings}
                   loading={loadingAction === "sponsor-settings"}
                   onSave={saveSponsorSettings}
+                />
+              </div>
+            )}
+
+            {/* Security tab */}
+            {activeTab === "security" && (
+              <div role="tabpanel" id="tabpanel-security">
+                <AdminPasswordPanel
+                  status={passwordStatus}
+                  draft={passwordDraft}
+                  loading={loadingAction === "admin-password"}
+                  onDraftChange={setPasswordDraft}
+                  onSubmit={saveAdminPassword}
                 />
               </div>
             )}
@@ -4635,6 +4703,98 @@ function RiskReviewSettingsPanel({
   );
 }
 
+function AdminPasswordPanel({
+  status,
+  draft,
+  loading,
+  onDraftChange,
+  onSubmit,
+}: {
+  status: PasswordStatus;
+  draft: PasswordDraft;
+  loading: boolean;
+  onDraftChange: Dispatch<SetStateAction<PasswordDraft>>;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <section className="rounded-lg border border-[#adb3b4]/20 bg-white p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <KeyRound size={15} className="text-[#5a6061]" />
+            <h3 className="text-sm font-semibold text-[#202829]">后台密码</h3>
+            <Badge tone={adminPasswordStatusTone(status)}>
+              {status.configured ? "已配置" : "未配置"}
+            </Badge>
+            <Badge tone={adminPasswordSourceTone(status.source)}>
+              来源：{adminPasswordSourceLabel(status.source)}
+            </Badge>
+          </div>
+          <p className="mt-1 max-w-[78ch] text-xs leading-5 text-[#5a6061]">
+            新密码会加盐哈希后保存；保存成功后旧后台会话失效，当前会话自动续签。
+          </p>
+          {status.message ? <p className="mt-1 text-xs text-[#7a541b]">{status.message}</p> : null}
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#8a9293]">
+          <span>最短：{status.minLength} 位</span>
+          {status.updatedAt ? <span>更新：{formatRelativeTime(status.updatedAt)}</span> : <span>尚未在后台保存</span>}
+        </div>
+      </div>
+
+      <form className="mt-4 grid gap-3 lg:grid-cols-[minmax(180px,1fr)_minmax(180px,1fr)_minmax(180px,1fr)_auto]" onSubmit={onSubmit}>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-[#5a6061]">当前密码</span>
+          <input
+            value={draft.currentPassword}
+            onChange={(event) => onDraftChange((prev) => ({ ...prev, currentPassword: event.target.value }))}
+            type="password"
+            autoComplete="current-password"
+            className={adminInputClassName}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-[#5a6061]">新密码</span>
+          <input
+            value={draft.newPassword}
+            onChange={(event) => onDraftChange((prev) => ({ ...prev, newPassword: event.target.value }))}
+            type="password"
+            autoComplete="new-password"
+            minLength={status.minLength}
+            className={adminInputClassName}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-[#5a6061]">确认新密码</span>
+          <input
+            value={draft.confirmPassword}
+            onChange={(event) => onDraftChange((prev) => ({ ...prev, confirmPassword: event.target.value }))}
+            type="password"
+            autoComplete="new-password"
+            minLength={status.minLength}
+            className={adminInputClassName}
+          />
+        </label>
+        <div className="flex items-end">
+          <button
+            type="submit"
+            disabled={loading || !status.configured}
+            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-[#2d3435] px-4 text-xs font-medium text-white transition-colors hover:bg-[#202829] disabled:opacity-60 lg:w-auto"
+          >
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            保存
+          </button>
+        </div>
+      </form>
+
+      <div className="mt-4 grid gap-2 rounded-lg bg-[#f2f4f4] p-3 text-xs leading-5 text-[#5a6061] md:grid-cols-3">
+        <span>新密码至少包含字母、数字、符号中的两类。</span>
+        <span>环境变量 ADMIN_PASSWORD 可作为兜底入口。</span>
+        <span>采集任务继续使用 CRON_SECRET，不依赖后台密码。</span>
+      </div>
+    </section>
+  );
+}
+
 function SponsorSettingsPanel({
   settings,
   loading,
@@ -4948,6 +5108,23 @@ function riskReviewSettingSourceLabel(value: RiskReviewSettings["source"]): stri
   if (value === "environment") return "环境变量";
   if (value === "default") return "默认值";
   return "未配置";
+}
+
+function adminPasswordSourceLabel(value: PasswordStatus["source"]): string {
+  if (value === "database") return "后台配置";
+  if (value === "environment") return "环境变量";
+  return "未配置";
+}
+
+function adminPasswordSourceTone(value: PasswordStatus["source"]): BadgeTone {
+  if (value === "database") return "success";
+  if (value === "environment") return "info";
+  return "danger";
+}
+
+function adminPasswordStatusTone(status: PasswordStatus): BadgeTone {
+  if (!status.configured) return "danger";
+  return status.tableReady ? "success" : "warn";
 }
 
 function buildSponsorSettingsPayload(settings: SponsorSettings) {

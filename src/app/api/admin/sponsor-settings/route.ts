@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { getAdminPasswordFromRequest } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { clearAdminDataCache } from "@/lib/data";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 import { prewarmPublicPaths, revalidateSponsorPublicPaths } from "@/lib/public-revalidation";
 import { getSponsorSettingsSummary, updateSponsorSettings } from "@/lib/sponsor-settings";
 import { SPONSOR_PLACEMENT_KINDS } from "@/lib/sponsor-settings-shared";
@@ -42,7 +41,7 @@ const patchSchema = z.object({
 
 export async function GET(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     return Response.json({ ok: true, settings: await getSponsorSettingsSummary() });
   } catch (error) {
     logApiError("admin sponsor settings get", error);
@@ -55,7 +54,7 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const payload = patchSchema.parse(await request.json());
     const settings = await updateSponsorSettings(payload);
     clearAdminDataCache();

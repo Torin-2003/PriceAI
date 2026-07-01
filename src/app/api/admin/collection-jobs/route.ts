@@ -1,7 +1,6 @@
-import { getAdminPasswordFromRequest } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { clearAdminDataCache } from "@/lib/data";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { stableId } from "@/lib/utils";
 import { z } from "zod";
@@ -16,7 +15,7 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
 
     const supabase = getSupabaseServerClient();
     if (!supabase) throw new Error("Supabase 尚未配置，无法创建采集任务。");

@@ -1,7 +1,6 @@
-import { getAdminPasswordFromRequest } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { uploadApiTransitLogoImage } from "@/lib/api-transit-logo-storage";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 import {
   assertContentLengthWithinLimit,
   PUBLIC_FORM_BODY_MAX_BYTES,
@@ -12,7 +11,7 @@ export const revalidate = 0;
 
 export async function POST(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     assertContentLengthWithinLimit(request, PUBLIC_FORM_BODY_MAX_BYTES, "Logo 上传内容");
 
     const formData = await request.formData();

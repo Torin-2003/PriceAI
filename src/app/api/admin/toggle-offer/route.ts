@@ -1,7 +1,7 @@
-import { getAdminPasswordFromRequest, setRawOfferHidden } from "@/lib/admin";
+import { setRawOfferHidden } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { clearPublicDataCache, markPublicApiSnapshotsDirty } from "@/lib/data";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 import { z } from "zod";
 
 const schema = z.object({
@@ -12,7 +12,7 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
 
     const payload = schema.parse(await request.json());
     const result = await setRawOfferHidden(payload);

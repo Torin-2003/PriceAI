@@ -1,6 +1,7 @@
 import "server-only";
 
 import { ADMIN_MANUAL_HIDE_REASON_PREFIX, listOfferFeedback, listSiteFeedback, listSubmissions } from "./admin";
+import { getAdminPasswordStatus } from "./admin-auth";
 import { notifyOperationalIssue } from "./alerts";
 import { getApiTransitAdminData, getEmptyApiTransitAdminData } from "./api-transit-admin";
 import { allPlatformOptions, buildProductGroups, canonicalCatalog, classifyOffer, comparePlatformOrder, isSharedAccessOffer, publicCatalogProducts, resolveOfferProduct } from "./catalog";
@@ -1282,6 +1283,14 @@ export function getEmptyAdminSummary(isAuthenticated = false): AdminSummary {
     feedbackRawOffers: [],
     riskReviewSettings: getFallbackRiskReviewSettingsSummary("尚未加载风险预审配置。"),
     sponsorSettings: getFallbackSponsorSettingsSummary("尚未加载赞助位配置。"),
+    passwordStatus: {
+      configured: false,
+      tableReady: false,
+      source: "unconfigured",
+      minLength: 12,
+      updatedAt: null,
+      message: "尚未加载后台密码状态。",
+    },
   };
 }
 
@@ -1393,10 +1402,11 @@ async function readAdminSummary(): Promise<AdminSummary> {
   if (!supabase) {
     const dashboard = await getDashboardData();
     const adminDashboard = toAdminDashboardData(dashboard, dashboard.rawOffers.length);
-    const [officialPrices, apiModels, apiTransit] = await Promise.all([
+    const [officialPrices, apiModels, apiTransit, passwordStatus] = await Promise.all([
       getOfficialSubscriptionAdminData(),
       getApiModelAdminData(),
       getApiTransitAdminData({ isAuthenticated: true }),
+      getAdminPasswordStatus(),
     ]);
     return {
       ...adminDashboard,
@@ -1418,6 +1428,7 @@ async function readAdminSummary(): Promise<AdminSummary> {
       feedbackRawOffers: [],
       riskReviewSettings: getFallbackRiskReviewSettingsSummary(),
       sponsorSettings: getFallbackSponsorSettingsSummary(),
+      passwordStatus,
     };
   }
 
@@ -1439,6 +1450,7 @@ async function readAdminSummary(): Promise<AdminSummary> {
     apiTransit,
     riskReviewSettings,
     sponsorSettings,
+    passwordStatus,
   ] = await Promise.all([
     supabase.from("sources").select("*").order("name"),
     supabase.from("canonical_products").select("*").eq("is_active", true),
@@ -1485,6 +1497,14 @@ async function readAdminSummary(): Promise<AdminSummary> {
     adminLoad("api-transit", "中转 API", getApiTransitAdminData({ isAuthenticated: true }), getEmptyApiTransitAdminData(true, "读取中转 API 后台数据失败。"), loadErrors),
     adminLoad("risk-review-settings", "风险预审配置", getRiskReviewSettingsSummary(), getFallbackRiskReviewSettingsSummary(), loadErrors),
     adminLoad("sponsor-settings", "赞助位配置", getSponsorSettingsSummary(), getFallbackSponsorSettingsSummary(), loadErrors),
+    adminLoad("admin-password", "后台密码状态", getAdminPasswordStatus(), {
+      configured: false,
+      tableReady: false,
+      source: "unconfigured" as const,
+      minLength: 12,
+      updatedAt: null,
+      message: "读取后台密码状态失败。",
+    }, loadErrors),
   ]);
 
   if (sourcesResult.error) recordAdminLoadError(loadErrors, "sources", "渠道源", sourcesResult.error);
@@ -1542,6 +1562,7 @@ async function readAdminSummary(): Promise<AdminSummary> {
       feedbackRawOffers,
       riskReviewSettings,
       sponsorSettings,
+      passwordStatus,
     };
   }
 
@@ -1565,6 +1586,7 @@ async function readAdminSummary(): Promise<AdminSummary> {
     feedbackRawOffers,
     riskReviewSettings,
     sponsorSettings,
+    passwordStatus,
   };
 }
 

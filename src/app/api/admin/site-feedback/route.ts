@@ -1,11 +1,10 @@
 import {
-  getAdminPasswordFromRequest,
   listSiteFeedback,
   updateSiteFeedbackStatus,
 } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { clearAdminDataCache } from "@/lib/data";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 import { z } from "zod";
 
 const statusSchema = z.enum(["pending", "resolved", "ignored"]);
@@ -18,7 +17,7 @@ const patchSchema = z.object({
 
 export async function GET(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const { searchParams } = new URL(request.url);
     const status = statusSchema.catch("pending").parse(searchParams.get("status") || "pending");
     const feedback = await listSiteFeedback(status);
@@ -34,7 +33,7 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const payload = patchSchema.parse(await request.json());
     const feedback = await updateSiteFeedbackStatus(payload);
     clearAdminDataCache();

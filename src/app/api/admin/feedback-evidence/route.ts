@@ -1,6 +1,5 @@
-import { getAdminPasswordFromRequest } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 import { readFeedbackEvidenceImage } from "@/lib/feedback-evidence";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +7,7 @@ export const revalidate = 0;
 
 export async function GET(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
 
     const { searchParams } = new URL(request.url);
     const reference = searchParams.get("ref") || "";

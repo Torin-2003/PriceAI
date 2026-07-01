@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { getAdminPasswordFromRequest, rejectSubmission } from "@/lib/admin";
+import { rejectSubmission } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { clearAdminDataCache } from "@/lib/data";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 
 const schema = z.object({
   id: z.string().min(1),
@@ -11,7 +11,7 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const payload = schema.parse(await request.json());
     const submission = await rejectSubmission(payload.id, payload.reviewerNote ?? null);
     clearAdminDataCache();

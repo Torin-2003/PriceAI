@@ -1,8 +1,8 @@
-import { deleteSource, getAdminPasswordFromRequest, setSourceOffersHidden, updateSourceState, upsertSource } from "@/lib/admin";
+import { deleteSource, setSourceOffersHidden, updateSourceState, upsertSource } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { normalizeCollectorKind } from "@/lib/collector-registry";
 import { clearPublicDataCache, markPublicApiSnapshotsDirty } from "@/lib/data";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 import type { CollectorKind } from "@/lib/types";
 import { z } from "zod";
 
@@ -35,7 +35,7 @@ const deleteSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const payload = createSchema.parse(await request.json());
     const source = await upsertSource(payload);
     clearPublicDataCache();
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const payload = patchSchema.parse(await request.json());
     if (typeof payload.offersHidden === "boolean") {
       const result = await setSourceOffersHidden({
@@ -95,7 +95,7 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const payload = deleteSchema.parse(await request.json());
     const result = await deleteSource(payload);
     clearPublicDataCache();

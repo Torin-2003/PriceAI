@@ -1,10 +1,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getAdminPasswordFromRequest } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { updateApiTransitSubmission } from "@/lib/api-transit-admin";
 import { clearAdminDataCache } from "@/lib/data";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 
 const patchSchema = z.object({
   id: z.string().min(1),
@@ -15,7 +14,7 @@ const patchSchema = z.object({
 
 export async function PATCH(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const payload = patchSchema.parse(await request.json());
     const result = await updateApiTransitSubmission(payload);
     clearApiTransitAdminCaches();

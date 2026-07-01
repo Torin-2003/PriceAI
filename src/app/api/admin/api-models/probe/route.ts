@@ -1,9 +1,8 @@
 import { z } from "zod";
 import { collectApiModels } from "../../../../../../scripts/collect-api-models.mjs";
-import { getAdminPasswordFromRequest } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { staticApiModelDataset } from "@/lib/api-models";
-import { requireAdminPassword } from "@/lib/env";
+import { requireAdminRequest } from "@/lib/env";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +15,7 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   try {
-    requireAdminPassword(getAdminPasswordFromRequest(request));
+    await requireAdminRequest(request);
     const payload = schema.parse(await request.json().catch(() => ({})));
     const result = await collectApiModels({
       dataset: staticApiModelDataset,

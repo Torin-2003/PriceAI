@@ -1,5 +1,4 @@
 import {
-  getAdminPasswordFromRequest,
   rawOfferInputId,
   recordSourceCollectionResult,
   upsertRawOffers,
@@ -9,7 +8,7 @@ import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { classifyOffer } from "@/lib/catalog";
 import { normalizeCollectorKind } from "@/lib/collector-registry";
 import { clearPublicDataCache, markPublicApiSnapshotsDirty } from "@/lib/data";
-import { requireAdminOrCronPassword } from "@/lib/env";
+import { requireAdminOrCronRequest } from "@/lib/env";
 import { pruneOperationalLogs } from "@/lib/operational-logs";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { stableId } from "@/lib/utils";
@@ -53,7 +52,7 @@ const batchSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    requireAdminOrCronPassword(getAdminPasswordFromRequest(request));
+    await requireAdminOrCronRequest(request);
 
     const supabase = getSupabaseServerClient();
     if (!supabase) throw new Error("Supabase 尚未配置，无法保存采集结果。");

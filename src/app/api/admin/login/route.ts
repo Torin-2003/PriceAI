@@ -38,7 +38,7 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => null)) as { password?: string } | null;
 
-  if (!verifyAdminPassword(body?.password)) {
+  if (!await verifyAdminPassword(body?.password)) {
     recordLoginFailure(clientIp);
     return Response.json(
       { ok: false, message: "后台密码不正确。" },
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     {
       headers: {
         ...NO_STORE_HEADERS,
-        "Set-Cookie": `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(createAdminSessionToken())}; Path=/; Max-Age=${ADMIN_SESSION_MAX_AGE_SECONDS}; HttpOnly; SameSite=Strict${secure}`,
+        "Set-Cookie": `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(await createAdminSessionToken())}; Path=/; Max-Age=${ADMIN_SESSION_MAX_AGE_SECONDS}; HttpOnly; SameSite=Strict${secure}`,
       },
     },
   );
