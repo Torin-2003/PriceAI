@@ -99,6 +99,9 @@ assert.equal(__test.shouldRestrictToPublishedStations({ post: true }), true);
 assert.equal(__test.shouldRestrictToPublishedStations({ post: true, source: "pending-new-api" }), false);
 assert.equal(__test.shouldRestrictToPublishedStations({ post: true, publish: true }), false);
 assert.equal(__test.shouldRestrictToPublishedStations({ post: true, dryRun: true }), false);
+assert.equal(__test.standardizeModelName("anthropic/claude-sonnet-5"), "Claude Sonnet 5");
+assert.equal(__test.standardizeModelName("Claude Sonnet 5"), "Claude Sonnet 5");
+assert.equal(__test.standardizeModelName("claude-sonnet-5-0"), "Claude Sonnet 5");
 
 const apinodePayload = {
   code: 0,

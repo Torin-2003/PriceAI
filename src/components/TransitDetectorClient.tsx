@@ -143,6 +143,7 @@ const presetModels: PresetModel[] = [
     standardModel: "GPT 5.4",
     priceNote: "按 GPT 5.4 文本价估算",
   },
+  { id: "claude-sonnet-5", label: "Sonnet 5", model: "claude-sonnet-5", protocol: "claude", badge: "新", standardModel: "Claude Sonnet 5" },
   { id: "claude-opus-4-8", label: "Opus 4.8", model: "claude-opus-4-8", protocol: "claude", standardModel: "Claude Opus 4.8" },
   { id: "claude-opus-4-7", label: "Opus 4.7", model: "claude-opus-4-7", protocol: "claude", standardModel: "Claude Opus 4.7" },
   { id: "claude-sonnet-4-6", label: "Sonnet 4.6", model: "claude-sonnet-4-6", protocol: "claude", standardModel: "Claude Sonnet 4.6" },
@@ -884,6 +885,7 @@ function backendModeForIntensity(intensity: DetectorIntensity): BackendMode {
 
 function guessStandardModel(model: string, protocol: DetectorProtocol): TransitStandardModel {
   const value = model.toLowerCase();
+  if (value.includes("sonnet-5") || value.includes("sonnet_5") || value.includes("sonnet 5")) return "Claude Sonnet 5";
   if (value.includes("opus-4-8")) return "Claude Opus 4.8";
   if (value.includes("opus-4-7")) return "Claude Opus 4.7";
   if (value.includes("opus")) return "Claude Opus 4.8";

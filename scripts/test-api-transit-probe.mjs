@@ -2,13 +2,73 @@
 
 import assert from "node:assert/strict";
 import { __test } from "./probe-api-transit.mjs";
+import { __test as sub2ApiTest } from "./import-sub2api-api-transit.mjs";
 
 assert.equal(__test.normalizeFamily("google/gemini-3.5-flash"), "gemini");
 assert.equal(__test.normalizeFamily("zhipu/glm-5.2"), "glm");
 assert.equal(__test.normalizeFamily("deepseek-v4-pro"), "deepseek");
 
+assert.deepEqual(__test.keywordsForStandardModel("Claude Sonnet 5"), ["claude", "sonnet", "5"]);
 assert.deepEqual(__test.keywordsForStandardModel("Gemini 3.1 Pro"), ["gemini", "pro", "3.1"]);
 assert.deepEqual(__test.keywordsForStandardModel("DeepSeek V4 Flash"), ["deepseek", "flash", "4"]);
+
+const claudeTargets = __test.selectProbeTargets({
+  profileFamily: "claude",
+  configuredTargets: [],
+  offerModels: [],
+  availableModels: ["claude-sonnet-5", "claude-opus-4-8"],
+  targetLimit: 2,
+});
+assert.deepEqual(
+  claudeTargets.map((target) => [target.family, target.standardModel, target.modelId]),
+  [
+    ["claude", "Claude Sonnet 5", "claude-sonnet-5"],
+    ["claude", "Claude Opus 4.8", "claude-opus-4-8"],
+  ],
+);
+
+const latestPriorityClaudeTargets = __test.selectProbeTargets({
+  profileFamily: "claude",
+  targetPriority: "latest_highest_available",
+  configuredTargets: [
+    {
+      family: "claude",
+      standardModel: "Claude Sonnet 4.6",
+      candidates: ["claude-sonnet-4-6"],
+      keywords: ["claude", "sonnet", "4.6"],
+    },
+    {
+      family: "claude",
+      standardModel: "Claude Sonnet 5",
+      candidates: ["claude-sonnet-5"],
+      keywords: ["claude", "sonnet", "5"],
+    },
+  ],
+  offerModels: [],
+  availableModels: ["claude-sonnet-5", "claude-sonnet-4-6"],
+  targetLimit: 1,
+});
+assert.deepEqual(
+  latestPriorityClaudeTargets.map((target) => [target.standardModel, target.modelId]),
+  [["Claude Sonnet 5", "claude-sonnet-5"]],
+);
+
+assert.deepEqual(
+  sub2ApiTest.representativeModelForGroup({ name: "Claude Sonnet 5 池", platform: "anthropic" }),
+  {
+    family: "claude",
+    standardModel: "Claude Sonnet 5",
+    rawModelName: "claude-sonnet-5",
+  },
+);
+assert.deepEqual(
+  sub2ApiTest.representativeModelForGroup({ name: "Claude Sonnet 池", platform: "anthropic" }),
+  {
+    family: "claude",
+    standardModel: "Claude Sonnet 4.6",
+    rawModelName: "claude-sonnet-4-6",
+  },
+);
 
 const geminiTargets = __test.selectProbeTargets({
   profileFamily: "gemini",

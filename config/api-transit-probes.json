@@ -104,6 +104,12 @@
     "targets": [
       {
         "family": "claude",
+        "standardModel": "Claude Sonnet 5",
+        "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
+        "keywords": ["claude", "sonnet", "5"]
+      },
+      {
+        "family": "claude",
         "standardModel": "Claude Opus 4.8",
         "candidates": ["claude-opus-4-8", "claude-opus-4.8"],
         "keywords": ["claude", "opus", "4.8"]
@@ -167,6 +173,12 @@
         "standardModel": "Claude Opus 4.8",
         "candidates": ["claude-opus-4-8", "claude-opus-4.8"],
         "keywords": ["claude", "opus", "4.8"]
+      },
+      {
+        "family": "claude",
+        "standardModel": "Claude Sonnet 5",
+        "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
+        "keywords": ["claude", "sonnet", "5"]
       }
     ]
   },
@@ -235,6 +247,12 @@
         "groupName": "kiro",
         "candidates": ["claude-opus-4-8", "claude-opus-4.8"],
         "keywords": ["claude", "opus", "4.8"]
+      },
+      {
+        "family": "claude",
+        "standardModel": "Claude Sonnet 5",
+        "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
+        "keywords": ["claude", "sonnet", "5"]
       }
     ]
   },
@@ -305,6 +323,12 @@
         "accountPool": "max",
         "candidates": ["claude-opus-4-8", "claude-opus4-8"],
         "keywords": ["claude", "opus", "4.8"]
+      },
+      {
+        "family": "claude",
+        "standardModel": "Claude Sonnet 5",
+        "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
+        "keywords": ["claude", "sonnet", "5"]
       }
     ]
   },
@@ -406,6 +430,12 @@
         "accountPool": "max",
         "candidates": ["claude-opus-4-8"],
         "keywords": ["claude", "opus", "4.8"]
+      },
+      {
+        "family": "claude",
+        "standardModel": "Claude Sonnet 5",
+        "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
+        "keywords": ["claude", "sonnet", "5"]
       }
     ]
   },
@@ -445,6 +475,12 @@
         "accountPool": "reverse",
         "candidates": ["claude-opus-4-8"],
         "keywords": ["claude", "opus", "4.8"]
+      },
+      {
+        "family": "claude",
+        "standardModel": "Claude Sonnet 5",
+        "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
+        "keywords": ["claude", "sonnet", "5"]
       }
     ]
   },
@@ -484,6 +520,12 @@
         "accountPool": "kiro",
         "candidates": ["claude-opus-4-8"],
         "keywords": ["claude", "opus", "4.8"]
+      },
+      {
+        "family": "claude",
+        "standardModel": "Claude Sonnet 5",
+        "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
+        "keywords": ["claude", "sonnet", "5"]
       }
     ]
   },
@@ -554,6 +596,12 @@
         "accountPool": "kiro",
         "candidates": ["claude-opus-4-8"],
         "keywords": ["claude", "opus", "4.8"]
+      },
+      {
+        "family": "claude",
+        "standardModel": "Claude Sonnet 5",
+        "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
+        "keywords": ["claude", "sonnet", "5"]
       }
     ]
   },
@@ -593,6 +641,12 @@
         "accountPool": "aws",
         "candidates": ["claude-opus-4-8"],
         "keywords": ["claude", "opus", "4.8"]
+      },
+      {
+        "family": "claude",
+        "standardModel": "Claude Sonnet 5",
+        "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
+        "keywords": ["claude", "sonnet", "5"]
       }
     ]
   },
@@ -632,6 +686,12 @@
         "accountPool": "official_transfer",
         "candidates": ["claude-opus-4-8"],
         "keywords": ["claude", "opus", "4.8"]
+      },
+      {
+        "family": "claude",
+        "standardModel": "Claude Sonnet 5",
+        "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
+        "keywords": ["claude", "sonnet", "5"]
       }
     ]
   },
@@ -702,6 +762,12 @@
         "accountPool": "official_transfer",
         "candidates": ["claude-opus-4-8"],
         "keywords": ["claude", "opus", "4.8"]
+      },
+      {
+        "family": "claude",
+        "standardModel": "Claude Sonnet 5",
+        "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
+        "keywords": ["claude", "sonnet", "5"]
       }
     ]
   }

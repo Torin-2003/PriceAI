@@ -45,6 +45,7 @@ const AVAILABILITY_SOURCES = {
   },
 };
 const officialTransitPrices = {
+  "Claude Sonnet 5": { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5, imageOutput: null },
   "Claude Sonnet 4.6": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75, imageOutput: null },
   "Claude Opus 4.6": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25, imageOutput: null },
   "Claude Opus 4.7": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25, imageOutput: null },
@@ -60,6 +61,7 @@ const officialTransitPrices = {
   "GPT Image 2": { input: 5, output: null, cacheRead: 1.25, cacheWrite: null, imageOutput: 30 },
 };
 const modelFamilyByStandard = {
+  "Claude Sonnet 5": "claude",
   "Claude Sonnet 4.6": "claude",
   "Claude Opus 4.6": "claude",
   "Claude Opus 4.7": "claude",
@@ -1781,6 +1783,7 @@ function standardizeModelName(name) {
   }
 
   if (value.includes("claude") && value.includes("sonnet")) {
+    if (matchesVersion(value, "5") || /sonnet[-._ ]?5\b/.test(value)) return "Claude Sonnet 5";
     if (matchesVersion(value, "4.6") || value.includes("4-6")) return "Claude Sonnet 4.6";
     return null;
   }
@@ -2507,5 +2510,6 @@ export const __test = {
   mergeOfferForRefresh,
   parseApinodePublicSiteInfoPayload,
   parseZivvModelHubPayload,
+  standardizeModelName,
   shouldRestrictToPublishedStations,
 };

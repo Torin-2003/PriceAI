@@ -1590,6 +1590,7 @@ function modelPriority(model: TransitModelPrice["standardModel"]): number {
   if (model === "GPT Image 2") return 602;
   if (model === "GPT 5.5") return 505;
   if (model === "GPT 5.4") return 504;
+  if (model === "Claude Sonnet 5") return 500;
   if (model === "Claude Opus 4.8") return 408;
   if (model === "Claude Opus 4.7") return 407;
   if (model === "Claude Opus 4.6") return 406;

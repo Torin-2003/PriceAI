@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { collectApiModels } from "./collect-api-models.mjs";
+import { collectApiTransitPrices } from "./collect-api-transit.mjs";
 import { collectOfficialPrices, refreshOfficialPriceFxRates } from "./collect-official-prices.mjs";
 import { createCollectionFamilyState, runPriceCollection } from "./collect-prices.mjs";
 import { pruneOperationalLogs } from "./operational-log-retention.mjs";
@@ -78,7 +79,7 @@ async function claimJob() {
 
 async function runJob(job) {
   const startedAt = new Date().toISOString();
-  const sourceId = job.source_id ? String(job.source_id) : null;
+  const sourceId = jobSourceId(job);
   const jobLabel = jobLabelForLog(job, sourceId);
   console.log(`Running collection job ${job.id} (${job.job_type}:${jobLabel})`);
 
@@ -123,6 +124,7 @@ async function runJob(job) {
 async function runCollectionJobByType(job, sourceId) {
   if (job.job_type === "official_prices") return runOfficialPriceJob(job);
   if (job.job_type === "api_models") return runApiModelJob();
+  if (job.job_type === "api_transit_public_pricing") return runApiTransitPublicPricingJob(sourceId);
   return runChannelPriceJob(sourceId);
 }
 
@@ -209,6 +211,15 @@ async function runApiModelJob() {
   return result;
 }
 
+async function runApiTransitPublicPricingJob(sourceId) {
+  return collectApiTransitPrices({
+    all: !sourceId,
+    source: sourceId || undefined,
+    post: true,
+    timeoutMs: args["api-transit-timeout-ms"] || env.PRICEAI_API_TRANSIT_TIMEOUT_MS,
+  });
+}
+
 async function postApiModelCollectionRuns(result) {
   const providerSnapshots = Array.isArray(result?.providers) ? result.providers : [];
   if (!providerSnapshots.length) {
@@ -280,6 +291,10 @@ function jobStatusForResult(job, result) {
     return result?.run?.status === "failed" || result?.database?.status === "failed" ? "failed" : "success";
   }
 
+  if (job.job_type === "api_transit_public_pricing") {
+    return Number(result?.counts?.offers || 0) > 0 ? "success" : "failed";
+  }
+
   const summary = Array.isArray(result?.summary) ? result.summary : [];
   if (job.job_type === "source") {
     return summary[0]?.status === "success" ? "success" : "failed";
@@ -288,6 +303,11 @@ function jobStatusForResult(job, result) {
 }
 
 function firstFailureMessage(result) {
+  if (result?.source === "api_transit_public_pricing") {
+    const failedRun = Array.isArray(result.runs) ? result.runs.find((run) => run?.status === "failed") : null;
+    return failedRun?.error_message || "API 中转公开倍率刷新未成功完成。";
+  }
+
   if (result?.source?.kind === "static_api_model_dataset_with_source_probe") {
     return result?.database?.status === "failed"
       ? result.database.message || "API 模型采集日志写入失败。"
@@ -307,7 +327,17 @@ function firstFailureMessage(result) {
 function jobLabelForLog(job, sourceId) {
   if (job.job_type === "official_prices") return "official-prices";
   if (job.job_type === "api_models") return args["api-provider"] || env.PRICEAI_API_MODEL_PROVIDER || "api-models";
+  if (job.job_type === "api_transit_public_pricing") return sourceId || "api-transit-public-pricing";
   return sourceId || "all";
+}
+
+function jobSourceId(job) {
+  if (job.job_type === "api_transit_public_pricing") {
+    const result = job && typeof job.result === "object" ? job.result : null;
+    return result?.stationId || result?.station_id || null;
+  }
+
+  return job.source_id ? String(job.source_id) : null;
 }
 
 function apiCollectionRunStatus(value) {

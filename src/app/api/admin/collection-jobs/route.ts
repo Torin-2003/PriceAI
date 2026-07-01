@@ -6,12 +6,21 @@ import { stableId } from "@/lib/utils";
 import { z } from "zod";
 
 const schema = z.object({
-  jobType: z.enum(["all", "source", "official_prices", "api_models"]).default("source"),
+  jobType: z.enum([
+    "all",
+    "source",
+    "official_prices",
+    "api_models",
+    "api_transit_public_pricing",
+  ]).default("source"),
   sourceIds: z.array(z.string().min(1)).optional(),
   officialMode: z.enum(["weekly_full", "fx_only"]).optional(),
+  stationId: z.string().trim().min(1).optional(),
   priority: z.number().int().min(0).max(100).default(10),
   maxAttempts: z.number().int().min(1).max(5).default(1),
 });
+
+type CollectionJobType = z.infer<typeof schema>["jobType"];
 
 export async function POST(request: Request) {
   try {
@@ -23,7 +32,10 @@ export async function POST(request: Request) {
     const payload = schema.parse(await request.json());
     const now = new Date().toISOString();
 
-    const sourceIds = payload.jobType === "all" || payload.jobType === "official_prices" || payload.jobType === "api_models"
+    const sourceIds = payload.jobType === "all" ||
+      payload.jobType === "official_prices" ||
+      payload.jobType === "api_models" ||
+      payload.jobType === "api_transit_public_pricing"
       ? [null]
       : Array.from(new Set(payload.sourceIds || [])).filter(Boolean);
 
@@ -46,14 +58,12 @@ export async function POST(request: Request) {
 
     const rows = sourceIds.map((sourceId) => {
       const source = sourceId ? sourceById.get(sourceId) : null;
-      const result = payload.jobType === "official_prices" && payload.officialMode
-        ? { officialMode: payload.officialMode }
-        : null;
+      const result = collectionJobResult(payload.jobType, payload.officialMode, payload.stationId);
       return {
-        id: stableId("collection-job", payload.jobType, sourceId || "all", payload.officialMode || "default", now),
+        id: stableId("collection-job", payload.jobType, sourceId || payload.stationId || "all", payload.officialMode || "default", now),
         job_type: payload.jobType,
         source_id: sourceId,
-        source_name: source?.name || collectionJobFallbackName(payload.jobType, sourceId, payload.officialMode),
+        source_name: source?.name || collectionJobFallbackName(payload.jobType, sourceId, payload.officialMode, payload.stationId),
         status: "pending",
         priority: payload.priority,
         attempts: 0,
@@ -89,12 +99,29 @@ export async function POST(request: Request) {
 }
 
 function collectionJobFallbackName(
-  jobType: "all" | "source" | "official_prices" | "api_models",
+  jobType: CollectionJobType,
   sourceId: string | null,
   officialMode?: "weekly_full" | "fx_only",
+  stationId?: string,
 ): string | null {
   if (jobType === "all") return "全部渠道";
   if (jobType === "official_prices") return officialMode === "fx_only" ? "官方地区价汇率刷新" : "官方地区价周全量";
   if (jobType === "api_models") return "API 模型";
+  if (jobType === "api_transit_public_pricing") return stationId ? `API 中转公开倍率：${stationId}` : "API 中转公开倍率";
   return sourceId;
+}
+
+function collectionJobResult(
+  jobType: CollectionJobType,
+  officialMode?: "weekly_full" | "fx_only",
+  stationId?: string,
+): Record<string, unknown> | null {
+  if (jobType === "official_prices" && officialMode) return { officialMode };
+  if (jobType === "api_transit_public_pricing") {
+    return {
+      jobType,
+      stationId: stationId || null,
+    };
+  }
+  return null;
 }

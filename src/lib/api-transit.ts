@@ -117,6 +117,16 @@ const TRANSIT_OFFICIAL_MODEL_PRICES: Record<
   TransitModelPrice["standardModel"],
   TransitOfficialModelPrice
 > = {
+  "Claude Sonnet 5": {
+    input: 2,
+    output: 10,
+    cacheWrite: 2.5,
+    cacheRead: 0.2,
+    imageOutput: null,
+    currency: "USD",
+    sourceLabel: "Anthropic API",
+    sourceUrl: anthropicPricingUrl,
+  },
   "Claude Sonnet 4.6": {
     input: 3,
     output: 15,

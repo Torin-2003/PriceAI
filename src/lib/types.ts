@@ -280,7 +280,8 @@ export type CollectionJob = {
     | "all"
     | "source"
     | "official_prices"
-    | "api_models";
+    | "api_models"
+    | "api_transit_public_pricing";
   sourceId?: string | null;
   sourceName?: string | null;
   status: "pending" | "running" | "success" | "failed" | "cancelled";

@@ -2,11 +2,12 @@ name: Collect API Transit
 
 on:
   schedule:
+    # 公开倍率走云服务器 worker 执行；GitHub 只负责入队。
     - cron: "7,37 * * * *"
   workflow_dispatch:
     inputs:
       source:
-        description: "Comma-separated API transit source ids"
+        description: "API transit source id"
         required: false
         default: ""
 
@@ -15,39 +16,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  collect:
+  enqueue:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-
-      - run: npm ci --omit=dev
-
-      - name: Collect API transit prices
+      - name: Enqueue API transit collection job
         env:
+          COLLECT_PRICES_URL: ${{ secrets.COLLECT_PRICES_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
           REQUESTED_SOURCE: ${{ github.event.inputs.source }}
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          CALLAI_PARTNER_PRICEAI_TOKEN: ${{ secrets.CALLAI_PARTNER_PRICEAI_TOKEN }}
         run: |
           set -euo pipefail
 
-          if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-            echo "缺少 NEXT_PUBLIC_SUPABASE_URL 或 SUPABASE_SERVICE_ROLE_KEY secret"
+          if [ -z "$COLLECT_PRICES_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "缺少 COLLECT_PRICES_URL 或 CRON_SECRET secret"
             exit 1
           fi
+
+          BASE_URL=$(node <<'NODE'
+          const raw = process.env.COLLECT_PRICES_URL;
+          const url = new URL(raw);
+          url.hash = "";
+          url.search = "";
+          url.pathname = url.pathname.replace(/\/api\/cron\/collect-prices\/?$/, "") || "/";
+          console.log(url.toString().replace(/\/$/, ""));
+          NODE
+          )
+
+          URL="$BASE_URL/api/cron/api-transit-collect"
           if [ -n "${REQUESTED_SOURCE:-}" ]; then
-            npm run collect:api-transit -- --source "$REQUESTED_SOURCE" --post --out /tmp/api-transit-latest.json
-          else
-            npm run collect:api-transit -- --post --out /tmp/api-transit-latest.json
+            URL="$URL?station=$REQUESTED_SOURCE"
           fi
+
+          curl --fail --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$URL"
 
       - name: Notify failure
         if: failure()

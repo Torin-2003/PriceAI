@@ -26,15 +26,24 @@ let cachedFileEnv = null;
 const defaultTargets = [
   {
     family: "claude",
+    standardModel: "Claude Sonnet 5",
+    candidates: [
+      "claude-sonnet-5",
+      "claude-sonnet-5-0",
+      "claude-5-sonnet",
+      "anthropic/claude-sonnet-5",
+    ],
+    keywords: ["claude", "sonnet", "5"],
+  },
+  {
+    family: "claude",
     standardModel: "Claude Sonnet 4.6",
     candidates: [
       "claude-sonnet-4.6",
       "claude-sonnet-4-6",
       "claude-4.6-sonnet",
-      "claude-4-sonnet",
-      "claude-sonnet-4",
     ],
-    keywords: ["claude", "sonnet"],
+    keywords: ["claude", "sonnet", "4-6"],
   },
   {
     family: "claude",
@@ -43,9 +52,8 @@ const defaultTargets = [
       "claude-opus-4.6",
       "claude-opus-4-6",
       "claude-4.6-opus",
-      "claude-opus-4",
     ],
-    keywords: ["claude", "opus"],
+    keywords: ["claude", "opus", "4-6"],
   },
   {
     family: "claude",

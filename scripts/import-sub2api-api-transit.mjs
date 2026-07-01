@@ -19,6 +19,14 @@ const DEFAULT_RECHARGE_RATIO = "1:1";
 
 const targetPlans = [
   {
+    id: "claude_sonnet_5",
+    family: "claude",
+    standardModel: "Claude Sonnet 5",
+    rawModelName: "claude-sonnet-5",
+    candidates: ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
+    groupSelector: "claude_sonnet",
+  },
+  {
     id: "gpt",
     family: "gpt",
     standardModel: "GPT 5.5",
@@ -812,10 +820,18 @@ function buildUnprobedOfferRow(source, group, collectedAt) {
 function representativeModelForGroup(group) {
   const text = `${group.name} ${group.platform}`.toLowerCase();
   if (/anthropic|claude|cc|max|kiro/.test(text)) {
+    const isSonnet = text.includes("sonnet");
+    const isSonnetFive = isSonnet && /(?:sonnet[^0-9]*5|5[^a-z0-9]*sonnet)/.test(text);
+    const standardModel = isSonnetFive ? "Claude Sonnet 5" : isSonnet ? "Claude Sonnet 4.6" : "Claude Opus 4.8";
+    const rawModelName = isSonnetFive
+      ? "claude-sonnet-5"
+      : isSonnet
+        ? "claude-sonnet-4-6"
+        : "claude-opus-4-8";
     return {
       family: "claude",
-      standardModel: "Claude Opus 4.8",
-      rawModelName: "claude-opus-4-8",
+      standardModel,
+      rawModelName,
     };
   }
 
@@ -843,6 +859,12 @@ function selectGroupForPlan(groups, plan) {
   if (plan.groupSelector === "openai_pro") {
     return groups
       .filter((group) => group.platform === "openai" && /pro/i.test(group.name) && !/生图|image|draw|flux/i.test(group.name))
+      .sort(compareGroupsForPrice)[0] || null;
+  }
+
+  if (plan.groupSelector === "claude_sonnet") {
+    return groups
+      .filter((group) => /anthropic|claude/i.test(`${group.platform} ${group.name}`) && /sonnet/i.test(group.name))
       .sort(compareGroupsForPrice)[0] || null;
   }
 
@@ -1512,3 +1534,8 @@ function errorMessage(error) {
   if (error && typeof error === "object") return JSON.stringify(error, null, 2);
   return String(error);
 }
+
+export const __test = {
+  representativeModelForGroup,
+  selectGroupForPlan,
+};

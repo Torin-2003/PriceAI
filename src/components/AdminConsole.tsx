@@ -8665,6 +8665,7 @@ function collectionJobName(job: CollectionJob): string {
   if (job.jobType === "all") return "全部渠道";
   if (job.jobType === "official_prices") return job.sourceName || "官方地区价";
   if (job.jobType === "api_models") return job.sourceName || "API 模型";
+  if (job.jobType === "api_transit_public_pricing") return job.sourceName || "API 中转公开倍率";
   return job.sourceName || job.sourceId || "未知渠道";
 }
 
@@ -8672,6 +8673,7 @@ function collectionJobTypeLabel(value: CollectionJob["jobType"]): string {
   if (value === "all") return "全量";
   if (value === "official_prices") return "官方价";
   if (value === "api_models") return "API 模型";
+  if (value === "api_transit_public_pricing") return "中转公开";
   return "单渠道";
 }
 
