@@ -68,13 +68,15 @@ export async function verifyAdminSessionToken(token: string | null | undefined):
   if (parts.length !== 4) return false;
   const [version, expiresAtText, nonce, signature] = parts;
   if (!version || !expiresAtText || !nonce || !signature) return false;
-  if (version !== await getAdminSessionVersion()) return false;
+  const expectedVersion = await getAdminSessionVersion().catch(() => null);
+  if (!expectedVersion || version !== expectedVersion) return false;
 
   const expiresAt = Number(expiresAtText);
   if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return false;
 
   const payload = [version, expiresAtText, nonce].join(".");
-  const expected = signAdminSessionPayload(payload);
+  const expected = signAdminSessionPayload(payload, { throwOnMissingSecret: false });
+  if (!expected) return false;
   return timingSafeEqual(signature, expected);
 }
 
@@ -212,21 +214,30 @@ async function getAdminSessionVersion(): Promise<string> {
   return cleanText(parsed?.sessionVersion) || getRuntimeEnv("ADMIN_SESSION_VERSION") || "1";
 }
 
-function signAdminSessionPayload(payload: string): string {
+function signAdminSessionPayload(
+  payload: string,
+  { throwOnMissingSecret = true }: { throwOnMissingSecret?: boolean } = {},
+): string | null {
+  const secret = getAdminSessionSecret({ throwOnMissingSecret });
+  if (!secret) return null;
   return crypto
-    .createHmac("sha256", getAdminSessionSecret())
+    .createHmac("sha256", secret)
     .update(payload)
     .digest("base64url");
 }
 
-function getAdminSessionSecret(): string {
+function getAdminSessionSecret(
+  { throwOnMissingSecret = true }: { throwOnMissingSecret?: boolean } = {},
+): string | null {
   const secret = getRuntimeEnv("ADMIN_SESSION_SECRET");
   if (secret) return secret;
   if (process.env.NODE_ENV === "production") {
+    if (!throwOnMissingSecret) return null;
     throw new Error("ADMIN_SESSION_SECRET is not configured.");
   }
   const fallback = getRuntimeEnv("ADMIN_PASSWORD");
   if (fallback) return fallback;
+  if (!throwOnMissingSecret) return null;
   throw new Error("ADMIN_SESSION_SECRET is not configured.");
 }
 
