@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminApiTransitPage() {
   const cookieStore = await cookies();
-  const isAuthenticated = verifyAdminSessionToken(cookieStore.get(ADMIN_SESSION_COOKIE)?.value);
+  const isAuthenticated = await verifyAdminSessionToken(cookieStore.get(ADMIN_SESSION_COOKIE)?.value);
   const data = isAuthenticated
     ? await getApiTransitAdminData({ isAuthenticated: true })
     : getEmptyApiTransitAdminData(false);

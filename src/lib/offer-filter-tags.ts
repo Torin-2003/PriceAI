@@ -82,7 +82,7 @@ export function deriveOfferFilterTags(input: {
   }
 
   if (
-    !hasNoWarrantySignal(text) &&
+    !hasBlockingNoWarrantySignal(text) &&
     !hasShortWarrantySignal(text) &&
     !hasFirstActionWarrantySignal(text) &&
     hasLongWarrantySignal(text)
@@ -160,8 +160,13 @@ function hasExclusiveAccessSignal(text: string): boolean {
   return /独享|独立|一人一号|一人一户|专享/.test(text);
 }
 
-function hasNoWarrantySignal(text: string): boolean {
-  return /无.{0,4}质保|没.{0,4}质保|不质保|不保|不售后|售后不管|一律不售后|无售后|不作售后条件|不做售后|不管售后/.test(text);
+function hasBlockingNoWarrantySignal(text: string): boolean {
+  const globalWarrantyText = text.replace(
+    /不质保(?:封号|封禁|被封|账号|账户)|封号(?:不质保|无质保|不保|不售后|不在售后范围)|封禁(?:不质保|无质保|不保|不售后|不在售后范围)|不保(?:封号|封禁|被封|账号|账户)|不管(?:封号|封禁|被封)|封号不管/g,
+    "",
+  );
+
+  return /无.{0,4}质保|没.{0,4}质保|不质保|不保|不售后|售后不管|一律不售后|无售后|不作售后条件|不做售后|不管售后/.test(globalWarrantyText);
 }
 
 function hasFirstActionWarrantySignal(text: string): boolean {
@@ -173,5 +178,5 @@ function hasShortWarrantySignal(text: string): boolean {
 }
 
 function hasLongWarrantySignal(text: string): boolean {
-  return /质保(?:1[5-9]|[2-9]\d|[1-9]\d{2,})天|(?:1[5-9]|[2-9]\d|[1-9]\d{2,})天质保|质保(?:十五|二十|二十五|二十八|三十|一百八十)天|(?:十五|二十|二十五|二十八|三十|一百八十)天质保|质保(?:半个月|一个月|1个月|一月|整月|两个月|2个月|二个月|三个月|3个月|一年|1年|12个月|180天)|(?:半个月|一个月|1个月|一月|整月|两个月|2个月|二个月|三个月|3个月|一年|1年|12个月|180天)质保|全程质保|全程保|包月售后/.test(text);
+  return /质保(?:1[5-9]|[2-9]\d|[1-9]\d{2,})天|(?:1[5-9]|[2-9]\d|[1-9]\d{2,})天质保|质保(?:(?:订阅|定阅|稳定|权益|会员|掉会员|掉订阅|封号|封订阅|封号和订阅|封号封订阅)|[\/丨·、,，和+&-]){1,6}(?:1[5-9]|[2-9]\d|[1-9]\d{2,})天|质保(?:十五|二十|二十五|二十八|三十|一百八十)天|(?:十五|二十|二十五|二十八|三十|一百八十)天质保|质保(?:(?:订阅|定阅|稳定|权益|会员|掉会员|掉订阅|封号|封订阅|封号和订阅|封号封订阅)|[\/丨·、,，和+&-]){1,6}(?:十五|二十|二十五|二十八|三十|一百八十)天|质保(?:半个月|一个月|1个月|一月|整月|两个月|2个月|二个月|三个月|3个月|一年|1年|12个月|180天)|(?:半个月|一个月|1个月|一月|整月|两个月|2个月|二个月|三个月|3个月|一年|1年|12个月|180天)质保|质保(?:(?:订阅|定阅|稳定|权益|会员|掉会员|掉订阅|封号|封订阅|封号和订阅|封号封订阅)|[\/丨·、,，和+&-]){1,6}(?:半个月|一个月|1个月|一月|整月|两个月|2个月|二个月|三个月|3个月|一年|1年|12个月|180天)|全程质保|全程保|质保全程(?:订阅|定阅|权益|会员)?|质保(?:(?:订阅|定阅|稳定|权益|会员|掉会员|掉订阅)|[\/丨·、,，和+&-]){1,6}全程|全程(?:(?:订阅|定阅|稳定|权益|会员|掉会员|掉订阅)|[\/丨·、,，和+&-]){1,6}质保|包月售后|包月质保|质保包月/.test(text);
 }

@@ -11,6 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 
 const { buildProductGroups, classifyOffer, isSharedAccessOffer } = await loadCatalogModule();
+const { deriveOfferFilterTags } = await loadOfferFilterTagsModule();
 
 const cases = [
   ["ChatGPT Plus 直充 卡密自助", "chatgpt-plus"],
@@ -301,6 +302,32 @@ const warrantyClaudeGroup = warrantyGroups.find((group) => group.id === "claude-
 assert.ok(warrantyClaudeGroup, "Claude Team warranty group should exist.");
 assert.equal(warrantyClaudeGroup.warrantyOfferCount, 1, "全程质保 should still count as long warranty.");
 
+const warrantyFilterCases = [
+  ["【正品谷歌内购超稳CDK】claude code MAX20 CDK 代充到自己账号 质保订阅30天 不质保封号", true],
+  ["GPT Plus【菲区】【质保订阅30天】【卡密自助】", true],
+  ["Claude max 5X成品号（质保订阅1个月）", true],
+  ["GPT PLUS 土区直冲1个月自助卡密～质保30天，封号不保", true],
+  ["Claude MAX 20x 1个月订阅成品号【质保订阅/封号30天】【预定制】", true],
+  ["claude Max 5x/20x成品账号（质保全程订阅）", true],
+  ["Claude Team 官方订阅 全程质保", true],
+  ["ChatGPT Plus 月卡 30天质保", true],
+  ["GPT Pro 5X 月卡｜有质保｜官方卡充｜1个月｜支持续费", false],
+  ["GPT Plus 官方代充 质保订阅", false],
+  ["Claude code max 20x 代充（质保订阅，掉订阅补一次）", false],
+  ["ChatGPT Plus 月卡 无质保", false],
+  ["ChatGPT Plus 月卡 7天质保", false],
+  ["GPT Team 月卡Business 席位x1【质保上车】", false],
+  ["Gemini Pro 12个月个人账号充值【质保充值成功丨官方订阅】", false],
+];
+
+for (const [title, expected] of warrantyFilterCases) {
+  assert.equal(
+    deriveOfferFilterTags({ sourceTitle: title }).includes("warranty_long"),
+    expected,
+    `${title} warranty_long should be ${expected}.`,
+  );
+}
+
 const sharedAccessGroups = buildProductGroups([
   makeOffer({ id: "cheap-people-car", title: "Claude Pro-三人车", price: 50, status: "in_stock" }),
   makeOffer({ id: "regular-claude", title: "Claude Pro 月卡 直充", price: 129, status: "in_stock" }),
@@ -432,18 +459,6 @@ async function loadCatalogModule() {
     .replace(/(["'])\.\/offer-filter-tags\1/g, "$1./offer-filter-tags.mjs$1")
     .replace(/(["'])\.\/trust-risk\1/g, "$1./trust-risk.mjs$1");
 
-  const offerFilterTagsPath = path.join(repoRoot, "src", "lib", "offer-filter-tags.ts");
-  const offerFilterTagsSource = await readFile(offerFilterTagsPath, "utf8");
-  const offerFilterTagsOutput = ts.transpileModule(offerFilterTagsSource, {
-    fileName: offerFilterTagsPath,
-    compilerOptions: {
-      module: ts.ModuleKind.ES2022,
-      target: ts.ScriptTarget.ES2022,
-      isolatedModules: true,
-      esModuleInterop: true,
-    },
-  }).outputText;
-
   const trustRiskPath = path.join(repoRoot, "src", "lib", "trust-risk.ts");
   const trustRiskSource = await readFile(trustRiskPath, "utf8");
   const trustRiskOutput = ts.transpileModule(trustRiskSource, {
@@ -460,7 +475,7 @@ async function loadCatalogModule() {
   const tempFile = path.join(tempDir, "catalog.mjs");
   const offerFilterTagsFile = path.join(tempDir, "offer-filter-tags.mjs");
   const trustRiskFile = path.join(tempDir, "trust-risk.mjs");
-  await writeFile(offerFilterTagsFile, offerFilterTagsOutput, "utf8");
+  await writeFile(offerFilterTagsFile, await transpileModule("src/lib/offer-filter-tags.ts"), "utf8");
   await writeFile(trustRiskFile, trustRiskOutput, "utf8");
   await writeFile(tempFile, output, "utf8");
 
@@ -469,6 +484,32 @@ async function loadCatalogModule() {
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
+}
+
+async function loadOfferFilterTagsModule() {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "priceai-offer-filter-tags-test-"));
+  const tempFile = path.join(tempDir, "offer-filter-tags.mjs");
+  await writeFile(tempFile, await transpileModule("src/lib/offer-filter-tags.ts"), "utf8");
+
+  try {
+    return await import(`${pathToFileURL(tempFile).href}?ts=${Date.now()}`);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function transpileModule(relativePath) {
+  const sourcePath = path.join(repoRoot, relativePath);
+  const source = await readFile(sourcePath, "utf8");
+  return ts.transpileModule(source, {
+    fileName: sourcePath,
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+      isolatedModules: true,
+      esModuleInterop: true,
+    },
+  }).outputText;
 }
 
 async function mkdtemp(prefix) {
