@@ -227,7 +227,7 @@ type SourceGroup = {
 type SourceStatusFilter = "all" | "normal" | "issue" | "disabled" | "needs_collector";
 type SourceOfferFilter = "all" | "zero" | "small" | "medium" | "large";
 type SourceSortMode = "offers_desc" | "issue_first" | "stale_first" | "hidden_desc" | "name";
-type SourceRiskFlag = "high_volume" | "hidden_many" | "issue" | "stale_success";
+type SourceRiskFlag = "high_volume" | "hidden_many" | "collector_failures" | "issue" | "stale_success";
 
 type SourceFilters = {
   query: string;
@@ -241,6 +241,7 @@ type SourceGroupOverview = SourceGroup & {
   totalVisibleOffers: number;
   totalHiddenOffers: number;
   totalManuallyHiddenOffers: number;
+  totalCollectorFailureOffers: number;
   riskCount: number;
 };
 
@@ -678,8 +679,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
   const collectorHealthIssueCount = useMemo(() => {
     const health = data.collectorHealth;
     return (
-      Number(health.overall.criticalSources || 0) +
-      Number(health.overall.staleSources || 0) +
+      Number(health.overall.failedSources || 0) +
       Number(health.overall.downNodes || 0) +
       Number(health.overall.staleNodes || 0)
     );
@@ -5406,8 +5406,8 @@ function healthPillClass(tone: CollectorHealthData["overall"]["tone"]): string {
 function collectorSourceStatusLabel(status: CollectorHealthSourceRow["status"]): string {
   if (status === "fresh") return "正常";
   if (status === "aging") return "变慢";
-  if (status === "stale") return "超时";
-  if (status === "critical") return "严重超时";
+  if (status === "stale") return "成功过期";
+  if (status === "critical") return "长期未成功";
   if (status === "never") return "未成功";
   return "已停用";
 }
@@ -5532,6 +5532,9 @@ function SourceTable({
                 {group.totalVisibleOffers}
                 {group.totalManuallyHiddenOffers ? (
                   <span className="ml-2 text-xs font-medium text-[#9b3328]">下架 {group.totalManuallyHiddenOffers}</span>
+                ) : null}
+                {group.totalCollectorFailureOffers ? (
+                  <span className="ml-2 text-xs font-medium text-[#7a541b]">采集失败 {group.totalCollectorFailureOffers}</span>
                 ) : null}
               </span>
               <span className="flex flex-wrap gap-1.5 text-xs font-semibold">
@@ -5775,6 +5778,9 @@ function SourceTableRow({
           {offerCount}
           {stats?.manuallyHiddenCount ? (
             <span className="mt-0.5 block text-xs font-normal text-[#9b3328]">下架 {stats.manuallyHiddenCount}</span>
+          ) : null}
+          {stats?.collectorFailureCount ? (
+            <span className="mt-0.5 block text-xs font-normal text-[#7a541b]">采集失败 {stats.collectorFailureCount}</span>
           ) : null}
           {stats?.hiddenCount && stats.hiddenCount !== stats.manuallyHiddenCount ? (
             <span className="mt-0.5 block text-xs font-normal text-[#adb3b4]">隐藏 {stats.hiddenCount}</span>
@@ -7339,9 +7345,9 @@ function CollectorHealthPanel({ health }: { health: CollectorHealthData }) {
           <HealthMetric label="整体状态" value={health.overall.label} tone={health.overall.tone} />
           <HealthMetric label="启用渠道" value={`${health.overall.enabledSources}/${health.overall.totalSources}`} />
           <HealthMetric label="新鲜 / 变慢" value={`${health.overall.freshSources}/${health.overall.agingSources}`} tone={health.overall.agingSources ? "info" : "success"} />
-          <HealthMetric label="超时 / 严重" value={`${health.overall.staleSources}/${health.overall.criticalSources}`} tone={health.overall.criticalSources ? "danger" : health.overall.staleSources ? "warn" : "success"} />
-          <HealthMetric label="失败渠道" value={String(health.overall.failedSources)} tone={health.overall.failedSources ? "warn" : "success"} />
-          <HealthMetric label="最近成功" value={health.overall.latestSuccessAt ? formatRelativeTime(health.overall.latestSuccessAt) : "未记录"} />
+          <HealthMetric label="成功过期 / 未成功" value={`${health.overall.staleSources}/${health.overall.criticalSources}`} tone={health.overall.criticalSources || health.overall.staleSources ? "warn" : "success"} />
+          <HealthMetric label="最近尝试" value={`${health.overall.recentlyCheckedSources}/${health.overall.enabledSources}`} tone={health.overall.staleCheckSources ? "info" : "success"} />
+          <HealthMetric label="真实失败" value={String(health.overall.failedSources)} tone={health.overall.failedSources ? "danger" : "success"} />
         </div>
       </Panel>
 
@@ -7354,8 +7360,8 @@ function CollectorHealthPanel({ health }: { health: CollectorHealthData }) {
                   <tr>
                     <th className="px-3 py-2.5">采集器</th>
                     <th className="px-3 py-2.5">渠道</th>
-                    <th className="px-3 py-2.5">健康</th>
-                    <th className="px-3 py-2.5">异常</th>
+                    <th className="px-3 py-2.5">成功状态</th>
+                    <th className="px-3 py-2.5">尝试状态</th>
                     <th className="px-3 py-2.5">最近成功</th>
                   </tr>
                 </thead>
@@ -7368,7 +7374,8 @@ function CollectorHealthPanel({ health }: { health: CollectorHealthData }) {
                         新鲜 {summary.fresh}，变慢 {summary.aging}
                       </td>
                       <td className="px-3 py-3 text-[#5a6061]">
-                        超时 {summary.stale}，严重 {summary.critical + summary.never}，失败 {summary.failed}
+                        过期 {summary.stale}，未成 {summary.critical + summary.never}，失败 {summary.failed}
+                        <span className="block text-xs text-[#adb3b4]">近尝试 {summary.recentAttempts}，待尝试 {summary.staleAttempts}</span>
                       </td>
                       <td className="px-3 py-3 text-[#5a6061]">
                         {summary.latestSuccessAt ? formatRelativeTime(summary.latestSuccessAt) : "未记录"}
@@ -7406,7 +7413,7 @@ function CollectorHealthPanel({ health }: { health: CollectorHealthData }) {
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
         <Panel title="需要关注的渠道" icon={<AlertTriangle size={17} />}>
-          <CollectorSourceList rows={staleRows.visibleItems} emptyTitle="暂无异常渠道" emptyDescription="已启用渠道都在当前健康窗口内。" />
+          <CollectorSourceList rows={staleRows.visibleItems} emptyTitle="暂无关注渠道" emptyDescription="已启用渠道的成功确认都在当前健康窗口内。" />
           {staleRows.canToggle ? (
             <AdminListPager
               expanded={staleRows.expanded}
@@ -7532,6 +7539,7 @@ function CollectorSourceList({
             <th className="px-3 py-2.5">采集器</th>
             <th className="px-3 py-2.5">状态</th>
             <th className="px-3 py-2.5">最近成功</th>
+            <th className="px-3 py-2.5">最近尝试</th>
             <th className="px-3 py-2.5">失败</th>
           </tr>
         </thead>
@@ -7549,6 +7557,11 @@ function CollectorSourceList({
               <td className="px-3 py-3 text-[#5a6061]">
                 {source.lastSuccessAt ? formatRelativeTime(source.lastSuccessAt) : "未记录"}
                 {source.ageMinutes !== null ? <span className="block text-xs text-[#adb3b4]">{formatAgeMinutes(source.ageMinutes)}</span> : null}
+              </td>
+              <td className="px-3 py-3 text-[#5a6061]">
+                {source.lastCheckedAt ? formatRelativeTime(source.lastCheckedAt) : "未尝试"}
+                {source.checkAgeMinutes !== null ? <span className="block text-xs text-[#adb3b4]">{formatAgeMinutes(source.checkAgeMinutes)}</span> : null}
+                {source.isAttemptStale ? <span className="block text-xs font-medium text-[#7a541b]">待重新尝试</span> : null}
               </td>
               <td className="max-w-[280px] px-3 py-3 text-[#5a6061]">
                 {source.consecutiveFailures ? `${source.consecutiveFailures} 次` : "0 次"}
@@ -9180,10 +9193,12 @@ function sourceRiskFlags(
   const totalCount = stats?.totalCount || visibleCount;
   const hiddenCount = stats?.hiddenCount || 0;
   const manuallyHiddenCount = stats?.manuallyHiddenCount || 0;
+  const collectorFailureCount = stats?.collectorFailureCount || 0;
   const flags: SourceRiskFlag[] = [];
 
   if (visibleCount >= 50) flags.push("high_volume");
   if (manuallyHiddenCount >= 5 || (totalCount >= 10 && hiddenCount / totalCount >= 0.3)) flags.push("hidden_many");
+  if (collectorFailureCount > 0) flags.push("collector_failures");
   if (sourceHasIssue(source)) flags.push("issue");
   if (!source.lastSuccessAt && source.lastCheckedAt) flags.push("stale_success");
   else if ((source.consecutiveFailures || 0) >= 3) flags.push("stale_success");
@@ -9195,6 +9210,7 @@ function sourceRiskFlagLabel(flag: SourceRiskFlag): string {
   const labels: Record<SourceRiskFlag, string> = {
     high_volume: "报价多",
     hidden_many: "下架多",
+    collector_failures: "采集失败报价",
     issue: "采集异常",
     stale_success: "长期未成功",
   };
@@ -9243,6 +9259,7 @@ function toSourceGroupOverview(
   let totalVisibleOffers = 0;
   let totalHiddenOffers = 0;
   let totalManuallyHiddenOffers = 0;
+  let totalCollectorFailureOffers = 0;
   let riskCount = 0;
 
   for (const source of group.sources) {
@@ -9250,6 +9267,7 @@ function toSourceGroupOverview(
     totalVisibleOffers += sourceVisibleOfferCount(source, sourceStatsById, offerCountBySource);
     totalHiddenOffers += stats?.hiddenCount || 0;
     totalManuallyHiddenOffers += stats?.manuallyHiddenCount || 0;
+    totalCollectorFailureOffers += stats?.collectorFailureCount || 0;
     if (sourceRiskFlags(source, sourceStatsById, offerCountBySource).length) riskCount += 1;
   }
 
@@ -9259,6 +9277,7 @@ function toSourceGroupOverview(
     totalVisibleOffers,
     totalHiddenOffers,
     totalManuallyHiddenOffers,
+    totalCollectorFailureOffers,
     riskCount,
   };
 }

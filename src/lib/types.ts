@@ -259,6 +259,7 @@ export type SourceOfferStats = {
   visibleCount: number;
   hiddenCount: number;
   manuallyHiddenCount: number;
+  collectorFailureCount: number;
   totalCount: number;
 };
 
@@ -347,6 +348,8 @@ export type CollectorHealthSource = {
   lastCheckedAt?: string | null;
   consecutiveFailures?: number | null;
   lastError?: string | null;
+  checkAgeMinutes: number | null;
+  isAttemptStale: boolean;
 };
 
 export type CollectorHealthKindSummary = {
@@ -359,6 +362,8 @@ export type CollectorHealthKindSummary = {
   critical: number;
   never: number;
   failed: number;
+  recentAttempts: number;
+  staleAttempts: number;
   latestSuccessAt?: string | null;
   latestAgeMinutes: number | null;
 };
@@ -406,6 +411,8 @@ export type CollectorHealthSummary = {
     staleSources: number;
     criticalSources: number;
     failedSources: number;
+    recentlyCheckedSources: number;
+    staleCheckSources: number;
     latestSuccessAt?: string | null;
     latestAgeMinutes: number | null;
     onlineNodes: number;

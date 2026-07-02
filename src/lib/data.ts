@@ -2158,13 +2158,15 @@ function buildCollectorHealthSummary(input: {
   const staleSources = enabledHealthSources.filter((source) => source.status === "stale").length;
   const criticalSources = enabledHealthSources.filter((source) => source.status === "critical" || source.status === "never").length;
   const failedSources = enabledHealthSources.filter((source) => Number(source.consecutiveFailures || 0) > 0 || source.lastError).length;
+  const recentlyCheckedSources = enabledHealthSources.filter((source) => !source.isAttemptStale).length;
+  const staleCheckSources = enabledHealthSources.filter((source) => source.isAttemptStale).length;
   const downNodes = nodeSummaries.filter((node) => node.health === "down").length;
   const staleNodes = nodeSummaries.filter((node) => node.health === "stale").length;
   const onlineNodes = nodeSummaries.filter((node) => node.health === "online" || node.health === "quiet").length;
   const overallStatus =
-    criticalSources > 0 || downNodes > 0
+    failedSources > 0 || downNodes > 0
       ? "critical"
-      : staleSources > 0 || staleNodes > 0 || agingSources > 0
+      : criticalSources > 0 || staleSources > 0 || staleNodes > 0 || agingSources > 0
         ? "warning"
         : "healthy";
 
@@ -2181,6 +2183,8 @@ function buildCollectorHealthSummary(input: {
       staleSources,
       criticalSources,
       failedSources,
+      recentlyCheckedSources,
+      staleCheckSources,
       latestSuccessAt,
       latestAgeMinutes,
       onlineNodes,
@@ -2213,6 +2217,8 @@ function emptyCollectorHealthSummary(generatedAt: string): CollectorHealthSummar
       staleSources: 0,
       criticalSources: 0,
       failedSources: 0,
+      recentlyCheckedSources: 0,
+      staleCheckSources: 0,
       latestSuccessAt: null,
       latestAgeMinutes: null,
       onlineNodes: 0,
@@ -2231,6 +2237,7 @@ function emptyCollectorHealthSummary(generatedAt: string): CollectorHealthSummar
 
 function sourceHealthFor(source: Source, nowMs: number): CollectorHealthSource {
   const ageMinutes = source.lastSuccessAt ? minutesSince(source.lastSuccessAt, nowMs) : null;
+  const checkAgeMinutes = source.lastCheckedAt ? minutesSince(source.lastCheckedAt, nowMs) : null;
   const status: CollectorHealthSource["status"] = !source.enabled
     ? "disabled"
     : ageMinutes === null
@@ -2255,6 +2262,8 @@ function sourceHealthFor(source: Source, nowMs: number): CollectorHealthSource {
     lastCheckedAt: source.lastCheckedAt || null,
     consecutiveFailures: source.consecutiveFailures ?? null,
     lastError: source.lastError || null,
+    checkAgeMinutes,
+    isAttemptStale: source.enabled && (checkAgeMinutes === null || checkAgeMinutes > 90),
   };
 }
 
@@ -2275,6 +2284,8 @@ function buildCollectorKindSummaries(
       critical: 0,
       never: 0,
       failed: 0,
+      recentAttempts: 0,
+      staleAttempts: 0,
       latestSuccessAt: null,
       latestAgeMinutes: null,
     };
@@ -2285,6 +2296,8 @@ function buildCollectorKindSummaries(
     if (source.status === "critical") current.critical++;
     if (source.status === "never") current.never++;
     if (source.lastError || Number(source.consecutiveFailures || 0) > 0) current.failed++;
+    if (source.isAttemptStale) current.staleAttempts++;
+    else current.recentAttempts++;
     if (source.lastSuccessAt && (!current.latestSuccessAt || source.lastSuccessAt > current.latestSuccessAt)) {
       current.latestSuccessAt = source.lastSuccessAt;
       current.latestAgeMinutes = minutesSince(source.lastSuccessAt, nowMs);
@@ -2499,24 +2512,30 @@ async function listSourceOfferStats(): Promise<SourceOfferStats[]> {
   if (!supabase) return [];
 
   const { data: rpcData, error: rpcError } = await supabase.rpc("list_source_offer_stats");
+  let fallbackReason = rpcError?.message || "";
   if (!rpcError) {
-    return ((rpcData || []) as Array<Record<string, unknown>>).map((row) => ({
-      sourceId: String(row.source_id || ""),
-      visibleCount: Number(row.visible_count || 0),
-      hiddenCount: Number(row.hidden_count || 0),
-      manuallyHiddenCount: Number(row.manually_hidden_count || 0),
-      totalCount: Number(row.total_count || 0),
-    })).filter((row) => row.sourceId);
+    const rows = (rpcData || []) as Array<Record<string, unknown>>;
+    if (rows.length === 0 || rows.every((row) => Object.prototype.hasOwnProperty.call(row, "collector_failure_count"))) {
+      return rows.map((row) => ({
+        sourceId: String(row.source_id || ""),
+        visibleCount: Number(row.visible_count || 0),
+        hiddenCount: Number(row.hidden_count || 0),
+        manuallyHiddenCount: Number(row.manually_hidden_count || 0),
+        collectorFailureCount: Number(row.collector_failure_count || 0),
+        totalCount: Number(row.total_count || 0),
+      })).filter((row) => row.sourceId);
+    }
+    fallbackReason = "RPC response is missing collector_failure_count";
   }
-  console.warn("Falling back to raw source offer stats because RPC failed:", rpcError.message);
+  console.warn("Falling back to raw source offer stats:", fallbackReason);
 
-  const rows: Array<Pick<RawOffer, "sourceId" | "hidden" | "failureReason">> = [];
+  const rows: Array<Pick<RawOffer, "sourceId" | "hidden" | "failureReason" | "lastFailedAt">> = [];
 
   for (let from = 0; ; from += SUPABASE_PAGE_SIZE) {
     const to = from + SUPABASE_PAGE_SIZE - 1;
     const { data, error } = await supabase
       .from("raw_offers")
-      .select("source_id,hidden,failure_reason")
+      .select("source_id,hidden,failure_reason,last_failed_at")
       .range(from, to);
 
     if (error) throw error;
@@ -2526,6 +2545,7 @@ async function listSourceOfferStats(): Promise<SourceOfferStats[]> {
         sourceId: row.source_id ? String(row.source_id) : null,
         hidden: Boolean(row.hidden),
         failureReason: row.failure_reason ? String(row.failure_reason) : null,
+        lastFailedAt: row.last_failed_at ? String(row.last_failed_at) : null,
       })),
     );
     if (!data || data.length < SUPABASE_PAGE_SIZE) break;
@@ -2539,6 +2559,7 @@ async function listSourceOfferStats(): Promise<SourceOfferStats[]> {
       visibleCount: 0,
       hiddenCount: 0,
       manuallyHiddenCount: 0,
+      collectorFailureCount: 0,
       totalCount: 0,
     };
 
@@ -2550,6 +2571,9 @@ async function listSourceOfferStats(): Promise<SourceOfferStats[]> {
       }
     } else {
       current.visibleCount++;
+    }
+    if (row.lastFailedAt && !row.failureReason?.startsWith(ADMIN_MANUAL_HIDE_REASON_PREFIX)) {
+      current.collectorFailureCount++;
     }
 
     map.set(row.sourceId, current);
