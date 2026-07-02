@@ -60,6 +60,7 @@ import {
   getNormalizedSourceTags,
   getRateBadgeClass,
   getStationRechargeCoefficient,
+  getStationPublishedAvailabilitySummary,
   getTransitVerificationEvents,
   getTransitReviewTags,
   getTransitStationSystemLabel,
@@ -117,6 +118,7 @@ export default function TransitStationDetail({ station, children }: Props) {
   const [pendingOutbound, setPendingOutbound] = useState<TransitOutboundIntent | null>(null);
   const [rememberRiskConfirmation, setRememberRiskConfirmation] = useState(false);
   const familySummaries = getStationFamilySummaries(station);
+  const stationAvailability = getStationPublishedAvailabilitySummary(station);
   const primaryOffer = getPrimaryTransitCommercialOffer(station);
   const commercialOffers = getActiveTransitCommercialOffers(station);
   const verificationEvents = getTransitVerificationEvents(station);
@@ -246,8 +248,8 @@ export default function TransitStationDetail({ station, children }: Props) {
               {familySummaries.length === 0 ? (
                 <MetricCard label="模型倍率" value="—" helper="暂无报价" />
               ) : null}
-              <MetricCard label="可用率" value={formatPercent(station.availability.sevenDayRate)} helper={`样本 ${station.availability.sevenDaySamples}`} />
-              <MetricCard label="最近检查" value={formatDateMinute(station.availability.lastCheckedAt)} helper={formatAvailabilityBasis(station)} />
+              <MetricCard label="可用率" value={formatPercent(stationAvailability.sevenDayRate)} helper={`样本 ${stationAvailability.sevenDaySamples}`} />
+              <MetricCard label="最近检查" value={formatDateMinute(stationAvailability.lastCheckedAt)} helper={formatAvailabilityBasis(stationAvailability)} />
             </div>
           </div>
 
@@ -1667,18 +1669,19 @@ function ProbePolicyTag({
 function AvailabilityTable({ station }: { station: TransitStation }) {
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const families = getStationPriceFamilies(station);
+  const stationAvailability = getStationPublishedAvailabilitySummary(station);
   const rows: AvailabilityRow[] = [
     {
       label: "站点整体",
-      rate: station.availability.sevenDayRate,
-      sevenDaySamples: station.availability.sevenDaySamples,
-      firstCheckedAt: station.availability.firstCheckedAt,
-      lastCheckedAt: station.availability.lastCheckedAt,
+      rate: stationAvailability.sevenDayRate,
+      sevenDaySamples: stationAvailability.sevenDaySamples,
+      firstCheckedAt: stationAvailability.firstCheckedAt,
+      lastCheckedAt: stationAvailability.lastCheckedAt,
       monitorModel: families.length
         ? families.map((family) => TRANSIT_MODEL_FAMILY_LABELS[family]).join(" + ")
         : "代表模型",
-      note: station.availability.note ?? "—",
-      source: getAvailabilitySourceMeta(station.availability),
+      note: stationAvailability.note ?? "—",
+      source: getAvailabilitySourceMeta(stationAvailability),
     },
     ...families.map((family) => {
       const summary = getFamilyRateSummary(station, family);
@@ -1851,11 +1854,13 @@ function formatMonitoringWindow(input: { firstCheckedAt?: string | null; lastChe
   return `${formatDateShortMinute(start)} - ${formatDateShortMinute(input.lastCheckedAt)}`;
 }
 
-function formatAvailabilityBasis(station: TransitStation): string {
-  const source = getAvailabilitySourceMeta(station.availability);
-  if (station.availability.sevenDaySamples > 1) return `${source.label} · 样本 ${station.availability.sevenDaySamples}`;
-  if (station.availability.sevenDaySamples === 1) return `${source.label} · 单次样本`;
-  return source.label === "未核验" && station.monitorUrl ? "含监测入口" : source.label;
+function formatAvailabilityBasis(
+  availability: Pick<TransitStation["availability"], "sevenDaySamples" | "sourceType" | "sourceLabel" | "sourceUrl">
+): string {
+  const source = getAvailabilitySourceMeta(availability);
+  if (availability.sevenDaySamples > 1) return `${source.label} · 样本 ${availability.sevenDaySamples}`;
+  if (availability.sevenDaySamples === 1) return `${source.label} · 单次样本`;
+  return source.label;
 }
 
 function MetricCard({

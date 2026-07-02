@@ -447,6 +447,13 @@ export type TransitFamilyRateSummary = {
   lastCheckedAt: string | null;
 };
 
+export type TransitAvailabilityRollup = Pick<
+  TransitAvailability,
+  "sevenDayRate" | "sevenDaySamples" | "firstCheckedAt" | "lastCheckedAt" | "sourceType" | "sourceLabel" | "sourceUrl"
+> & {
+  note?: string;
+};
+
 function summarizeRateScope(
   station: TransitStation,
   family: TransitModelFamily,
@@ -520,6 +527,7 @@ export type TransitStationComparisonSummary = {
   families: Record<TransitModelFamily, TransitFamilyRateSummary>;
   claude: TransitFamilyRateSummary;
   gpt: TransitFamilyRateSummary;
+  availability: TransitAvailabilityRollup;
   bestCombinedRate: number | null;
   stabilityRate: number | null;
   stabilitySamples: number;
@@ -541,8 +549,9 @@ export function getStationComparisonSummary(
     (value): value is number => value !== null
   );
   const bestCombinedRate = combinedRates.length ? Math.min(...combinedRates) : null;
-  const stabilityRate = station.availability.sevenDayRate;
-  const stabilitySamples = station.availability.sevenDaySamples;
+  const availability = getStationPublishedAvailabilitySummary(station);
+  const stabilityRate = availability.sevenDayRate;
+  const stabilitySamples = availability.sevenDaySamples;
   const sourceCompleteness = [
     station.minimumTopUp,
     station.paymentMethods.length ? "payments" : null,
@@ -581,6 +590,7 @@ export function getStationComparisonSummary(
     families,
     claude: families.claude,
     gpt: families.gpt,
+    availability,
     bestCombinedRate,
     stabilityRate,
     stabilitySamples,
@@ -588,6 +598,78 @@ export function getStationComparisonSummary(
     overallScore:
       rateScore + stabilityScore + sampleScore + completenessScore + commercialScore + systemScore - riskPenalty,
   };
+}
+
+export function getStationPublishedAvailabilitySummary(station: TransitStation): TransitAvailabilityRollup {
+  const summaries = TRANSIT_MODEL_FAMILY_ORDER
+    .map((family) => getFamilyRateSummary(station, family))
+    .filter((summary) => summary.priceCount > 0);
+  const samples = summaries.reduce((total, summary) => total + summary.sevenDaySamples, 0);
+
+  if (!samples) {
+    return {
+      ...station.availability,
+      note: "当前公开模型暂无可用性样本。",
+    };
+  }
+
+  const weightedRate = summaries.reduce((total, summary) => {
+    const rate = summary.sevenDayRate ?? 0;
+    return total + rate * summary.sevenDaySamples;
+  }, 0) / samples;
+  const source = getStationPublishedAvailabilitySourceMeta(station);
+  const firstCheckedAt =
+    summaries
+      .map((summary) => summary.firstCheckedAt)
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .at(0) ?? null;
+  const lastCheckedAt =
+    summaries
+      .map((summary) => summary.lastCheckedAt)
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .at(-1) ?? null;
+
+  return {
+    sevenDayRate: roundAvailabilityRate(weightedRate),
+    sevenDaySamples: samples,
+    firstCheckedAt,
+    lastCheckedAt,
+    note: `按当前公开模型分组汇总：${formatPercent(roundAvailabilityRate(weightedRate))} · 样本 ${samples}`,
+    sourceType: source.sourceType,
+    sourceLabel: source.sourceLabel,
+    sourceUrl: source.sourceUrl,
+  };
+}
+
+function getStationPublishedAvailabilitySourceMeta(station: TransitStation): Pick<
+  TransitAvailability,
+  "sourceType" | "sourceLabel" | "sourceUrl"
+> {
+  const prices = [...station.prices].sort(
+    (left, right) =>
+      availabilitySourcePriority(right.availability.sourceType) -
+      availabilitySourcePriority(left.availability.sourceType)
+  );
+  const price = prices.find((item) => item.availability.sourceType !== "unknown") || prices[0];
+  if (!price) {
+    return {
+      sourceType: station.availability.sourceType,
+      sourceLabel: station.availability.sourceLabel,
+      sourceUrl: station.availability.sourceUrl,
+    };
+  }
+
+  return {
+    sourceType: price.availability.sourceType,
+    sourceLabel: price.availability.sourceLabel,
+    sourceUrl: price.availability.sourceUrl,
+  };
+}
+
+function roundAvailabilityRate(value: number): number {
+  return Math.round(value * 10_000) / 10_000;
 }
 
 export function getTransitStationSystem(station: TransitStation): TransitStationSystem {
@@ -1070,7 +1152,7 @@ export function getSummaryStats(stations: TransitStation[]) {
     {} as Record<TransitModelFamily, number | null>
   );
   const sevenDaySamples = stations.reduce(
-    (total, station) => total + station.availability.sevenDaySamples,
+    (total, station) => total + getStationPublishedAvailabilitySummary(station).sevenDaySamples,
     0
   );
 

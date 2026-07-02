@@ -1,6 +1,8 @@
 import {
   compareStations,
   getActiveTransitCommercialOffers,
+  getStationComparisonSummary,
+  getStationPublishedAvailabilitySummary,
   normalizedTransitCommercialOfferDisclosure,
   scoreTransitCombinedRate,
 } from "../src/lib/api-transit";
@@ -109,6 +111,32 @@ assertDeepEqual(
   compareStations([neko, wawa], "rate", { activeFamily: "claude" }).map((item) => item.id),
   ["wawazz-xyz", "999555999-com"],
 );
+
+const mixedAvailabilityStation = station({
+  id: "mixed-availability",
+  name: "Mixed Availability",
+  claudeRate: 0.8,
+  availabilityRate: 0.389,
+  availabilitySamples: 702,
+});
+mixedAvailabilityStation.prices[0]!.availability = availability(0.966, 149);
+mixedAvailabilityStation.prices.push({
+  ...mixedAvailabilityStation.prices[0]!,
+  family: "gpt",
+  standardModel: "GPT 5.5",
+  groupName: "GPT",
+  modelMultiplier: 0.3,
+  inputPrice: 0.3,
+  outputPrice: 0.3,
+  cacheReadPrice: 0.3,
+  cacheWritePrice: 0.3,
+  availability: availability(0.866, 149),
+});
+
+const publishedAvailability = getStationPublishedAvailabilitySummary(mixedAvailabilityStation);
+assertEqual(publishedAvailability.sevenDaySamples, 298);
+assertEqual(publishedAvailability.sevenDayRate, 0.916);
+assertEqual(getStationComparisonSummary(mixedAvailabilityStation).stabilityRate, 0.916);
 
 const commercialStation = station({
   id: "commercial-test",

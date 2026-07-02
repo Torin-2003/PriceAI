@@ -54,6 +54,7 @@ import {
   getTransitOperatorType,
   getPrimaryTransitCommercialOffer,
   getStationComparisonSummary,
+  getStationPublishedAvailabilitySummary,
   getStationRechargeCoefficient,
   hasTransitAffRelation,
   getTransitReviewTags,
@@ -683,12 +684,13 @@ function AvailabilityCell({
     : activeFamily === "all"
       ? null
       : getFamilyRateSummary(station, activeFamily);
-  const availability = scopedSummary ?? station.availability;
+  const stationAvailability = getStationPublishedAvailabilitySummary(station);
+  const availability = scopedSummary ?? stationAvailability;
   const source = activeStandardModel !== "all"
     ? getStandardModelAvailabilitySourceMeta(station, activeStandardModel)
     : scopedSummary
       ? getFamilyAvailabilitySourceMeta(station, scopedSummary.family)
-    : getAvailabilitySourceMeta(station.availability);
+    : getAvailabilitySourceMeta(stationAvailability);
   const scopeLabel = activeStandardModel !== "all"
     ? `${activeStandardModel} 稳定性`
     : scopedSummary
@@ -698,7 +700,7 @@ function AvailabilityCell({
     ? `${activeStandardModel} 近 7 日可用性样本；样本不足时不回退展示站点整体。`
     : scopedSummary
       ? `${scopedSummary.familyLabel} 分组近 7 日可用性样本；样本不足时不回退展示站点整体。`
-    : "站点整体近 7 日可用性样本。";
+    : "按当前公开模型分组汇总的近 7 日可用性样本；不直接使用历史原始站点探测样本。";
 
   return (
     <div className={compact ? "" : "min-w-[118px]"} title={sourceTitle}>
