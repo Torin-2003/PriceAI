@@ -2563,6 +2563,8 @@ export async function createFeedbackRecollectionJob(input: {
       reason: feedback.reason,
       offerId: feedback.offerId,
       verificationIntent: "low_risk_feedback_recollection",
+      force: true,
+      noCooldown: true,
     },
     created_at: now,
     updated_at: now,

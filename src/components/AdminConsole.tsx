@@ -1537,6 +1537,26 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     }
   }
 
+  async function runFeedbackAutoVerification(feedback: OfferFeedback) {
+    setLoadingAction(`feedback-auto-verify-${feedback.id}`);
+    const result = await requestWithMethod("/api/admin/feedback", "PATCH", password, {
+      action: "auto_verify",
+      id: feedback.id,
+    });
+    setLoadingAction(null);
+
+    if (result.ok) {
+      await refreshOfferFeedback(feedbackStatusFilter);
+      showRowFeedback(
+        feedback.id,
+        result.status === "auto_fixed" ? "success" : "info",
+        result.message || "自动复核完成。",
+      );
+    } else {
+      showRowFeedback(feedback.id, "error", result.message || "自动复核失败。");
+    }
+  }
+
   async function runFeedbackRiskPrecheck(feedback: OfferFeedback) {
     setLoadingAction(`feedback-risk-precheck-${feedback.id}`);
     const result = await requestWithMethod("/api/admin/feedback", "PATCH", password, {
@@ -2959,6 +2979,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                       onToggleSelect={toggleFeedbackSelect}
                       onHideOffer={hideOfferFromFeedback}
                       onHideSource={hideSourceFromFeedback}
+                      onAutoVerify={runFeedbackAutoVerification}
                       onRecollect={createFeedbackRecollection}
                       onRiskPrecheck={runFeedbackRiskPrecheck}
                       onRiskVisibility={updateFeedbackRiskVisibility}
@@ -4040,6 +4061,7 @@ function OfferFeedbackList({
   onToggleSelect,
   onHideOffer,
   onHideSource,
+  onAutoVerify,
   onRecollect,
   onRiskPrecheck,
   onRiskVisibility,
@@ -4057,6 +4079,7 @@ function OfferFeedbackList({
   onToggleSelect: (id: string) => void;
   onHideOffer: (feedback: OfferFeedback) => void;
   onHideSource: (feedback: OfferFeedback) => void;
+  onAutoVerify: (feedback: OfferFeedback) => void;
   onRecollect: (feedback: OfferFeedback) => void;
   onRiskPrecheck: (feedback: OfferFeedback) => void;
   onRiskVisibility: (feedback: OfferFeedback, mode: "hide_public" | "expand_source") => void;
@@ -4086,6 +4109,7 @@ function OfferFeedbackList({
       {feedback.map((item) => {
         const hideOfferLoading = loadingAction === `feedback-hide-offer-${item.id}`;
         const hideSourceLoading = loadingAction === `feedback-hide-source-${item.id}`;
+        const autoVerifyLoading = loadingAction === `feedback-auto-verify-${item.id}`;
         const recollectLoading = loadingAction === `feedback-recollect-${item.id}`;
         const riskPrecheckLoading = loadingAction === `feedback-risk-precheck-${item.id}`;
         const riskHideLoading = loadingAction === `feedback-risk-visibility-hide_public-${item.id}`;
@@ -4350,6 +4374,17 @@ function OfferFeedbackList({
                     {hideSourceLoading ? <Loader2 size={14} className="animate-spin" /> : null}
                     下架渠道
                   </button>
+                  {item.verificationStatus !== "not_needed" ? (
+                    <button
+                      type="button"
+                      disabled={(!item.offerUrl && !matchedOffer?.url) || autoVerifyLoading}
+                      onClick={() => onAutoVerify(item)}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#47657a]/20 bg-white px-3 text-xs font-medium text-[#47657a] transition-colors hover:bg-[#eef3f8] disabled:opacity-60"
+                    >
+                      {autoVerifyLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
+                      自动复核
+                    </button>
+                  ) : null}
                   {item.verificationStatus !== "not_needed" ? (
                     <button
                       type="button"

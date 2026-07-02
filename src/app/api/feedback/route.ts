@@ -2,6 +2,7 @@ import { z } from "zod";
 import { after } from "next/server";
 import { createOfferFeedback, runOfferFeedbackRiskPrecheck } from "@/lib/admin";
 import { clearPublicDataCache, markPublicApiSnapshotsDirty } from "@/lib/data";
+import { runOfferFeedbackAutoVerification } from "@/lib/feedback-auto-verification";
 import { isFeedbackEvidenceReference } from "@/lib/feedback-evidence";
 import {
   checkPublicWriteRateLimit,
@@ -9,7 +10,7 @@ import {
   getPublicRequestErrorStatus,
   readJsonWithLimit,
 } from "@/lib/public-request";
-import { feedbackRequiresContact } from "@/lib/trust-risk";
+import { feedbackRequiresContact, shouldCreateFeedbackVerification } from "@/lib/trust-risk";
 import { offerFeedbackReasonValues } from "@/lib/types";
 
 const PUBLIC_OFFER_FEEDBACK_RATE_LIMIT_PER_HOUR = 20;
@@ -118,6 +119,15 @@ export async function POST(request: Request) {
 
     after(async () => {
       try {
+        if (shouldCreateFeedbackVerification(payload.reason, payload.notes, payload.evidenceText)) {
+          const verification = await runOfferFeedbackAutoVerification(result.id);
+          if (verification.snapshotScope) {
+            clearPublicDataCache();
+            await markPublicApiSnapshotsDirty("public feedback auto verification", verification.snapshotScope);
+          }
+          return;
+        }
+
         const feedback = await runOfferFeedbackRiskPrecheck(result.id);
         clearPublicDataCache();
         await markPublicApiSnapshotsDirty("public feedback precheck", {
@@ -126,7 +136,7 @@ export async function POST(request: Request) {
           sourceIds: [feedback.sourceId],
         });
       } catch (error) {
-        console.warn("Offer feedback risk precheck failed:", error instanceof Error ? error.message : error);
+        console.warn("Offer feedback background verification failed:", error instanceof Error ? error.message : error);
       }
     });
 

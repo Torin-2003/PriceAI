@@ -9,6 +9,7 @@ import {
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { clearPublicDataCache, listRawOffersByIds, markPublicApiSnapshotsDirty } from "@/lib/data";
 import { requireAdminRequest } from "@/lib/env";
+import { runOfferFeedbackAutoVerification } from "@/lib/feedback-auto-verification";
 import { z } from "zod";
 
 const statusSchema = z.enum(["pending", "resolved", "ignored"]);
@@ -32,7 +33,7 @@ const verificationResultSchema = z.enum([
 ]);
 
 const patchSchema = z.object({
-  action: z.enum(["status", "verification", "recollect", "risk_precheck", "risk_visibility"]).optional(),
+  action: z.enum(["status", "verification", "recollect", "auto_verify", "risk_precheck", "risk_visibility"]).optional(),
   id: z.string().min(1),
   status: statusSchema.optional(),
   reviewerNote: z.string().max(500).nullable().optional(),
@@ -72,6 +73,15 @@ export async function PATCH(request: Request) {
       const result = await createFeedbackRecollectionJob({ feedbackId: payload.id });
       clearPublicDataCache();
       return Response.json({ ok: true, feedback: result.feedback, jobId: result.jobId });
+    }
+
+    if (action === "auto_verify") {
+      const result = await runOfferFeedbackAutoVerification(payload.id);
+      clearPublicDataCache();
+      const snapshotRefreshQueued = result.snapshotScope
+        ? await markPublicApiSnapshotsDirty("admin feedback auto verification", result.snapshotScope)
+        : false;
+      return Response.json({ ok: true, ...result, snapshotRefreshQueued });
     }
 
     if (action === "risk_precheck") {

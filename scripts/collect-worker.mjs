@@ -123,7 +123,7 @@ async function runCollectionJobByType(job, sourceId) {
   if (job.job_type === "official_prices") return runOfficialPriceJob(job);
   if (job.job_type === "api_models") return runApiModelJob();
   if (job.job_type === "api_transit_public_pricing") return runApiTransitPublicPricingJob(sourceId);
-  return runChannelPriceJob(sourceId);
+  return runChannelPriceJob(sourceId, job);
 }
 
 async function runLocalJob(jobType) {
@@ -134,11 +134,12 @@ async function runLocalJob(jobType) {
   return runApiModelJob();
 }
 
-async function runChannelPriceJob(sourceId) {
+async function runChannelPriceJob(sourceId, job = null) {
   if (!password) {
     throw new Error("渠道采集写回需要 --password 或 CRON_SECRET。");
   }
 
+  const jobResult = job && typeof job.result === "object" ? job.result : {};
   return runPriceCollection({
     all: !sourceId,
     source: sourceId || undefined,
@@ -147,6 +148,7 @@ async function runChannelPriceJob(sourceId) {
     password,
     silent: Boolean(args.silent),
     force: true,
+    "no-cooldown": truthyOption(jobResult.noCooldown) || truthyOption(jobResult["no-cooldown"]),
     concurrency: args.concurrency || args["concurrency"],
     "post-batch-size": args["post-batch-size"] || args.postBatchSize,
     "flush-source-count": args["flush-source-count"] || args.flushSourceCount,
