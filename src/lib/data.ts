@@ -4124,7 +4124,7 @@ function mapPublicProductSummaryRow(row: Record<string, unknown>): ExplorerProdu
       ...(hasOutOfStock ? ["缺货"] : []),
       ...(!inStockCount && outOfStockCount ? ["全部缺货"] : []),
     ],
-    offerSearchText: String(row.offer_search_text || "").slice(0, EXPLORER_OFFER_SEARCH_TEXT_MAX_LENGTH),
+    offerSearchText: toExplorerOfferSearchText(row.offer_search_text),
   };
 }
 
@@ -4138,7 +4138,36 @@ function buildOfferSearchText(offers: RawOffer[]): string {
       .forEach((value) => parts.add(value));
   }
 
-  return Array.from(parts).join(" ").slice(0, EXPLORER_OFFER_SEARCH_TEXT_MAX_LENGTH);
+  return toExplorerOfferSearchText(Array.from(parts).join(" "));
+}
+
+function toExplorerOfferSearchText(value: unknown): string {
+  return truncateJsonSafeString(value, EXPLORER_OFFER_SEARCH_TEXT_MAX_LENGTH);
+}
+
+function truncateJsonSafeString(value: unknown, maxLength: number): string {
+  const text = String(value || "");
+  let output = "";
+
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code === 0) continue;
+
+    let char = text.charAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = text.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) continue;
+      char = text.slice(index, index + 2);
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      continue;
+    }
+
+    if (output.length + char.length > maxLength) break;
+    output += char;
+  }
+
+  return output;
 }
 
 function compactExplorerOffer(offer: RawOffer | null): PublicOfferSummary | null {

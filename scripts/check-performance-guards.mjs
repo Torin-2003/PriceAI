@@ -61,6 +61,9 @@ assert(!/PUBLIC_OFFER_LIMIT\s*=\s*1200/.test(dataText), "src/lib/data.ts: public
 assert(/PUBLIC_DATA_CACHE_TTL_MS\s*=\s*PRICE_DATA_CACHE_TTL_MS/.test(dataText), "src/lib/data.ts: public data in-memory TTL must use the shared price cache policy.");
 assert(/EXPLORER_DATA_CACHE_TTL_MS\s*=\s*PRICE_DATA_CACHE_TTL_MS/.test(dataText), "src/lib/data.ts: explorer data TTL must use the shared price cache policy.");
 assert(/PRODUCT_OFFERS_CACHE_TTL_MS\s*=\s*PRICE_DATA_CACHE_TTL_MS/.test(dataText), "src/lib/data.ts: product offer TTL must use the shared price cache policy.");
+assert(/function\s+toExplorerOfferSearchText/.test(dataText), "src/lib/data.ts: explorer search text must use a JSON-safe truncation helper.");
+assert(/function\s+truncateJsonSafeString/.test(dataText), "src/lib/data.ts: public snapshot text truncation must preserve complete Unicode characters.");
+assert(!/offerSearchText:\s*String\(row\.offer_search_text\s*\|\|\s*["']["']\)\.slice/.test(dataText), "src/lib/data.ts: explorer row search text must not use raw slice truncation.");
 assert(/filterFacetsPromise\.catch/.test(dataText), "src/lib/data.ts: auxiliary product offer facets must not be allowed to fail the primary offer page.");
 assert(/readPublicApiSnapshot<ExplorerData>\(\s*["']explorer["']/.test(dataText), "src/lib/data.ts: explorer API must try the shared public API snapshot before expensive source reads.");
 assert(/readPublicApiSnapshot<PublicOffersResult>\(\s*["']offers["']/.test(dataText), "src/lib/data.ts: default public offer list must try the shared public API snapshot before expensive source reads.");
