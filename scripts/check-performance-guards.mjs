@@ -96,6 +96,11 @@ assert(!/refreshPublicApiSnapshots/.test(crawlLogRouteText), "src/app/api/admin/
 const adminText = read("src/lib/admin.ts");
 assert(/UNCHANGED_OFFER_REFRESH_INTERVAL_MS\s*=\s*25\s*\*\s*60\s*\*\s*1000/.test(adminText), "src/lib/admin.ts: unchanged offers must refresh within one 30-minute collector cycle.");
 assert(/shouldRefreshUnchangedOffer/.test(adminText), "src/lib/admin.ts: unchanged offer refresh logic must stay explicit.");
+assert(/function expireStaleOffersAfterRepeatedFailures/.test(adminText), "src/lib/admin.ts: repeated collector failures must only expire stale offers after a threshold.");
+assert(/MAX_STALE_OFFERS_TO_EXPIRE_PER_FAILURE\s*=\s*50/.test(adminText), "src/lib/admin.ts: repeated collector failure expiry must stay capped per failure.");
+assert(!/recordOfferCollectionFailure/.test(adminText), "src/lib/admin.ts: single collector failures must not bulk-write all raw_offers for a source.");
+assert(!/async function clearOfferCollectionFailure\s*\(/.test(adminText), "src/lib/admin.ts: successful collections must not bulk-clear all source offer failure markers.");
+assert(/clearOfferCollectionFailureForSeenOffers/.test(adminText), "src/lib/admin.ts: successful collections should clear failure markers only for offers seen in the current result.");
 
 const snapshotRefreshWorkflowText = read(".github/workflows/refresh-public-api-snapshots.yml");
 assert(snapshotRefreshWorkflowText.includes('cron: "*/30 * * * *"'), ".github/workflows/refresh-public-api-snapshots.yml: GitHub scheduled snapshot refresh must remain a low-frequency fallback.");

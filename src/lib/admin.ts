@@ -52,6 +52,9 @@ const UNCHANGED_OFFER_REFRESH_INTERVAL_MS = 25 * 60 * 1000;
 const RAW_OFFER_WRITE_CHUNK_SIZE = 5;
 const MISSING_OFFER_HIDE_CHUNK_SIZE = 25;
 const MAX_MISSING_OFFERS_TO_HIDE_PER_COLLECTION = 100;
+const STALE_OFFER_FAILURE_THRESHOLD = 3;
+const STALE_OFFER_FAILURE_AGE_MS = 24 * 60 * 60 * 1000;
+const MAX_STALE_OFFERS_TO_EXPIRE_PER_FAILURE = 50;
 
 export type RawOfferUpsertResult = {
   receivedCount: number;
@@ -812,7 +815,7 @@ export async function recordSourceCollectionResult(input: {
       ? "healthy"
       : input.status === "partial"
         ? "partial"
-        : consecutiveFailures >= 3
+        : consecutiveFailures >= STALE_OFFER_FAILURE_THRESHOLD
           ? "failing"
           : "retrying";
 
@@ -831,11 +834,18 @@ export async function recordSourceCollectionResult(input: {
   if (sourceError) throw sourceError;
 
   if (input.status === "failed") {
-    const changedOfferCount = await recordOfferCollectionFailure(input.sourceId, input.checkedAt, input.message || null, consecutiveFailures);
+    const changedOfferCount = await expireStaleOffersAfterRepeatedFailures(
+      input.sourceId,
+      input.checkedAt,
+      input.message || null,
+      consecutiveFailures,
+    );
     return { changedOfferCount };
   }
 
-  let changedOfferCount = await clearOfferCollectionFailure(input.sourceId);
+  let changedOfferCount = input.seenOfferIds?.length
+    ? await clearOfferCollectionFailureForSeenOffers(input.sourceId, input.seenOfferIds)
+    : 0;
 
   if (input.status === "success" && input.fullSnapshot && input.seenOfferIds) {
     changedOfferCount += await hideMissingOffersAsDelisted(input.sourceId, input.seenOfferIds, input.checkedAt);
@@ -853,7 +863,7 @@ function isCollectorWritebackFailureMessage(message: string | null | undefined):
   );
 }
 
-async function recordOfferCollectionFailure(
+async function expireStaleOffersAfterRepeatedFailures(
   sourceId: string,
   failedAt: string,
   message: string | null,
@@ -861,56 +871,70 @@ async function recordOfferCollectionFailure(
 ): Promise<number> {
   const supabase = getSupabaseServerClient();
   if (!supabase) return 0;
+  if (consecutiveFailures < STALE_OFFER_FAILURE_THRESHOLD) return 0;
 
   const failureReason = message || "本次采集失败，旧报价暂不更新。";
-  const { count: markedCount, error: markError } = await supabase
+  const staleBefore = new Date(new Date(failedAt).getTime() - STALE_OFFER_FAILURE_AGE_MS).toISOString();
+  const { data, error } = await supabase
     .from("raw_offers")
-    .update({
-      last_failed_at: failedAt,
-      failure_reason: failureReason,
-      updated_at: failedAt,
-    }, { count: "exact" })
-    .eq("source_id", sourceId)
-    .or(`failure_reason.is.null,failure_reason.not.ilike.${ADMIN_MANUAL_HIDE_REASON_PREFIX}%`);
-
-  if (markError) throw markError;
-
-  const staleBefore = new Date(new Date(failedAt).getTime() - 24 * 60 * 60 * 1000).toISOString();
-  if (consecutiveFailures < 3) return markedCount || 0;
-
-  const { count: expiredCount, error: expireError } = await supabase
-    .from("raw_offers")
-    .update({
-      effective_status: "unavailable",
-      freshness_status: "expired",
-      last_failed_at: failedAt,
-      failure_reason: `连续采集失败 ${consecutiveFailures} 次：${failureReason}`,
-      updated_at: failedAt,
-    }, { count: "exact" })
+    .select("id")
     .eq("source_id", sourceId)
     .or(`failure_reason.is.null,failure_reason.not.ilike.${ADMIN_MANUAL_HIDE_REASON_PREFIX}%`)
-    .or(`verified_at.is.null,verified_at.lt.${staleBefore}`);
-
-  if (expireError) throw expireError;
-  return (markedCount || 0) + (expiredCount || 0);
-}
-
-async function clearOfferCollectionFailure(sourceId: string): Promise<number> {
-  const supabase = getSupabaseServerClient();
-  if (!supabase) return 0;
-
-  const { count, error } = await supabase
-    .from("raw_offers")
-    .update({
-      last_failed_at: null,
-      failure_reason: null,
-    }, { count: "exact" })
-    .eq("source_id", sourceId)
-    .or("last_failed_at.not.is.null,failure_reason.not.is.null")
-    .or(`failure_reason.is.null,failure_reason.not.ilike.${ADMIN_MANUAL_HIDE_REASON_PREFIX}%`);
+    .or(`verified_at.is.null,verified_at.lt.${staleBefore}`)
+    .order("verified_at", { ascending: true, nullsFirst: true })
+    .limit(MAX_STALE_OFFERS_TO_EXPIRE_PER_FAILURE);
 
   if (error) throw error;
-  return count || 0;
+
+  const ids = (data || []).map((row) => String(row.id)).filter(Boolean);
+  if (!ids.length) return 0;
+
+  let changedCount = 0;
+  for (const chunk of chunks(ids, MISSING_OFFER_HIDE_CHUNK_SIZE)) {
+    const { count, error: expireError } = await supabase
+      .from("raw_offers")
+      .update({
+        effective_status: "unavailable",
+        freshness_status: "expired",
+        last_failed_at: failedAt,
+        failure_reason: `连续采集失败 ${consecutiveFailures} 次：${failureReason}`,
+        updated_at: failedAt,
+      }, { count: "exact" })
+      .eq("source_id", sourceId)
+      .in("id", chunk)
+      .or(`failure_reason.is.null,failure_reason.not.ilike.${ADMIN_MANUAL_HIDE_REASON_PREFIX}%`);
+
+    if (expireError) throw expireError;
+    changedCount += count || 0;
+  }
+
+  return changedCount;
+}
+
+async function clearOfferCollectionFailureForSeenOffers(sourceId: string, seenOfferIds: string[]): Promise<number> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return 0;
+  const uniqueIds = Array.from(new Set(seenOfferIds.map(String).filter(Boolean)));
+  if (!uniqueIds.length) return 0;
+
+  let changedCount = 0;
+  for (const ids of chunks(uniqueIds, MISSING_OFFER_HIDE_CHUNK_SIZE)) {
+    const { count, error } = await supabase
+      .from("raw_offers")
+      .update({
+        last_failed_at: null,
+        failure_reason: null,
+      }, { count: "exact" })
+      .eq("source_id", sourceId)
+      .in("id", ids)
+      .or("last_failed_at.not.is.null,failure_reason.not.is.null")
+      .or(`failure_reason.is.null,failure_reason.not.ilike.${ADMIN_MANUAL_HIDE_REASON_PREFIX}%`);
+
+    if (error) throw error;
+    changedCount += count || 0;
+  }
+
+  return changedCount;
 }
 
 async function hideMissingOffersAsDelisted(sourceId: string, seenOfferIds: string[], checkedAt: string): Promise<number> {
