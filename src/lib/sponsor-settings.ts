@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { isSponsorAssetReference } from "@/lib/sponsor-asset-storage";
 import {
   createDefaultSponsorSettingsSummary,
   defaultSponsorCreativesByPlacement,
@@ -265,6 +266,7 @@ function cleanTargetUrl(value: unknown, fallback: string): string {
 function cleanAssetUrl(value: unknown, fallback: string | null): string | null {
   const text = cleanText(value, fallback, 2048);
   if (!text) return null;
+  if (isSponsorAssetReference(text)) return text;
   if (text.startsWith("/")) return text;
   try {
     const url = new URL(text);

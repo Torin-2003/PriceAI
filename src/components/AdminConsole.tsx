@@ -17,6 +17,7 @@ import {
   Flag,
   History,
   Inbox,
+  ImageUp,
   KeyRound,
   Loader2,
   Megaphone,
@@ -46,6 +47,7 @@ import {
   isCollectorKind,
   knownAutoCollectorHosts as createKnownAutoCollectorHosts,
 } from "@/lib/collector-registry";
+import { sponsorAssetDisplayUrl } from "@/lib/sponsor-asset-url";
 import { sponsorPlacementLabels, type SponsorCreative } from "@/lib/sponsor-settings-shared";
 import type {
   AdminSummary,
@@ -4997,16 +4999,12 @@ function SponsorSettingsPanel({
                             />
                             <span className="mt-1 block text-[11px] leading-5 text-[#8a9293]">外部链接会自动追加 utm_source=priceai、utm_medium=sponsor、utm_campaign 和 utm_content。</span>
                           </label>
-                          <label className="block md:col-span-2">
-                            <span className="mb-1 block text-xs font-medium text-[#5a6061]">图片 URL</span>
-                            <input
-                              value={creative.imageUrl || ""}
-                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { imageUrl: event.target.value }))}
-                              placeholder="可留空，前台显示占位图形"
-                              className={adminInputClassName}
-                            />
-                            <span className="mt-1 block text-[11px] leading-5 text-[#8a9293]">推荐 16:5 横幅图，1600x500 px 或 1200x375 px；Logo 和文字放中间 80%，避免边缘被裁切。</span>
-                          </label>
+                          <SponsorImageField
+                            kind={kind}
+                            index={index}
+                            creative={creative}
+                            setDraft={setDraft}
+                          />
                           <label className="block">
                             <span className="mb-1 block text-xs font-medium text-[#5a6061]">图片主标题</span>
                             <input
@@ -5042,6 +5040,7 @@ function SponsorSettingsPanel({
                             />
                           </label>
                         </div>
+                        <SponsorCreativePreview creative={creative} kind={kind} />
                       </div>
                     ))}
                   </div>
@@ -5075,6 +5074,144 @@ function SponsorSettingsPanel({
         </div>
       </form>
     </section>
+  );
+}
+
+function SponsorImageField({
+  kind,
+  index,
+  creative,
+  setDraft,
+}: {
+  kind: string;
+  index: number;
+  creative: SponsorCreative;
+  setDraft: Dispatch<SetStateAction<SponsorSettings>>;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [tone, setTone] = useState<"muted" | "warn" | "danger">("muted");
+  const imageUrl = sponsorAssetDisplayUrl(creative.imageUrl);
+
+  async function uploadImage(file: File | undefined) {
+    if (!file) return;
+    setUploading(true);
+    setMessage(null);
+    setTone("muted");
+
+    try {
+      const warning = await validateSponsorImageBeforeUpload(file);
+      const formData = new FormData();
+      formData.append("placement", kind);
+      formData.append("creativeId", creative.id);
+      formData.append("file", file);
+
+      const response = await fetch("/api/admin/sponsor-assets", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      const json = await response.json().catch(() => ({ ok: false, message: response.statusText }));
+      if (!response.ok || !json.ok) {
+        throw new Error(json.message || "赞助图片上传失败。");
+      }
+
+      const nextUrl = String(json.asset?.url || "");
+      setDraft((current) => updateSponsorCreative(current, kind, index, { imageUrl: nextUrl }));
+      setTone(warning ? "warn" : "muted");
+      setMessage(warning || "图片已上传，保存配置后前台生效。");
+    } catch (error) {
+      setTone("danger");
+      setMessage(error instanceof Error ? error.message : "赞助图片上传失败。");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const messageClassName = tone === "danger"
+    ? "text-[#9b3328]"
+    : tone === "warn"
+      ? "text-[#7a541b]"
+      : "text-[#8a9293]";
+
+  return (
+    <div className="md:col-span-2">
+      <span className="mb-1 block text-xs font-medium text-[#5a6061]">图片 URL</span>
+      <div className="flex gap-2">
+        <input
+          value={creative.imageUrl || ""}
+          onChange={(event) => {
+            setDraft((current) => updateSponsorCreative(current, kind, index, { imageUrl: event.target.value }));
+            setMessage(null);
+            setTone("muted");
+          }}
+          placeholder="可留空，前台显示占位图形"
+          className={adminInputClassName}
+        />
+        <label className="inline-flex h-11 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-semibold text-[#2d3435] transition hover:bg-[#f2f4f4]">
+          {uploading ? <Loader2 size={14} className="animate-spin" /> : <ImageUp size={14} />}
+          上传
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="sr-only"
+            disabled={uploading}
+            onChange={(event) => {
+              void uploadImage(event.target.files?.[0]);
+              event.currentTarget.value = "";
+            }}
+          />
+        </label>
+      </div>
+      <div className="mt-1 flex flex-col gap-1 text-[11px] leading-5 sm:flex-row sm:items-center sm:justify-between">
+        <span className={message ? messageClassName : "text-[#8a9293]"}>
+          {message || "推荐 16:5 横幅图，1600x500 px 或 1200x375 px；Logo 和文字放中间 80%，避免边缘被裁切。"}
+        </span>
+        {imageUrl ? (
+          <a href={imageUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 font-semibold text-[#47657a] hover:text-[#2d3435]">
+            打开图片
+          </a>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function SponsorCreativePreview({ creative, kind }: { creative: SponsorCreative; kind: string }) {
+  const imageUrl = sponsorAssetDisplayUrl(creative.imageUrl);
+  const label = kind === "apiTransit" || kind === "apiTransitModels" ? "赞助" : "广告";
+
+  return (
+    <div className="mt-4 rounded-lg bg-[#f9f9f9] p-3 ring-1 ring-[#adb3b4]/20">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-[#2d3435]">素材效果预览</span>
+        <span className="rounded-full bg-[#eef3f8] px-2 py-0.5 text-[11px] font-semibold text-[#47657a]">草稿实时预览</span>
+      </div>
+      <div className="max-w-[320px] overflow-hidden rounded-lg bg-white text-[#202829] ring-1 ring-[#dfe4e5]">
+        <div className={`relative aspect-[16/5] overflow-hidden ${imageUrl ? "bg-[#f2f4f4]" : sponsorPreviewToneClass(creative.tone)}`}>
+          {imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+              <p className="text-[11px] font-extrabold text-[#5a6061]">赞助图片</p>
+              <p className="mt-1 max-w-full truncate text-2xl font-black leading-none text-[#202829]">{creative.visualTitle || creative.title || "Sponsor"}</p>
+              <p className="mt-2 max-w-full truncate text-xs font-bold text-[#3e484a]">{creative.visualMeta || "品牌图 / 短标题 / 落地页"}</p>
+            </div>
+          )}
+        </div>
+        <div className="min-h-[92px] p-4">
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="min-w-0 text-sm font-extrabold leading-5 text-[#202829]">{creative.title || "赞助素材标题"}</h3>
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#fff7e8] px-2 py-0.5 text-[11px] font-extrabold text-[#7a541b]">
+              <Megaphone className="h-3 w-3" />
+              {label}
+            </span>
+          </div>
+          <p className="mt-2 line-clamp-2 text-xs leading-5 text-[#5a6061]">{creative.description || "这里会显示素材说明。"}</p>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -5251,6 +5388,50 @@ function createSponsorCreativeId(kind: string, creatives: SponsorCreative[]): st
 function emptyToNull(value: string | null | undefined): string | null {
   const text = typeof value === "string" ? value.trim() : "";
   return text || null;
+}
+
+async function validateSponsorImageBeforeUpload(file: File): Promise<string | null> {
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+    throw new Error("请上传 PNG、JPG 或 WebP 格式。");
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    throw new Error("赞助图片不能超过 2MB。");
+  }
+
+  const dimensions = await readImageDimensions(file);
+  if (dimensions.width < 1200 || dimensions.height < 375) {
+    throw new Error(`图片尺寸太小：当前 ${dimensions.width}x${dimensions.height}，最低 1200x375 px。`);
+  }
+
+  const ratio = dimensions.width / dimensions.height;
+  const targetRatio = 16 / 5;
+  if (Math.abs(ratio - targetRatio) > 0.12) {
+    return `图片已上传，但当前比例约 ${ratio.toFixed(2)}，推荐 16:5，前台可能裁切。`;
+  }
+
+  return null;
+}
+
+function readImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("无法读取图片尺寸，请换一张图片。"));
+    };
+    image.src = url;
+  });
+}
+
+function sponsorPreviewToneClass(tone: SponsorCreative["tone"]) {
+  if (tone === "blue") return "bg-[#e8f1fa]";
+  if (tone === "amber") return "bg-[#fff2dc]";
+  return "bg-[#e8f3ec]";
 }
 
 function sponsorPlacementLabel(kind: string): string {

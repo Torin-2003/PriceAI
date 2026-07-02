@@ -12,6 +12,7 @@ import {
   type SponsorSettingsSummary,
 } from "@/lib/sponsor-settings-shared";
 import { trackAnalyticsEvent } from "@/lib/analytics";
+import { sponsorAssetDisplayUrl } from "@/lib/sponsor-asset-url";
 
 type SponsoredPlacementPreviewProps = {
   kind: SponsorPlacementKind;
@@ -371,6 +372,8 @@ function SponsorCard({
   path: string;
   compact?: boolean;
 }) {
+  const imageUrl = sponsorAssetDisplayUrl(card.imageUrl);
+
   return (
     <SponsorLink
       creative={card}
@@ -382,10 +385,10 @@ function SponsorCard({
       }`}
       aria-label={`${card.title}赞助商，打开赞助链接`}
     >
-      <div className={`relative aspect-[16/5] overflow-hidden ${card.imageUrl ? "bg-[#f2f4f4]" : footerSponsorVisualClass(card.tone)}`}>
-        {card.imageUrl ? (
+      <div className={`relative aspect-[16/5] overflow-hidden ${imageUrl ? "bg-[#f2f4f4]" : footerSponsorVisualClass(card.tone)}`}>
+        {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={card.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <img src={imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
         ) : (
           <div className="flex h-full flex-col items-center justify-center px-4 text-center">
             <p className="text-[11px] font-extrabold text-[#5a6061]">赞助图片</p>
