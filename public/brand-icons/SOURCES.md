@@ -17,6 +17,7 @@ These assets are cached locally for stable rendering and performance. They are s
 | `windsurf.png` | `https://windsurf.com/favicon.ico` | Converted from official Windsurf favicon to PNG. |
 | `perplexity.png` | `https://www.perplexity.ai/favicon.ico` | Converted from official Perplexity favicon to PNG. |
 | `suno.png` | `https://suno.com/favicon.ico` | Converted from official Suno favicon to PNG. |
+| `dreamina.png` | `https://lf16-web-buz.capcut.com/obj/capcut-web-buz-sg/common/images/dreamina-v3.ico` | Converted from the official Dreamina / CapCut public favicon to PNG for Dreamina / 即梦 account rows. |
 | `deepseek.png` | `https://www.deepseek.com/favicon.ico` | Converted from official favicon to PNG. |
 | `qwen.png` | `https://qwenlm.github.io/favicon.png` | Official QwenLM site favicon. |
 | `kimi.png` | `https://www.kimi.com/favicon.ico` | Converted from official favicon to PNG. |

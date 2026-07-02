@@ -423,6 +423,36 @@ export const canonicalCatalog: CanonicalProduct[] = [
     aliases: ["suno", "suno pro", "suno 账号"],
   },
   {
+    id: "dreamina-account",
+    slug: "dreamina-account",
+    displayName: "Dreamina / 即梦",
+    platform: "其他",
+    productType: "工具账号",
+    spec: "Basic / Seedance 2.0",
+    summary: "Dreamina 海外版即梦、Seedance 2.0 视频生成相关成品账号、积分或 Basic 权益。",
+    aliases: [
+      "dreamina",
+      "dreamina ai",
+      "即梦",
+      "即梦 ai",
+      "吉梦",
+      "jimeng",
+      "jimeng ai",
+      "海外即梦",
+      "海外版即梦",
+      "seedance",
+      "seedance 2.0",
+      "seedance2.0",
+      "seedance2",
+      "c档 2.0",
+      "c档2.0",
+      "c 档 2.0",
+      "c 档2.0",
+      "dreamina basic",
+      "即梦 basic",
+    ],
+  },
+  {
     id: "apple-id-account",
     slug: "apple-id-account",
     displayName: "Apple ID / 苹果账号",
@@ -564,6 +594,10 @@ function classifyOfferByTitle(
 
   if (isGiftCardProduct(value)) {
     return getCanonicalProduct("gift-card");
+  }
+
+  if (isDreaminaProduct(value)) {
+    return getCanonicalProduct("dreamina-account");
   }
 
   if (isTelegramProduct(value, contextValue)) {
@@ -1266,6 +1300,7 @@ function classifyVerificationService(value: string): string {
 }
 
 function isOtherTool(value: string): boolean {
+  if (isDreaminaProduct(value)) return true;
   if (isTelegramProduct(value)) return true;
   if (isXTwitterAccount(value)) return true;
 
@@ -1278,6 +1313,15 @@ function isOtherTool(value: string): boolean {
     "openclaw",
     "open claw",
     "perplexity",
+    "dreamina",
+    "jimeng",
+    "即梦",
+    "吉梦",
+    "seedance",
+    "c档2.0",
+    "c档 2.0",
+    "c 档2.0",
+    "c 档 2.0",
     "telegram",
     "facebook",
     "苹果 id",
@@ -1300,6 +1344,7 @@ function isOtherTool(value: string): boolean {
 }
 
 function classifyOtherTool(value: string): string {
+  if (isDreaminaProduct(value)) return "dreamina-account";
   if (isTelegramProduct(value)) return "telegram-account";
   if (isXTwitterAccount(value)) return "x-twitter-account";
   if (matches(value, ["cursor"])) return "cursor-account";
@@ -1310,6 +1355,10 @@ function classifyOtherTool(value: string): string {
   if (isAppleIdAccount(value)) return "apple-id-account";
 
   return "other-product";
+}
+
+function isDreaminaProduct(value: string): boolean {
+  return matches(value, ["dreamina", "jimeng", "即梦", "吉梦", "seedance", "c档2.0", "c档 2.0", "c 档2.0", "c 档 2.0"]);
 }
 
 function isTelegramProduct(value: string, contextValue = ""): boolean {

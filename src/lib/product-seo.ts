@@ -163,6 +163,10 @@ const productSeoProfiles: Record<string, ProductSeoProfile> = {
     metadataTitle: "Suno 账号价格对比：音乐生成账号、会员账号和渠道报价",
     metadataDescription: "查看 Suno 账号、会员账号、音乐生成工具账号的有货最低价、渠道报价、库存和更新时间。",
   }),
+  "dreamina-account": profile({
+    metadataTitle: "Dreamina / 即梦价格对比：Seedance 2.0 视频生成账号和渠道报价",
+    metadataDescription: "查看 Dreamina / 即梦、Seedance 2.0 视频生成相关成品账号、Basic 权益、积分和渠道报价。",
+  }),
   "x-twitter-account": profile({
     metadataTitle: "X / 推特账号价格对比：Twitter 账号、Premium 和渠道报价",
     metadataDescription: "查看 X / Twitter / 推特账号、Premium 相关账号的有货最低价、渠道报价、库存和更新时间。",

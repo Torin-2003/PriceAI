@@ -23,6 +23,7 @@ const iconByProductId: Record<string, string> = {
   "windsurf-account": "/brand-icons/windsurf.png",
   "perplexity-account": "/brand-icons/perplexity.png",
   "suno-account": "/brand-icons/suno.png",
+  "dreamina-account": "/brand-icons/dreamina.png",
   "apple-id-account": "/brand-icons/apple.png",
   "x-twitter-account": "/brand-icons/x.png",
   "telegram-account": "/brand-icons/telegram.svg",
