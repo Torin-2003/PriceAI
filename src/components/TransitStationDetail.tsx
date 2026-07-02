@@ -1641,7 +1641,7 @@ function ProbePolicyTag({
   href?: string | null;
   className?: string;
 }) {
-  const classes = `inline-flex w-fit items-center rounded-full border border-dashed border-[#9aa5a7] px-2 py-0.5 text-[10px] font-bold text-[#5a6061] ${className}`;
+  const classes = `inline-flex w-fit min-w-[64px] shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-dashed border-[#9aa5a7] px-2 py-0.5 text-[10px] font-bold leading-none text-[#5a6061] ${className}`;
   if (href) {
     return (
       <a
@@ -1715,12 +1715,21 @@ function AvailabilityTable({ station }: { station: TransitStation }) {
         </div>
       ) : (
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] border-collapse">
+        <table className="w-full min-w-[980px] table-fixed border-collapse">
+          <colgroup>
+            <col className="w-[100px]" />
+            <col className="w-[170px]" />
+            <col className="w-[82px]" />
+            <col className="w-[180px]" />
+            <col className="w-[220px]" />
+            <col className="w-[118px]" />
+            <col />
+          </colgroup>
           <thead>
             <tr className="bg-[#f2f4f4]/50">
               <DataTableHead>范围</DataTableHead>
               <DataTableHead explanation="近 7 日样本成功率，绿色条表示成功样本，灰色表示窗口内未检测。">可用状态</DataTableHead>
-              <DataTableHead explanation="PriceAI 在当前滚动窗口内记录的结构化可用性样本数。">样本数</DataTableHead>
+              <DataTableHead className="whitespace-nowrap text-right" explanation="PriceAI 在当前滚动窗口内记录的结构化可用性样本数。">样本数</DataTableHead>
               <DataTableHead explanation="同一范围内第一条与最新一条可用性样本的时间；只有一条样本时显示单次检查。">监测区间</DataTableHead>
               <DataTableHead explanation="该范围实际使用的代表模型，不等同于站点支持的全部模型。">监测模型</DataTableHead>
               <DataTableHead explanation="说明稳定性样本来自 PriceAI 实测、公开监测页、公开模型页、站长接口或商家提交。">来源</DataTableHead>
@@ -1739,10 +1748,10 @@ function AvailabilityTable({ station }: { station: TransitStation }) {
                       lastCheckedAt={row.lastCheckedAt}
                     />
                   </td>
-                  <td className="px-4 py-3 text-sm text-[#2d3435]">{row.sevenDaySamples}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-[#2d3435]">{row.sevenDaySamples}</td>
                   <td className="px-4 py-3 text-xs text-[#5a6061]">{formatMonitoringWindow(row)}</td>
                   <td className="px-4 py-3 text-xs text-[#5a6061]">{row.monitorModel}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 whitespace-nowrap">
                     <ProbePolicyTag label={row.source.label} title={row.source.title} href={row.source.url} />
                   </td>
                   <td className="px-4 py-3 text-xs text-[#5a6061]">{row.note}</td>

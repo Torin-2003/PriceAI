@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Search, X } from "lucide-react";
+import { ClickInfoPopover } from "@/components/ClickInfoPopover";
 
 export function DataTableShell({
   children,
@@ -31,13 +32,13 @@ export function DataTableHead({
   return (
     <th className={`${compact ? "px-4" : "px-5"} py-3 text-left font-semibold ${className}`} scope="col">
       {explanation ? (
-        <span
-          className="inline-flex cursor-help items-center border-b border-dashed border-[#7f8889] pb-0.5 leading-tight text-[#4f5758]"
-          title={explanation}
-          aria-label={`${plainText(children)}：${explanation}`}
+        <ClickInfoPopover
+          label={plainText(children)}
+          description={explanation}
+          className="inline-flex max-w-full cursor-pointer items-center border-b border-dashed border-[#7f8889] pb-0.5 text-left leading-tight text-[#4f5758] transition hover:text-[#202829] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#45bf78]/35"
         >
           {children}
-        </span>
+        </ClickInfoPopover>
       ) : (
         children
       )}
