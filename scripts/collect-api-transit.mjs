@@ -45,21 +45,21 @@ const AVAILABILITY_SOURCES = {
   },
 };
 const officialTransitPrices = {
-  "Claude Fable 5": { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5, imageOutput: null },
-  "Claude Sonnet 5": { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5, imageOutput: null },
-  "Claude Sonnet 4.6": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75, imageOutput: null },
-  "Claude Opus 4.6": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25, imageOutput: null },
-  "Claude Opus 4.7": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25, imageOutput: null },
-  "Claude Opus 4.8": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25, imageOutput: null },
-  "GPT 5.5": { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0.5, imageOutput: null },
-  "GPT 5.4": { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 0.25, imageOutput: null },
-  "Gemini 3.5 Flash": { input: 1.5, output: 9, cacheRead: null, cacheWrite: null, imageOutput: null },
-  "Gemini 3.1 Pro": { input: 2, output: 12, cacheRead: null, cacheWrite: null, imageOutput: null },
-  "GLM-5.2": { input: 8, output: 28, cacheRead: 2, cacheWrite: null, imageOutput: null },
-  "GLM-5.1": { input: 6, output: 24, cacheRead: 1.3, cacheWrite: null, imageOutput: null },
-  "DeepSeek V4 Flash": { input: 0.14, output: 0.28, cacheRead: 0.0028, cacheWrite: null, imageOutput: null },
-  "DeepSeek V4 Pro": { input: 0.435, output: 0.87, cacheRead: 0.003625, cacheWrite: null, imageOutput: null },
-  "GPT Image 2": { input: 5, output: null, cacheRead: 1.25, cacheWrite: null, imageOutput: 30 },
+  "Claude Fable 5": { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5, imageOutput: null, currency: "USD" },
+  "Claude Sonnet 5": { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5, imageOutput: null, currency: "USD" },
+  "Claude Sonnet 4.6": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75, imageOutput: null, currency: "USD" },
+  "Claude Opus 4.6": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25, imageOutput: null, currency: "USD" },
+  "Claude Opus 4.7": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25, imageOutput: null, currency: "USD" },
+  "Claude Opus 4.8": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25, imageOutput: null, currency: "USD" },
+  "GPT 5.5": { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0.5, imageOutput: null, currency: "USD" },
+  "GPT 5.4": { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 0.25, imageOutput: null, currency: "USD" },
+  "Gemini 3.5 Flash": { input: 1.5, output: 9, cacheRead: null, cacheWrite: null, imageOutput: null, currency: "USD" },
+  "Gemini 3.1 Pro": { input: 2, output: 12, cacheRead: null, cacheWrite: null, imageOutput: null, currency: "USD" },
+  "GLM-5.2": { input: 8, output: 28, cacheRead: 2, cacheWrite: null, imageOutput: null, currency: "CNY" },
+  "GLM-5.1": { input: 6, output: 24, cacheRead: 1.3, cacheWrite: null, imageOutput: null, currency: "CNY" },
+  "DeepSeek V4 Flash": { input: 1, output: 2, cacheRead: 0.02, cacheWrite: null, imageOutput: null, currency: "CNY" },
+  "DeepSeek V4 Pro": { input: 3, output: 6, cacheRead: 0.025, cacheWrite: null, imageOutput: null, currency: "CNY" },
+  "GPT Image 2": { input: 5, output: null, cacheRead: 1.25, cacheWrite: null, imageOutput: 30, currency: "USD" },
 };
 const modelFamilyByStandard = {
   "Claude Fable 5": "claude",
@@ -1030,6 +1030,11 @@ function buildOneHopPublicModelOfferRow(source, item, standard, collectedAt) {
   const output = unitRatioValue(unitPricesUsd.output, official.output);
   const imageOutput = unitRatioValue(unitPricesUsd.imageOutput, official.imageOutput);
   if (input === null && output === null && imageOutput === null) return null;
+  const officialCurrency = official.currency || "USD";
+  const multiplierBasis =
+    officialCurrency === "CNY"
+      ? "onehop_public_credit_price_against_priceai_cny_official"
+      : "onehop_public_usd_per_million";
 
   const groupName = oneHopGroupName(item);
   const sourceText = [item?.source, item?.fullSlug, item?.provider].filter(Boolean).join(" ");
@@ -1068,9 +1073,17 @@ function buildOneHopPublicModelOfferRow(source, item, standard, collectedAt) {
       collector_kind: source.collectorKind,
       model: compactOneHopModelPayload(item),
       unit_prices_usd: unitPricesUsd,
+      official_prices_used: {
+        input: official.input ?? null,
+        output: official.output ?? null,
+        cache_read: official.cacheRead ?? null,
+        cache_write: official.cacheWrite ?? null,
+        image_output: official.imageOutput ?? null,
+        currency: officialCurrency,
+      },
       supported_protocols: Array.isArray(item?.supportedProtocolList) ? item.supportedProtocolList : [],
       capabilities: Array.isArray(item?.capabilities) ? item.capabilities : [],
-      multiplier_basis: "onehop_public_usd_per_million",
+      multiplier_basis: multiplierBasis,
     },
     created_at: collectedAt,
   };
@@ -1142,6 +1155,7 @@ function familyForStandardModel(standard) {
 function officialPriceFromOneHopModel(item, standard) {
   const fallback = officialTransitPrices[standard];
   if (!item || typeof item !== "object") return fallback || null;
+  if (fallback?.currency === "CNY") return fallback;
 
   const official = {
     input: numberValue(item.officialInputPricePer1m) ?? fallback?.input ?? null,
@@ -1149,9 +1163,14 @@ function officialPriceFromOneHopModel(item, standard) {
     cacheRead: fallback?.cacheRead ?? null,
     cacheWrite: fallback?.cacheWrite ?? null,
     imageOutput: numberValue(item.officialImageOutputPricePer1m) ?? fallback?.imageOutput ?? null,
+    currency: fallback?.currency || "USD",
   };
 
-  return Object.values(official).some((value) => value !== null) ? official : null;
+  return [official.input, official.output, official.cacheRead, official.cacheWrite, official.imageOutput].some(
+    (value) => value !== null,
+  )
+    ? official
+    : null;
 }
 
 function compactOneHopModelPayload(item) {
@@ -2516,6 +2535,7 @@ export const __test = {
   applyZivvStatusAvailability,
   mergeOfferForRefresh,
   parseApinodePublicSiteInfoPayload,
+  parseOneHopPublicModelsPayload,
   parseZivvModelHubPayload,
   standardizeModelName,
   shouldRestrictToPublishedStations,

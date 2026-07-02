@@ -111,7 +111,7 @@ const anthropicPricingUrl = "https://platform.claude.com/docs/en/about-claude/pr
 const openAiPricingUrl = "https://platform.openai.com/docs/pricing";
 const geminiPricingUrl = "https://ai.google.dev/gemini-api/docs/pricing";
 const glmPricingUrl = "https://bigmodel.cn/pricing";
-const deepseekPricingUrl = "https://api-docs.deepseek.com/quick_start/pricing";
+const deepseekPricingUrl = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing";
 
 const TRANSIT_OFFICIAL_MODEL_PRICES: Record<
   TransitModelPrice["standardModel"],
@@ -238,22 +238,22 @@ const TRANSIT_OFFICIAL_MODEL_PRICES: Record<
     sourceUrl: glmPricingUrl,
   },
   "DeepSeek V4 Flash": {
-    input: 0.14,
-    output: 0.28,
+    input: 1,
+    output: 2,
     cacheWrite: null,
-    cacheRead: 0.0028,
+    cacheRead: 0.02,
     imageOutput: null,
-    currency: "USD",
+    currency: "CNY",
     sourceLabel: "DeepSeek API",
     sourceUrl: deepseekPricingUrl,
   },
   "DeepSeek V4 Pro": {
-    input: 0.435,
-    output: 0.87,
+    input: 3,
+    output: 6,
     cacheWrite: null,
-    cacheRead: 0.003625,
+    cacheRead: 0.025,
     imageOutput: null,
-    currency: "USD",
+    currency: "CNY",
     sourceLabel: "DeepSeek API",
     sourceUrl: deepseekPricingUrl,
   },

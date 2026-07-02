@@ -209,6 +209,56 @@ assert.equal(apinodeGpt55Economy.model_multiplier, 0.3);
 assert.equal(apinodeGpt55Economy.availability_seven_day_rate, 0.976494);
 assert.match(apinodeGpt55Economy.availability_note, /非 PriceAI API Key 实测/);
 
+const onehopSource = {
+  id: "onehop-ai",
+  name: "OneHop",
+  websiteUrl: "https://onehop.ai/",
+  apiBaseUrl: "https://api.onehop.ai/v1",
+  pricingUrl: "https://onehop.ai/platform/models",
+  pricingEndpointUrl: "https://api.onehop.ai/public/models?locale=zh-Hans&limit=100",
+  collectorKind: "onehop_public_models",
+  rechargeRatio: "6.8:1",
+};
+const onehop = __test.parseOneHopPublicModelsPayload(
+  onehopSource,
+  {
+    data: {
+      items: [
+        {
+          fullSlug: "zhipu/glm-5.2",
+          displayName: "GLM-5.2",
+          provider: "zhipu",
+          source: "Official",
+          inputPricePer1m: "0.70000000",
+          outputPricePer1m: "2.20000000",
+          officialInputPricePer1m: "1.40000000",
+          officialOutputPricePer1m: "4.40000000",
+          available: true,
+        },
+        {
+          fullSlug: "deepseek/deepseek-v4-flash",
+          displayName: "DeepSeek V4 Flash",
+          provider: "deepseek",
+          source: "Official",
+          inputPricePer1m: "0.11200000",
+          outputPricePer1m: "0.22400000",
+          officialInputPricePer1m: "0.14000000",
+          officialOutputPricePer1m: "0.28000000",
+          available: true,
+        },
+      ],
+    },
+  },
+  "2026-07-02T07:30:00.000Z",
+);
+const onehopGlm = onehop.offers.find((offer) => offer.standard_model === "GLM-5.2");
+assert.equal(onehopGlm.model_multiplier, 0.0875);
+assert.equal(onehopGlm.input_price, 0.0875);
+assert.equal(onehopGlm.output_price, 0.078571);
+const onehopDeepSeek = onehop.offers.find((offer) => offer.standard_model === "DeepSeek V4 Flash");
+assert.equal(onehopDeepSeek.model_multiplier, 0.112);
+assert.equal(onehopDeepSeek.output_price, 0.112);
+
 const stationRefresh = __test.mergeStationForRefresh(
   { id: "apinode-ltd", station_system: "sub_to_api", published: true, data_status: "verified" },
   { id: "apinode-ltd", station_system: "custom", published: true },
