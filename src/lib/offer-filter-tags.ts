@@ -113,6 +113,29 @@ export const OFFER_FILTER_TAG_BY_ID = new Map<OfferFilterTagId, OfferFilterTagDe
 );
 
 const OFFER_FILTER_TAG_IDS = new Set<string>(OFFER_FILTER_TAGS.map((tag) => tag.id));
+const DURATION_FILTER_TAG_IDS = new Set<OfferFilterTagId>([
+  "duration_trial",
+  "duration_month",
+  "duration_quarter",
+  "duration_half_year",
+  "duration_year",
+]);
+const VERIFICATION_FILTER_TAG_IDS = new Set<OfferFilterTagId>([
+  "verification_single",
+  "verification_short",
+  "verification_long",
+  "verification_monthly",
+]);
+const DURATION_FILTER_PRODUCT_IDS = new Set<string>([
+  "grok-account",
+  "super-grok",
+]);
+const VERIFICATION_FILTER_PRODUCT_IDS = new Set<string>([
+  "openai-phone-verification",
+  "google-phone-verification",
+  "paypal-phone-verification",
+  "phone-verification",
+]);
 
 export function parseOfferFilterTags(value: string | string[] | null | undefined): OfferFilterTagId[] {
   const parts = Array.isArray(value) ? value : String(value || "").split(/[,，\s]+/);
@@ -132,6 +155,27 @@ export function parseOfferFilterTags(value: string | string[] | null | undefined
 export function toggleOfferFilterTag(current: OfferFilterTagId[], id: OfferFilterTagId): OfferFilterTagId[] {
   if (current.includes(id)) return current.filter((item) => item !== id);
   return parseOfferFilterTags([...current, id]);
+}
+
+export function parseOfferFilterTagsForProduct(
+  productId: string,
+  value: string | string[] | null | undefined,
+): OfferFilterTagId[] {
+  return filterOfferFilterTagsForProduct(productId, parseOfferFilterTags(value));
+}
+
+export function filterOfferFilterTagsForProduct(productId: string, tags: OfferFilterTagId[]): OfferFilterTagId[] {
+  return parseOfferFilterTags(tags).filter((tag) => offerFilterTagAppliesToProduct(productId, tag));
+}
+
+export function filterOfferFilterFacetsForProduct(productId: string, facets: OfferFilterTagFacet[]): OfferFilterTagFacet[] {
+  return facets.filter((facet) => offerFilterTagAppliesToProduct(productId, facet.id));
+}
+
+export function offerFilterTagAppliesToProduct(productId: string, tagId: OfferFilterTagId): boolean {
+  if (DURATION_FILTER_TAG_IDS.has(tagId)) return DURATION_FILTER_PRODUCT_IDS.has(productId);
+  if (VERIFICATION_FILTER_TAG_IDS.has(tagId)) return VERIFICATION_FILTER_PRODUCT_IDS.has(productId);
+  return true;
 }
 
 export function deriveOfferFilterTags(input: {

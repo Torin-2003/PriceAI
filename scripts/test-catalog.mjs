@@ -11,7 +11,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 
 const { buildProductGroups, classifyOffer, isSharedAccessOffer } = await loadCatalogModule();
-const { deriveOfferFilterTags } = await loadOfferFilterTagsModule();
+const {
+  buildOfferFilterFacets,
+  deriveOfferFilterTags,
+  filterOfferFilterFacetsForProduct,
+  parseOfferFilterTagsForProduct,
+} = await loadOfferFilterTagsModule();
 
 const cases = [
   ["ChatGPT Plus 直充 卡密自助", "chatgpt-plus"],
@@ -365,6 +370,47 @@ for (const [title, expectedTags] of tagCases) {
     assert.ok(tags.includes(tag), `${title} should include ${tag}. actual=${tags.join(",")}`);
   }
 }
+
+const productFacetCases = buildOfferFilterFacets([
+  { sourceTitle: "ChatGPT Plus 月卡 30天质保 拼车" },
+  { sourceTitle: "Super Grok 独享成品号 3天会员" },
+  { sourceTitle: "OpenAI Codex 单次接码 1次验证" },
+]);
+const chatGptFacetIds = filterOfferFilterFacetsForProduct("chatgpt-plus", productFacetCases).map((facet) => facet.id);
+assert.ok(!chatGptFacetIds.includes("duration_month"), "ChatGPT Plus must not show duration filters.");
+assert.ok(!chatGptFacetIds.includes("duration_trial"), "ChatGPT Plus must not show Grok trial filters.");
+assert.ok(!chatGptFacetIds.includes("verification_single"), "ChatGPT Plus must not show verification filters.");
+assert.ok(chatGptFacetIds.includes("shared_access"), "ChatGPT Plus should keep shared-access filters.");
+assert.ok(chatGptFacetIds.includes("warranty_long"), "ChatGPT Plus should keep warranty filters.");
+
+const superGrokFacetIds = filterOfferFilterFacetsForProduct("super-grok", productFacetCases).map((facet) => facet.id);
+assert.ok(superGrokFacetIds.includes("duration_trial"), "Super Grok should show duration filters.");
+assert.ok(!superGrokFacetIds.includes("verification_single"), "Super Grok must not show verification filters.");
+
+const phoneFacetIds = filterOfferFilterFacetsForProduct("openai-phone-verification", productFacetCases).map((facet) => facet.id);
+assert.ok(phoneFacetIds.includes("verification_single"), "OpenAI 接码 should show verification filters.");
+assert.ok(!phoneFacetIds.includes("duration_trial"), "OpenAI 接码 must not show Grok duration filters.");
+
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("chatgpt-plus", "duration_month,verification_single,warranty_long"),
+  ["warranty_long"],
+  "Unsupported URL tags should be ignored on ChatGPT Plus.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("super-grok", "duration_month,warranty_long"),
+  ["duration_month", "warranty_long"],
+  "Super Grok should accept duration filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("grok-account", "duration_trial"),
+  ["duration_trial"],
+  "Grok 普号 should accept duration filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("x-twitter-premium", "duration_quarter"),
+  [],
+  "X/Twitter Premium should not accept Grok duration filters.",
+);
 
 const sharedAccessGroups = buildProductGroups([
   makeOffer({ id: "cheap-people-car", title: "Claude Pro-三人车", price: 50, status: "in_stock" }),

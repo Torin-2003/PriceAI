@@ -12,9 +12,10 @@ import { getOfficialSubscriptionAdminData } from "./official-prices-db";
 import {
   buildOfferFilterFacets,
   deriveOfferFilterTags,
+  filterOfferFilterFacetsForProduct,
   OFFER_FILTER_TAGS,
   offerMatchesFilterTags,
-  parseOfferFilterTags,
+  parseOfferFilterTagsForProduct,
   type OfferFilterTagFacet,
   type OfferFilterTagId,
 } from "./offer-filter-tags";
@@ -917,6 +918,7 @@ async function refreshPublicProductOfferSnapshots(
       limit: PUBLIC_PRODUCT_OFFERS_SNAPSHOT_LIMIT,
       offset: PUBLIC_PRODUCT_OFFERS_SNAPSHOT_OFFSET,
       filterTags: [],
+      filterProductId: product.id,
       query: "",
       excludeQuery: "",
       skipSnapshot: true,
@@ -2627,9 +2629,10 @@ async function getPublicProductSummaryFromDatabase(id: string): Promise<Explorer
 }
 
 export async function listPublicProductOffers(id: string, filters: ProductOfferListFilters = {}) {
+  const filterProductId = resolvePublicProductFilterId(id);
   const limit = normalizePublicOfferLimit(filters.limit);
   const offset = normalizePublicOfferOffset(filters.offset);
-  const filterTags = parseOfferFilterTags(filters.filterTags || []);
+  const filterTags = parseOfferFilterTagsForProduct(filterProductId, filters.filterTags || []);
   const query = normalizeProductOfferQuery(filters.query);
   const excludeQuery = normalizeProductOfferQuery(filters.excludeQuery, 160);
   const cacheKey = `${id}:${limit}:${offset}:${filterTags.join(",") || "all"}:${query || "none"}:${excludeQuery || "none"}:offer-filter-v3`;
@@ -2637,12 +2640,12 @@ export async function listPublicProductOffers(id: string, filters: ProductOfferL
   const cached = productOffersCache.get(cacheKey);
 
   if (cached && cached.expiresAt > now && isReusableGeneratedValue(cached.value)) {
-    return cached.value;
+    return sanitizePublicProductOffersResultForProduct(filterProductId, cached.value);
   }
 
   const staleValue = cached?.value || null;
-  const value = await loadPublicProductOffers(id, { limit, offset, filterTags, query, excludeQuery });
-  const nextValue = preferStaleProductOffers(staleValue, value);
+  const value = await loadPublicProductOffers(id, { limit, offset, filterTags, filterProductId, query, excludeQuery });
+  const nextValue = sanitizePublicProductOffersResultForProduct(filterProductId, preferStaleProductOffers(staleValue, value));
   productOffersCache.set(cacheKey, {
     expiresAt: Date.now() + PRODUCT_OFFERS_CACHE_TTL_MS,
     value: nextValue,
@@ -2664,6 +2667,7 @@ async function loadPublicProductOffers(
   id: string,
   filters: Required<Pick<ProductOfferListFilters, "limit" | "offset">> & {
     filterTags: OfferFilterTagId[];
+    filterProductId: string;
     query: string;
     excludeQuery: string;
     skipSnapshot?: boolean;
@@ -2677,7 +2681,7 @@ async function loadPublicProductOffers(
       snapshotKey,
     );
     if (snapshot && isProductOffersSnapshot(snapshot.value)) {
-      const value = hydrateGeneratedAt(snapshot);
+      const value = sanitizePublicProductOffersResultForProduct(filters.filterProductId, hydrateGeneratedAt(snapshot));
       if (isPublicApiSnapshotFresh(snapshot)) return value;
       staleSnapshotValue = value;
     }
@@ -2729,7 +2733,7 @@ async function loadPublicProductOffers(
   const fallbackValue = {
     offers: page,
     total,
-    filterFacets: buildOfferFilterFacets(productOffers),
+    filterFacets: filterOfferFilterFacetsForProduct(product.id, buildOfferFilterFacets(productOffers)),
     activeFilterTags: filterTags,
     limited: total > offset + limit,
     generatedAt: publicData.generatedAt,
@@ -2753,6 +2757,7 @@ async function getPublicProductOffersFromDatabase(
   id: string,
   filters: Required<Pick<ProductOfferListFilters, "limit" | "offset">> & {
     filterTags: OfferFilterTagId[];
+    filterProductId: string;
     query: string;
     excludeQuery: string;
   },
@@ -2762,7 +2767,7 @@ async function getPublicProductOffersFromDatabase(
   const supabase = getSupabaseServerClient();
   if (!supabase) return null;
 
-  const filterFacetsPromise = getPublicProductOfferFilterFacetsFromDatabase(id);
+  const filterFacetsPromise = getPublicProductOfferFilterFacetsFromDatabase(id, filters.filterProductId);
   const hasServerFilters = filters.filterTags.length > 0 || filters.query.length > 0 || filters.excludeQuery.length > 0;
   const rpcName = hasServerFilters
     ? "list_public_product_offers_page_v2"
@@ -2790,10 +2795,10 @@ async function getPublicProductOffersFromDatabase(
     return null;
   }
 
-  const filterFacets = (await filterFacetsPromise.catch((error: unknown) => {
+  const filterFacets = filterOfferFilterFacetsForProduct(filters.filterProductId, (await filterFacetsPromise.catch((error: unknown) => {
     console.warn("Product offer filter facet RPC failed independently:", errorMessage(error));
     return null;
-  })) ?? [];
+  })) ?? []);
   const rows = ((data || []) as unknown as Record<string, unknown>[]);
   const offers = await attachSourceCollectorKinds(rows.map(mapRawOffer));
   const total = rows.length ? Number(rows[0].total_count || rows.length) : 0;
@@ -2810,13 +2815,13 @@ async function getPublicProductOffersFromDatabase(
   };
 }
 
-async function getPublicProductOfferFilterFacetsFromDatabase(id: string): Promise<OfferFilterTagFacet[] | null> {
+async function getPublicProductOfferFilterFacetsFromDatabase(id: string, filterProductId = resolvePublicProductFilterId(id)): Promise<OfferFilterTagFacet[] | null> {
   if (!apiCdkPublicVisible()) return null;
 
   const supabase = getSupabaseServerClient();
   if (!supabase) return null;
 
-  const cacheKey = `facets:${id}`;
+  const cacheKey = `facets:${id}:${filterProductId}`;
   const now = Date.now();
   const cached = productOfferFacetsCache.get(cacheKey);
   if (cached && cached.expiresAt > now) return cached.value;
@@ -2835,7 +2840,7 @@ async function getPublicProductOfferFilterFacetsFromDatabase(id: string): Promis
   const rows = (data || []) as Array<Record<string, unknown>>;
   const counts = new Map(rows.map((row) => [String(row.tag_id), Number(row.offer_count || 0)]));
 
-  const facets = buildOfferFilterFacetsFromCounts(counts);
+  const facets = filterOfferFilterFacetsForProduct(filterProductId, buildOfferFilterFacetsFromCounts(counts));
   productOfferFacetsCache.set(cacheKey, {
     expiresAt: Date.now() + PRODUCT_OFFERS_CACHE_TTL_MS,
     value: facets,
@@ -2850,6 +2855,24 @@ async function getPublicProductOfferFilterFacetsFromDatabase(id: string): Promis
   }
 
   return facets;
+}
+
+function resolvePublicProductFilterId(id: string): string {
+  return canonicalCatalog.find((product) => product.id === id || product.slug === id)?.id ?? id;
+}
+
+function sanitizePublicProductOffersResultForProduct(
+  productId: string,
+  result: PublicProductOffersResult,
+): PublicProductOffersResult {
+  const filterFacets = filterOfferFilterFacetsForProduct(productId, result.filterFacets);
+  const activeFilterTags = parseOfferFilterTagsForProduct(productId, result.activeFilterTags);
+
+  return {
+    ...result,
+    filterFacets,
+    activeFilterTags,
+  };
 }
 
 function buildOfferFilterFacetsFromCounts(counts: Map<string, number>): OfferFilterTagFacet[] {

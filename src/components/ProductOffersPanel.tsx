@@ -10,7 +10,7 @@ import { useMediaQuery } from "@/lib/client-hooks";
 import { createTimeoutSignal, isGeneratedDatasetStale, newestGeneratedDataset } from "@/lib/client-refresh";
 import {
   OFFER_FILTER_TAG_BY_ID,
-  parseOfferFilterTags,
+  parseOfferFilterTagsForProduct,
   toggleOfferFilterTag,
   type OfferFilterTagFacet,
   type OfferFilterTagId,
@@ -74,7 +74,7 @@ export function ProductOffersPanel({
   initialQuery?: string;
   initialExcludeQuery?: string;
 }) {
-  const normalizedInitialFilterTags = useMemo(() => parseOfferFilterTags(initialFilterTags), [initialFilterTags]);
+  const normalizedInitialFilterTags = useMemo(() => parseOfferFilterTagsForProduct(productId, initialFilterTags), [initialFilterTags, productId]);
   const normalizedInitialQuery = useMemo(() => normalizeOfferSearchQuery(initialQuery), [initialQuery]);
   const normalizedInitialExcludeQuery = useMemo(() => normalizeOfferSearchQuery(initialExcludeQuery, 160), [initialExcludeQuery]);
   const [selectedFilterTags, setSelectedFilterTags] = useState<OfferFilterTagId[]>(normalizedInitialFilterTags);
@@ -109,7 +109,7 @@ export function ProductOffersPanel({
     const urlFilters = readOfferFiltersFromUrl();
     if (!urlFilters) return;
 
-    const nextFilterTags = parseOfferFilterTags(urlFilters.tags);
+    const nextFilterTags = parseOfferFilterTagsForProduct(productId, urlFilters.tags);
     const nextQuery = normalizeOfferSearchQuery(urlFilters.query);
     const nextExcludeQuery = normalizeOfferSearchQuery(urlFilters.excludeQuery, 160);
     const hasUrlFilters = nextFilterTags.length > 0 || Boolean(nextQuery || nextExcludeQuery);
@@ -125,10 +125,10 @@ export function ProductOffersPanel({
     });
 
     return () => window.cancelAnimationFrame(frameId);
-  }, []);
+  }, [productId]);
 
   useEffect(() => {
-    const filterTags = parseOfferFilterTags(selectedFilterKey);
+    const filterTags = parseOfferFilterTagsForProduct(productId, selectedFilterKey);
     const query = normalizeOfferSearchQuery(offerQuery);
     const excludeQuery = normalizeOfferSearchQuery(offerExcludeQuery, 160);
     const cacheKey = productOffersCacheKey(productId, 0, filterTags, query, excludeQuery);
@@ -215,7 +215,7 @@ export function ProductOffersPanel({
 
   const loadMoreOffers = useCallback(async () => {
     if (!activeData || loading || paging || offers.length >= total) return;
-    const filterTags = parseOfferFilterTags(selectedFilterTags);
+    const filterTags = parseOfferFilterTagsForProduct(productId, selectedFilterTags);
     const query = normalizeOfferSearchQuery(offerQuery);
     const excludeQuery = normalizeOfferSearchQuery(offerExcludeQuery, 160);
     const requestCacheKey = productOffersCacheKey(productId, 0, filterTags, query, excludeQuery);
@@ -436,7 +436,7 @@ function productOffersCacheKey(
   query = "",
   excludeQuery = "",
 ): string {
-  return `priceai:product-offers:v9:${productId}:${offset}:${OFFER_PAGE_SIZE}:${filterTags.join(",") || "all"}:${query || "none"}:${excludeQuery || "none"}`;
+  return `priceai:product-offers:v10:${productId}:${offset}:${OFFER_PAGE_SIZE}:${filterTags.join(",") || "all"}:${query || "none"}:${excludeQuery || "none"}`;
 }
 
 function rememberProductOffers(cacheKey: string, value: ProductOffersResponse) {

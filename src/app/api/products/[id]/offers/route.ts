@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { publicPriceApiErrorResponse } from "@/lib/api-errors";
 import { priceDataCacheHeaders } from "@/lib/cache-headers";
 import { listPublicProductOffers } from "@/lib/data";
-import { parseOfferFilterTags } from "@/lib/offer-filter-tags";
 import { parsePublicOfferPaginationForRoute } from "@/lib/public-offer-route";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +18,7 @@ export async function GET(
 
     const result = await listPublicProductOffers(id, {
       ...pagination,
-      filterTags: parseOfferFilterTags(request.nextUrl.searchParams.get("tags")),
+      filterTags: request.nextUrl.searchParams.get("tags")?.split(/[,，\s]+/) ?? [],
       query: request.nextUrl.searchParams.get("q"),
       excludeQuery: request.nextUrl.searchParams.get("exclude"),
     });
