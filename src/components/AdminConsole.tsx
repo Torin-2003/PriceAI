@@ -107,6 +107,8 @@ type ApiProviderCandidate = ApiModelAdminData["providerCandidates"][number];
 type ApiProviderSubmission = ApiModelAdminData["providerSubmissions"][number];
 type RiskReviewSettings = AdminSummary["riskReviewSettings"];
 type SponsorSettings = AdminSummary["sponsorSettings"];
+type SponsorPlacementKind = keyof SponsorSettings["placements"];
+type SponsorPlacementConfig = SponsorSettings["placements"][SponsorPlacementKind];
 type PasswordStatus = AdminSummary["passwordStatus"];
 type CollectorHealthData = AdminSummary["collectorHealth"];
 type CollectorHealthSourceRow = CollectorHealthData["sources"][number];
@@ -4928,6 +4930,9 @@ function SponsorSettingsPanel({
   const statusClass = draft.enabled
     ? "bg-[#e8f3ec] text-[#2f7a4b]"
     : "bg-[#f2f4f4] text-[#5a6061]";
+  const sponsorPlacementEntries = Object.entries(draft.placements) as Array<[SponsorPlacementKind, SponsorPlacementConfig]>;
+  const topBannerPlacement = draft.placements.topBanner;
+  const standardSponsorPlacements = sponsorPlacementEntries.filter(([kind]) => kind !== "topBanner");
 
   return (
     <section className="rounded-lg border border-[#adb3b4]/20 bg-white p-4">
@@ -4970,234 +4975,23 @@ function SponsorSettingsPanel({
           开启全站赞助展示
         </label>
 
-        <div className="grid gap-3 xl:grid-cols-2">
-          {Object.entries(draft.placements).map(([kind, placement]) => {
-            return (
-              <fieldset key={kind} className="rounded-lg border border-[#adb3b4]/20 bg-[#f9f9f9] p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h4 className="text-sm font-semibold text-[#202829]">{sponsorPlacementLabel(kind)}</h4>
-                    <p className="mt-1 text-xs leading-5 text-[#5a6061]">
-                      {kind === "topBanner"
-                        ? "展示为首页顶部通知条，只需要短标题、说明和跳转链接，不使用图片卡。"
-                        : kind === "listFooter"
-                        ? "底部区域支持多张图片卡，可放 AI 周边和中转 API 周边赞助；不得写成榜单推荐或排序权益。"
-                        : "展示为轻量横幅或图文卡片。"}
-                    </p>
-                  </div>
-                  <label className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-[#2d3435] ring-1 ring-[#adb3b4]/20">
-                    <input
-                      type="checkbox"
-                      checked={placement.enabled}
-                      onChange={(event) => setDraft((current) => updateSponsorPlacement(current, kind, { enabled: event.target.checked }))}
-                      className="h-4 w-4 accent-[#2d3435]"
-                    />
-                    启用站位
-                  </label>
-                </div>
+        {topBannerPlacement ? (
+          <SponsorPlacementEditor
+            kind="topBanner"
+            placement={topBannerPlacement}
+            setDraft={setDraft}
+          />
+        ) : null}
 
-                {placement.creatives.length ? (
-                  <div className="mt-4 space-y-3">
-                    {placement.creatives.map((creative, index) => (
-                      <div key={creative.id} className="rounded-lg bg-white p-3 ring-1 ring-[#adb3b4]/20">
-                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <span className="text-xs font-semibold text-[#2d3435]">素材 {index + 1}</span>
-                            <span className="max-w-[16rem] truncate rounded-full bg-[#f2f4f4] px-2 py-0.5 text-[11px] font-semibold text-[#5a6061]">
-                              {creative.campaignId || creative.id}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setDraft((current) => moveSponsorCreative(current, kind, index, -1))}
-                              disabled={index === 0}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[#f2f4f4] text-[#5a6061] transition hover:bg-[#e4e9ea] hover:text-[#202829] disabled:cursor-not-allowed disabled:opacity-40"
-                              aria-label="上移素材"
-                            >
-                              <ArrowUp size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDraft((current) => moveSponsorCreative(current, kind, index, 1))}
-                              disabled={index === placement.creatives.length - 1}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[#f2f4f4] text-[#5a6061] transition hover:bg-[#e4e9ea] hover:text-[#202829] disabled:cursor-not-allowed disabled:opacity-40"
-                              aria-label="下移素材"
-                            >
-                              <ArrowDown size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDraft((current) => removeSponsorCreative(current, kind, index))}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[#fbe9e7] text-[#9b3328] transition hover:bg-[#f5d4d0]"
-                              aria-label="删除素材"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                            <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2d3435]">
-                              <input
-                                type="checkbox"
-                                checked={creative.enabled}
-                                onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { enabled: event.target.checked }))}
-                                className="h-4 w-4 accent-[#2d3435]"
-                              />
-                              启用素材
-                            </label>
-                          </div>
-                        </div>
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <label className="block">
-                            <span className="mb-1 block text-xs font-medium text-[#5a6061]">赞助方</span>
-                            <input
-                              value={creative.sponsorName || ""}
-                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { sponsorName: event.target.value }))}
-                              className={adminInputClassName}
-                              placeholder="例如 Vultr / OneHop"
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="mb-1 block text-xs font-medium text-[#5a6061]">Campaign ID</span>
-                            <input
-                              value={creative.campaignId || ""}
-                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { campaignId: event.target.value }))}
-                              className={adminInputClassName}
-                              placeholder="例如 vultr-2026-07"
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="mb-1 block text-xs font-medium text-[#5a6061]">素材状态</span>
-                            <select
-                              value={creative.status}
-                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { status: event.target.value as SponsorCreative["status"] }))}
-                              className={adminInputClassName}
-                            >
-                              <option value="live">上线</option>
-                              <option value="draft">草稿</option>
-                              <option value="paused">暂停</option>
-                              <option value="expired">过期</option>
-                            </select>
-                          </label>
-                          {kind !== "topBanner" ? (
-                            <label className="block">
-                              <span className="mb-1 block text-xs font-medium text-[#5a6061]">色调</span>
-                              <select
-                                value={creative.tone}
-                                onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { tone: event.target.value as SponsorCreative["tone"] }))}
-                                className={adminInputClassName}
-                              >
-                                <option value="green">绿色</option>
-                                <option value="blue">蓝色</option>
-                                <option value="amber">琥珀色</option>
-                              </select>
-                            </label>
-                          ) : (
-                            <p className="rounded-lg bg-[#eef3f8] px-3 py-2 text-[11px] leading-5 text-[#47657a]">
-                              顶部横幅使用固定通知条样式。
-                            </p>
-                          )}
-                          <SponsorDisclosureLabelField
-                            kind={kind}
-                            index={index}
-                            creative={creative}
-                            setDraft={setDraft}
-                          />
-                          <label className="block md:col-span-2">
-                            <span className="mb-1 block text-xs font-medium text-[#5a6061]">标题</span>
-                            <input
-                              value={creative.title}
-                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { title: event.target.value }))}
-                              className={adminInputClassName}
-                            />
-                          </label>
-                          <label className="block md:col-span-2">
-                            <span className="mb-1 block text-xs font-medium text-[#5a6061]">说明</span>
-                            <textarea
-                              value={creative.description}
-                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { description: event.target.value }))}
-                              rows={2}
-                              className={`${adminInputClassName} h-auto min-h-20 resize-y py-2 leading-6`}
-                            />
-                          </label>
-                          <label className="block md:col-span-2">
-                            <span className="mb-1 block text-xs font-medium text-[#5a6061]">跳转链接</span>
-                            <input
-                              value={creative.targetUrl}
-                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { targetUrl: event.target.value }))}
-                              className={adminInputClassName}
-                            />
-                            <span className="mt-1 block text-[11px] leading-5 text-[#8a9293]">外部链接会自动追加 utm_source=priceai、utm_medium=sponsor、utm_campaign 和 utm_content。</span>
-                          </label>
-                          {kind !== "topBanner" ? (
-                            <>
-                              <SponsorImageField
-                                kind={kind}
-                                index={index}
-                                creative={creative}
-                                setDraft={setDraft}
-                              />
-                              <label className="block">
-                                <span className="mb-1 block text-xs font-medium text-[#5a6061]">图片主标题</span>
-                                <input
-                                  value={creative.visualTitle || ""}
-                                  onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { visualTitle: event.target.value }))}
-                                  className={adminInputClassName}
-                                />
-                              </label>
-                              <label className="block">
-                                <span className="mb-1 block text-xs font-medium text-[#5a6061]">图片副信息</span>
-                                <input
-                                  value={creative.visualMeta || ""}
-                                  onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { visualMeta: event.target.value }))}
-                                  className={adminInputClassName}
-                                />
-                              </label>
-                            </>
-                          ) : (
-                            <p className="md:col-span-2 rounded-lg bg-[#eef3f8] px-3 py-2 text-[11px] leading-5 text-[#47657a]">
-                              顶部横幅是通知条样式，不读取图片素材；前台展示为一行短文案和跳转箭头。
-                            </p>
-                          )}
-                          <label className="block">
-                            <span className="mb-1 block text-xs font-medium text-[#5a6061]">开始时间</span>
-                            <input
-                              value={formatDateTimeLocalValue(creative.startsAt)}
-                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { startsAt: event.target.value || null }))}
-                              type="datetime-local"
-                              className={adminInputClassName}
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="mb-1 block text-xs font-medium text-[#5a6061]">到期时间</span>
-                            <input
-                              value={formatDateTimeLocalValue(creative.endsAt)}
-                              onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { endsAt: event.target.value || null }))}
-                              type="datetime-local"
-                              className={adminInputClassName}
-                            />
-                          </label>
-                        </div>
-                        {kind === "topBanner"
-                          ? <SponsorTopBannerPreview creative={creative} kind={kind} />
-                          : <SponsorCreativePreview creative={creative} kind={kind} />}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-4 rounded-lg bg-white px-3 py-2 text-xs text-[#5a6061] ring-1 ring-[#adb3b4]/20">
-                    当前站位没有默认素材。
-                  </p>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setDraft((current) => addSponsorCreative(current, kind))}
-                  className="mt-3 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-3 text-xs font-semibold text-[#2d3435] ring-1 ring-[#adb3b4]/25 transition hover:bg-[#f2f4f4]"
-                >
-                  <Plus size={14} />
-                  新增素材
-                </button>
-              </fieldset>
-            );
-          })}
+        <div className="grid gap-3 xl:grid-cols-2">
+          {standardSponsorPlacements.map(([kind, placement]) => (
+            <SponsorPlacementEditor
+              key={kind}
+              kind={kind}
+              placement={placement}
+              setDraft={setDraft}
+            />
+          ))}
         </div>
 
         <div className="flex justify-end">
@@ -5212,6 +5006,245 @@ function SponsorSettingsPanel({
         </div>
       </form>
     </section>
+  );
+}
+
+function SponsorPlacementEditor({
+  kind,
+  placement,
+  setDraft,
+}: {
+  kind: SponsorPlacementKind;
+  placement: SponsorPlacementConfig;
+  setDraft: Dispatch<SetStateAction<SponsorSettings>>;
+}) {
+  const isTopBanner = kind === "topBanner";
+  const fieldGridClassName = isTopBanner
+    ? "grid gap-3 md:grid-cols-2 xl:grid-cols-4"
+    : "grid gap-3 md:grid-cols-2";
+  const titleFieldClassName = isTopBanner ? "block md:col-span-2" : "block md:col-span-2";
+  const fullFieldClassName = isTopBanner ? "block md:col-span-2 xl:col-span-4" : "block md:col-span-2";
+
+  return (
+    <fieldset className="rounded-lg border border-[#adb3b4]/20 bg-[#f9f9f9] p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h4 className="text-sm font-semibold text-[#202829]">{sponsorPlacementLabel(kind)}</h4>
+          <p className="mt-1 text-xs leading-5 text-[#5a6061]">
+            {sponsorPlacementDescription(kind)}
+          </p>
+        </div>
+        <label className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-[#2d3435] ring-1 ring-[#adb3b4]/20">
+          <input
+            type="checkbox"
+            checked={placement.enabled}
+            onChange={(event) => setDraft((current) => updateSponsorPlacement(current, kind, { enabled: event.target.checked }))}
+            className="h-4 w-4 accent-[#2d3435]"
+          />
+          启用站位
+        </label>
+      </div>
+
+      {placement.creatives.length ? (
+        <div className="mt-4 space-y-3">
+          {placement.creatives.map((creative, index) => (
+            <div key={creative.id} className="rounded-lg bg-white p-3 ring-1 ring-[#adb3b4]/20">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-[#2d3435]">素材 {index + 1}</span>
+                  <span className="max-w-[16rem] truncate rounded-full bg-[#f2f4f4] px-2 py-0.5 text-[11px] font-semibold text-[#5a6061]">
+                    {creative.campaignId || creative.id}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDraft((current) => moveSponsorCreative(current, kind, index, -1))}
+                    disabled={index === 0}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[#f2f4f4] text-[#5a6061] transition hover:bg-[#e4e9ea] hover:text-[#202829] disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="上移素材"
+                  >
+                    <ArrowUp size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraft((current) => moveSponsorCreative(current, kind, index, 1))}
+                    disabled={index === placement.creatives.length - 1}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[#f2f4f4] text-[#5a6061] transition hover:bg-[#e4e9ea] hover:text-[#202829] disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="下移素材"
+                  >
+                    <ArrowDown size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraft((current) => removeSponsorCreative(current, kind, index))}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[#fbe9e7] text-[#9b3328] transition hover:bg-[#f5d4d0]"
+                    aria-label="删除素材"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                  <label className="inline-flex items-center gap-2 text-xs font-medium text-[#2d3435]">
+                    <input
+                      type="checkbox"
+                      checked={creative.enabled}
+                      onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { enabled: event.target.checked }))}
+                      className="h-4 w-4 accent-[#2d3435]"
+                    />
+                    启用素材
+                  </label>
+                </div>
+              </div>
+              <div className={fieldGridClassName}>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-[#5a6061]">赞助方</span>
+                  <input
+                    value={creative.sponsorName || ""}
+                    onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { sponsorName: event.target.value }))}
+                    className={adminInputClassName}
+                    placeholder="例如 Vultr / OneHop"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-[#5a6061]">Campaign ID</span>
+                  <input
+                    value={creative.campaignId || ""}
+                    onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { campaignId: event.target.value }))}
+                    className={adminInputClassName}
+                    placeholder="例如 vultr-2026-07"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-[#5a6061]">素材状态</span>
+                  <select
+                    value={creative.status}
+                    onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { status: event.target.value as SponsorCreative["status"] }))}
+                    className={adminInputClassName}
+                  >
+                    <option value="live">上线</option>
+                    <option value="draft">草稿</option>
+                    <option value="paused">暂停</option>
+                    <option value="expired">过期</option>
+                  </select>
+                </label>
+                {isTopBanner ? (
+                  <p className="rounded-lg bg-[#eef3f8] px-3 py-2 text-[11px] leading-5 text-[#47657a]">
+                    顶部横幅使用固定通知条样式。
+                  </p>
+                ) : (
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-[#5a6061]">色调</span>
+                    <select
+                      value={creative.tone}
+                      onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { tone: event.target.value as SponsorCreative["tone"] }))}
+                      className={adminInputClassName}
+                    >
+                      <option value="green">绿色</option>
+                      <option value="blue">蓝色</option>
+                      <option value="amber">琥珀色</option>
+                    </select>
+                  </label>
+                )}
+                <SponsorDisclosureLabelField
+                  kind={kind}
+                  index={index}
+                  creative={creative}
+                  setDraft={setDraft}
+                />
+                <label className={titleFieldClassName}>
+                  <span className="mb-1 block text-xs font-medium text-[#5a6061]">标题</span>
+                  <input
+                    value={creative.title}
+                    onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { title: event.target.value }))}
+                    className={adminInputClassName}
+                  />
+                </label>
+                <label className={fullFieldClassName}>
+                  <span className="mb-1 block text-xs font-medium text-[#5a6061]">说明</span>
+                  <textarea
+                    value={creative.description}
+                    onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { description: event.target.value }))}
+                    rows={2}
+                    className={`${adminInputClassName} h-auto min-h-20 resize-y py-2 leading-6`}
+                  />
+                </label>
+                <label className={fullFieldClassName}>
+                  <span className="mb-1 block text-xs font-medium text-[#5a6061]">跳转链接</span>
+                  <input
+                    value={creative.targetUrl}
+                    onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { targetUrl: event.target.value }))}
+                    className={adminInputClassName}
+                  />
+                  <span className="mt-1 block text-[11px] leading-5 text-[#8a9293]">外部链接会自动追加 utm_source=priceai、utm_medium=sponsor、utm_campaign 和 utm_content。</span>
+                </label>
+                {isTopBanner ? (
+                  <p className="rounded-lg bg-[#eef3f8] px-3 py-2 text-[11px] leading-5 text-[#47657a] md:col-span-2 xl:col-span-4">
+                    顶部横幅是通知条样式，不读取图片素材；前台展示为一行短文案和跳转箭头。
+                  </p>
+                ) : (
+                  <>
+                    <SponsorImageField
+                      kind={kind}
+                      index={index}
+                      creative={creative}
+                      setDraft={setDraft}
+                    />
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-[#5a6061]">图片主标题</span>
+                      <input
+                        value={creative.visualTitle || ""}
+                        onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { visualTitle: event.target.value }))}
+                        className={adminInputClassName}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-[#5a6061]">图片副信息</span>
+                      <input
+                        value={creative.visualMeta || ""}
+                        onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { visualMeta: event.target.value }))}
+                        className={adminInputClassName}
+                      />
+                    </label>
+                  </>
+                )}
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-[#5a6061]">开始时间</span>
+                  <input
+                    value={formatDateTimeLocalValue(creative.startsAt)}
+                    onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { startsAt: event.target.value || null }))}
+                    type="datetime-local"
+                    className={adminInputClassName}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-[#5a6061]">到期时间</span>
+                  <input
+                    value={formatDateTimeLocalValue(creative.endsAt)}
+                    onChange={(event) => setDraft((current) => updateSponsorCreative(current, kind, index, { endsAt: event.target.value || null }))}
+                    type="datetime-local"
+                    className={adminInputClassName}
+                  />
+                </label>
+              </div>
+              {isTopBanner
+                ? <SponsorTopBannerPreview creative={creative} kind={kind} />
+                : <SponsorCreativePreview creative={creative} kind={kind} />}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 rounded-lg bg-white px-3 py-2 text-xs text-[#5a6061] ring-1 ring-[#adb3b4]/20">
+          当前站位没有默认素材。
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={() => setDraft((current) => addSponsorCreative(current, kind))}
+        className="mt-3 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-3 text-xs font-semibold text-[#2d3435] ring-1 ring-[#adb3b4]/25 transition hover:bg-[#f2f4f4]"
+      >
+        <Plus size={14} />
+        新增素材
+      </button>
+    </fieldset>
   );
 }
 
@@ -5668,6 +5701,12 @@ function sponsorPreviewToneClass(tone: SponsorCreative["tone"]) {
 
 function sponsorPlacementLabel(kind: string): string {
   return sponsorPlacementLabels[kind as keyof typeof sponsorPlacementLabels] || "底部赞助展示区";
+}
+
+function sponsorPlacementDescription(kind: string): string {
+  if (kind === "topBanner") return "展示为首页顶部通知条，单独占满后台宽度，只需要短标题、说明和跳转链接。";
+  if (kind === "listFooter") return "底部区域支持多张图片卡，可放 AI 周边和中转 API 周边赞助；不得写成榜单推荐或排序权益。";
+  return "展示为轻量横幅或图文卡片。";
 }
 
 function formatDateTimeLocalValue(value: string | null | undefined): string {
