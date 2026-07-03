@@ -313,8 +313,8 @@ async function completeCoveredCollectionJobs(
 
   const now = new Date().toISOString();
   const jobs = (data || [])
-    .filter((job) => {
-      if (input.explicitJobId && String(job.id) === input.explicitJobId) return true;
+    .filter(() => {
+      if (input.explicitJobId) return true;
       return input.fullSnapshot;
     });
   if (!jobs.length) return [];
