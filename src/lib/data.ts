@@ -3098,9 +3098,15 @@ function sanitizePublicProductOffersResultForProduct(
 
   const filterFacets = filterOfferFilterFacetsForProduct(productId, result.filterFacets);
   const activeFilterTags = parseOfferFilterTagsForProduct(productId, result.activeFilterTags);
+  const offers = result.offers.filter((offer) => (offer.canonicalProductId || offer.storedCanonicalProductId) === productId);
+  const removedOfferCount = result.offers.length - offers.length;
+  const total = removedOfferCount > 0 ? Math.max(0, result.total - removedOfferCount) : result.total;
 
   return {
     ...result,
+    offers,
+    total,
+    limited: total > offers.length ? result.limited : false,
     filterFacets,
     activeFilterTags,
   };
