@@ -7,6 +7,7 @@ import { ExternalLink, Handshake, HeartHandshake, Info, Menu, MessageCircle, X }
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AppLogo } from "@/components/AppLogo";
+import { AuthButton } from "@/components/AuthButton";
 import { FeedbackDialog, FeedbackLink, GitHubLink, QQGroupDialog, QQGroupLink, TelegramLink } from "@/components/FeedbackLink";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { qqGroupNumber, telegramUrl } from "@/lib/community";
@@ -111,6 +112,7 @@ export function SiteHeader({
           <QQGroupLink compact labelFrom={compactActionLabelFrom} />
           <TelegramLink compact labelFrom={compactActionLabelFrom} />
           <GitHubLink compact labelFrom={compactActionLabelFrom} />
+          <AuthButton compact labelFrom={compactActionLabelFrom} />
         </div>
       </div>
 
@@ -231,6 +233,16 @@ function MobileModuleDrawer({
                 批发合作
               </span>
               {wholesaleActive ? <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-brand)]" aria-hidden="true" /> : null}
+            </Link>
+            <Link
+              href="/login"
+              onClick={onClose}
+              className="flex h-11 items-center justify-between rounded-lg px-3 text-sm font-semibold text-[var(--color-text-body)] transition hover:bg-[var(--color-surface-hover)]"
+            >
+              <span className="inline-flex items-center gap-3">
+                <Info size={17} />
+                登录 / 账户
+              </span>
             </Link>
             <Link
               href="/about"

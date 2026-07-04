@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { AlertTriangle, ExternalLink, Filter, Flag, ImageUp, Loader2, ShieldAlert, Trash2, X } from "lucide-react";
 import { type ChangeEvent, type ClipboardEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { CommunityPrompt } from "@/components/FeedbackLink";
@@ -1758,6 +1759,7 @@ export function OfferFeedbackDialog({
   const [loading, setLoading] = useState(false);
   const [uploadingEvidence, setUploadingEvidence] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const titleId = "offer-feedback-dialog-title";
   const hasEvidence =
@@ -1850,6 +1852,7 @@ export function OfferFeedbackDialog({
     event.preventDefault();
     setLoading(true);
     setMessage(null);
+    setAuthRequired(false);
 
     if (requiresImageEvidence && uploadedEvidence.length === 0) {
       setMessage({ type: "error", text: "这类高风险反馈需要至少上传 1 张图片证据，文字或链接只能作为补充。" });
@@ -1901,6 +1904,7 @@ export function OfferFeedbackDialog({
       });
       const json = await response.json().catch(() => ({ ok: false, message: response.statusText }));
       if (!response.ok || !json.ok) {
+        if (json.code === "auth_required") setAuthRequired(true);
         throw new Error(json.message || "反馈提交失败。");
       }
       setMessage({ type: "success", text: "已收到反馈，我会在后台审核处理。" });
@@ -1909,6 +1913,11 @@ export function OfferFeedbackDialog({
     } finally {
       setLoading(false);
     }
+  }
+
+  function buildLoginHref() {
+    const next = typeof window === "undefined" ? `/products/${productSlug}` : `${window.location.pathname}${window.location.search}`;
+    return `/login?next=${encodeURIComponent(next)}`;
   }
 
   return (
@@ -2057,7 +2066,15 @@ export function OfferFeedbackDialog({
             <div className={`rounded-lg px-3 py-2 text-sm ${
               message.type === "success" ? "bg-[#e8f3ec] text-[#2f7a4b]" : "bg-[#fbe9e7] text-[#9b3328]"
             }`}>
-              {message.text}
+              <p>{message.text}</p>
+              {authRequired && message.type === "error" ? (
+                <Link
+                  href={buildLoginHref()}
+                  className="mt-2 inline-flex h-8 items-center justify-center rounded-full bg-[#2d3435] px-3 text-xs font-semibold text-white transition hover:bg-[#202829]"
+                >
+                  登录后提交
+                </Link>
+              ) : null}
             </div>
           ) : null}
           <button
