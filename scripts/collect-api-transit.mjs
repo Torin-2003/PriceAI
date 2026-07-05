@@ -627,7 +627,10 @@ function parseZivvModelHubPayload(source, payload, collectedAt) {
 function parseAiTransitSnapshotPayload(source, payload, collectedAt) {
   const groups = Array.isArray(payload?.groups) ? payload.groups : [];
   const generatedAt = stringOrNull(payload?.generated_at) || collectedAt;
-  const rechargeRatio = stringOrNull(payload?.billing?.recharge_ratio) || source.rechargeRatio || DEFAULT_RECHARGE_RATIO;
+  const rechargeRatio =
+    rechargeRatioFromAiTransitBilling(payload?.billing) ||
+    source.rechargeRatio ||
+    DEFAULT_RECHARGE_RATIO;
   const availabilityByKey = aiTransitAvailabilityByKey(payload, generatedAt, source);
   const offers = [];
 
@@ -803,6 +806,24 @@ function aiTransitUnitPricesUsd(price) {
     cacheWrite: multiplyNullable(numberValue(price?.cache_write_usd_per_token), tokenUnitFactor),
     imageOutput: numberValue(price?.image_output_usd_per_token) ?? maxNumber(Object.values(imageSizePrices)),
   };
+}
+
+function rechargeRatioFromAiTransitBilling(billing) {
+  const directMultiplier = numberValue(billing?.recharge_multiplier ?? billing?.balance_per_cny);
+  if (directMultiplier !== null && directMultiplier > 0) return `1:${round(directMultiplier, 6)}`;
+
+  const ratioText = stringOrNull(billing?.recharge_ratio ?? billing?.display_text);
+  if (!ratioText) return null;
+
+  const ratioMatch = ratioText.match(/(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)/);
+  if (ratioMatch) return `${round(Number(ratioMatch[1]), 6)}:${round(Number(ratioMatch[2]), 6)}`;
+
+  const balanceMatch = ratioText.match(
+    /(\d+(?:\.\d+)?)\s*(?:CNY|RMB|人民币|元|￥|¥)?\s*=\s*(\d+(?:\.\d+)?)\s*(?:USD\s*)?(?:balance|余额|额度|credit|credits)?/i,
+  );
+  if (!balanceMatch) return ratioText;
+
+  return `${round(Number(balanceMatch[1]), 6)}:${round(Number(balanceMatch[2]), 6)}`;
 }
 
 function multiplyNullable(value, multiplier) {

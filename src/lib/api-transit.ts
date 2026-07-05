@@ -66,11 +66,22 @@ export async function getStationBySlug(
 export function parseRechargeRatio(text: string | null): number | null {
   if (!text) return null;
 
-  const match = text.match(/(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)/);
-  if (!match) return null;
+  const ratioMatch = text.match(/(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)/);
+  if (ratioMatch) {
+    const base = Number(ratioMatch[1]);
+    const quota = Number(ratioMatch[2]);
+    if (!Number.isFinite(base) || !Number.isFinite(quota) || base <= 0) return null;
 
-  const base = Number(match[1]);
-  const quota = Number(match[2]);
+    return quota / base;
+  }
+
+  const balanceMatch = text.match(
+    /(\d+(?:\.\d+)?)\s*(?:CNY|RMB|人民币|元|￥|¥)?\s*=\s*(\d+(?:\.\d+)?)\s*(?:USD\s*)?(?:balance|余额|额度|credit|credits)?/i
+  );
+  if (!balanceMatch) return null;
+
+  const base = Number(balanceMatch[1]);
+  const quota = Number(balanceMatch[2]);
   if (!Number.isFinite(base) || !Number.isFinite(quota) || base <= 0) return null;
 
   return quota / base;

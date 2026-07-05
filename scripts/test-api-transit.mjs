@@ -486,6 +486,7 @@ assert.equal(aiTransitSnapshot.station.collector_kind, "ai_transit_snapshot");
 assert.equal(aiTransitSnapshot.station.published, true);
 assert.equal(aiTransitSnapshot.offers.length, 2);
 const aiTransitGpt = aiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.5");
+assert.equal(aiTransitGpt.recharge_ratio, "1:1");
 assert.equal(aiTransitGpt.model_multiplier, 0.1);
 assert.equal(aiTransitGpt.input_price, 0.1);
 assert.equal(aiTransitGpt.output_price, 0.1);

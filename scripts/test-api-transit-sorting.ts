@@ -5,6 +5,7 @@ import {
   getStationPublishedAvailabilitySummary,
   getStandardModelRateSummary,
   normalizedTransitCommercialOfferDisclosure,
+  getRechargeCoefficientFromRatio,
   scoreTransitCombinedRate,
 } from "../src/lib/api-transit";
 import {
@@ -87,6 +88,8 @@ function availability(sevenDayRate: number, sevenDaySamples: number): TransitSta
 }
 
 assertEqual(scoreTransitCombinedRate(0.3) > scoreTransitCombinedRate(1.5), true);
+assertEqual(getRechargeCoefficientFromRatio("1 CNY = 1 USD balance"), 1);
+assertEqual(getRechargeCoefficientFromRatio("1 CNY = 5 USD balance"), 0.2);
 
 const neko = station({
   id: "999555999-com",
