@@ -1,6 +1,7 @@
 export const OFFER_FILTER_TAG_GROUPS = {
   access: "交付方式",
   duration: "时长",
+  gemini: "Gemini 条件",
   proxy: "反代能力",
   telegramAccount: "Telegram 地区",
   telegramPremium: "Telegram 权益",
@@ -28,6 +29,9 @@ export type OfferFilterTagId =
   | "telegram_premium_year"
   | "telegram_stars"
   | "proxy_supported"
+  | "gemini_antigravity_gcp"
+  | "gemini_phone_required"
+  | "gemini_appeal_required"
   | "warranty_long";
 
 export type OfferFilterTagDefinition = {
@@ -145,6 +149,24 @@ export const OFFER_FILTER_TAGS: OfferFilterTagDefinition[] = [
     description: "支持反代、Codex、sub2、cpa、json 或 API 格式。",
   },
   {
+    id: "gemini_antigravity_gcp",
+    label: "包反重力/GCP",
+    group: "gemini",
+    description: "包 GCP、支持 GCP、包反重力、支持反重力或可用 CLI 的 Gemini 报价。",
+  },
+  {
+    id: "gemini_phone_required",
+    label: "需绑手机",
+    group: "gemini",
+    description: "需要绑定手机、手机号接码或长效接码的 Gemini 报价。",
+  },
+  {
+    id: "gemini_appeal_required",
+    label: "需申诉",
+    group: "gemini",
+    description: "首登需要申诉、需申诉、需注册或要求未注册手机号的 Gemini 报价。",
+  },
+  {
     id: "warranty_long",
     label: "长期质保",
     group: "warranty",
@@ -179,6 +201,11 @@ const TELEGRAM_PREMIUM_FILTER_TAG_IDS = new Set<OfferFilterTagId>([
   "telegram_premium_half_year",
   "telegram_premium_year",
   "telegram_stars",
+]);
+const GEMINI_PRO_ACCOUNT_FILTER_TAG_IDS = new Set<OfferFilterTagId>([
+  "gemini_antigravity_gcp",
+  "gemini_phone_required",
+  "gemini_appeal_required",
 ]);
 const DURATION_FILTER_PRODUCT_IDS = new Set<string>([
   "grok-account",
@@ -232,6 +259,7 @@ export function offerFilterTagAppliesToProduct(productId: string, tagId: OfferFi
   if (VERIFICATION_FILTER_TAG_IDS.has(tagId)) return VERIFICATION_FILTER_PRODUCT_IDS.has(productId);
   if (TELEGRAM_ACCOUNT_FILTER_TAG_IDS.has(tagId)) return productId === "telegram-account";
   if (TELEGRAM_PREMIUM_FILTER_TAG_IDS.has(tagId)) return productId === "telegram-premium";
+  if (GEMINI_PRO_ACCOUNT_FILTER_TAG_IDS.has(tagId)) return productId === "gemini-pro-year";
   return true;
 }
 
@@ -290,6 +318,16 @@ export function deriveOfferFilterTags(input: {
     output.add("telegram_premium_half_year");
   } else if (hasTelegramPremiumQuarterSignal(text)) {
     output.add("telegram_premium_quarter");
+  }
+
+  if (hasGeminiAntigravityGcpSignal(text)) {
+    output.add("gemini_antigravity_gcp");
+  }
+  if (hasGeminiPhoneRequiredSignal(text)) {
+    output.add("gemini_phone_required");
+  }
+  if (hasGeminiAppealRequiredSignal(text)) {
+    output.add("gemini_appeal_required");
   }
 
   if (
@@ -436,6 +474,37 @@ function hasTelegramPremiumYearSignal(text: string): boolean {
 
 function hasTelegramPremiumSignal(text: string): boolean {
   return /telegram.{0,16}(premium|会员|pro)|tg.{0,16}(premium|会员|pro)|电报.{0,16}(premium|会员|pro)|飞机.{0,16}(premium|会员|pro)|premium.{0,16}(telegram|tg)|会员.{0,16}(telegram|tg|电报)/.test(text);
+}
+
+function hasGeminiAntigravityGcpSignal(text: string): boolean {
+  const hasGcpSignal = /包gcp|支持gcp|gcp可用|gcp已开|gcp正常|googlecloud|谷歌云/.test(text);
+  const hasGcpNegativeSignal = /不包gcp|无gcp|gcp已禁用|gcp禁用|不支持gcp|gcp不可用|不带gcp|不含gcp|不送gcp/.test(text);
+  const hasAntigravitySignal = /包反重力|支持反重力|反重力直接用|反重力可用|可用反重力|antigravity/.test(text);
+  const hasAntigravityNegativeSignal = /不包反重力|不支持反重力|反重力不可用|无法反重力|不能反重力|不等于反重力/.test(text);
+  const hasCliSignal = /(?:gemini|googleai|googleaipro|gcp|反重力|antigravity).{0,16}cli|cli.{0,16}(?:gemini|googleai|googleaipro|gcp|反重力|antigravity)|codeassist/.test(text);
+  const hasCliNegativeSignal = /不支持cli|cli不可用|无法cli|不能cli/.test(text);
+
+  return (
+    (hasGcpSignal && !hasGcpNegativeSignal) ||
+    (hasAntigravitySignal && !hasAntigravityNegativeSignal) ||
+    (hasCliSignal && !hasCliNegativeSignal)
+  );
+}
+
+function hasGeminiPhoneRequiredSignal(text: string): boolean {
+  if (/无需绑定手机|无需绑手机|无须绑定手机|无须绑手机|免绑手机|不用绑手机|不需要绑定手机|不需要绑手机/.test(text)) {
+    return false;
+  }
+
+  return /需要绑定手机|需绑定手机|需要绑手机|需绑手机|绑定手机号|绑定手机|手机号接码|手机接码|长效接码|接码/.test(text);
+}
+
+function hasGeminiAppealRequiredSignal(text: string): boolean {
+  if (/无需申诉|无须申诉|免申诉|不用申诉|不需要申诉|无需注册|无须注册|免注册|不用注册|不需要注册/.test(text)) {
+    return false;
+  }
+
+  return /首登需要申诉|需要申诉|需申诉|申诉|需注册|需要注册|没注册过谷歌|未注册过谷歌|没注册过google|未注册过google/.test(text);
 }
 
 function hasBlockingNoWarrantySignal(text: string): boolean {

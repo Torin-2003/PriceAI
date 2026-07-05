@@ -392,6 +392,10 @@ const tagCases = [
   ["Telegram Premium会员代开（6个月）", ["telegram_premium_half_year"]],
   ["Telegram Premium 会员 1年", ["telegram_premium_year"]],
   ["Telegram 星星兑换码 50颗", ["telegram_stars"]],
+  ["Gemini Pro 一年成品号 包GCP", ["gemini_antigravity_gcp"]],
+  ["美区 Gemini Pro 包反重力 12个月", ["gemini_antigravity_gcp"]],
+  ["Gemini 3.1pro 12个月pixel成品号需要绑定手机", ["gemini_phone_required"]],
+  ["【首登需要申诉】Pixel - Gemini Pro一年成品号", ["gemini_appeal_required"]],
 ];
 
 for (const [title, expectedTags] of tagCases) {
@@ -399,6 +403,17 @@ for (const [title, expectedTags] of tagCases) {
   for (const tag of expectedTags) {
     assert.ok(tags.includes(tag), `${title} should include ${tag}. actual=${tags.join(",")}`);
   }
+}
+
+const geminiConditionNegativeCases = [
+  ["【低价】Gemini Pro 一年成品号，GCP已禁用", "gemini_antigravity_gcp"],
+  ["Gemini Pro 一年 无需绑定手机", "gemini_phone_required"],
+  ["Gemini Pro 一年 无需申诉", "gemini_appeal_required"],
+];
+
+for (const [title, unexpectedTag] of geminiConditionNegativeCases) {
+  const tags = deriveOfferFilterTags({ sourceTitle: title });
+  assert.ok(!tags.includes(unexpectedTag), `${title} should not include ${unexpectedTag}. actual=${tags.join(",")}`);
 }
 
 const productFacetCases = buildOfferFilterFacets([
@@ -411,11 +426,15 @@ const productFacetCases = buildOfferFilterFacets([
   { sourceTitle: "Telegram Premium会员代开（6个月）" },
   { sourceTitle: "Telegram Premium 会员 1年" },
   { sourceTitle: "Telegram 星星兑换码 50颗" },
+  { sourceTitle: "Gemini Pro 一年成品号 包GCP" },
+  { sourceTitle: "Gemini Pro 成品号需要绑定手机" },
+  { sourceTitle: "Gemini Pro 首登需要申诉" },
 ]);
 const chatGptFacetIds = filterOfferFilterFacetsForProduct("chatgpt-plus", productFacetCases).map((facet) => facet.id);
 assert.ok(!chatGptFacetIds.includes("duration_month"), "ChatGPT Plus must not show duration filters.");
 assert.ok(!chatGptFacetIds.includes("duration_trial"), "ChatGPT Plus must not show Grok trial filters.");
 assert.ok(!chatGptFacetIds.includes("verification_single"), "ChatGPT Plus must not show verification filters.");
+assert.ok(!chatGptFacetIds.includes("gemini_antigravity_gcp"), "ChatGPT Plus must not show Gemini condition filters.");
 assert.ok(chatGptFacetIds.includes("shared_access"), "ChatGPT Plus should keep shared-access filters.");
 assert.ok(chatGptFacetIds.includes("warranty_long"), "ChatGPT Plus should keep warranty filters.");
 
@@ -430,6 +449,13 @@ assert.ok(!xTwitterPremiumFacetIds.includes("verification_single"), "X/Twitter P
 const phoneFacetIds = filterOfferFilterFacetsForProduct("openai-phone-verification", productFacetCases).map((facet) => facet.id);
 assert.ok(phoneFacetIds.includes("verification_single"), "OpenAI 接码 should show verification filters.");
 assert.ok(!phoneFacetIds.includes("duration_trial"), "OpenAI 接码 must not show Grok duration filters.");
+assert.ok(!phoneFacetIds.includes("gemini_phone_required"), "OpenAI 接码 must not show Gemini condition filters.");
+
+const geminiFacetIds = filterOfferFilterFacetsForProduct("gemini-pro-year", productFacetCases).map((facet) => facet.id);
+assert.ok(geminiFacetIds.includes("gemini_antigravity_gcp"), "Gemini Pro 成品号 should show GCP/反重力 filters.");
+assert.ok(geminiFacetIds.includes("gemini_phone_required"), "Gemini Pro 成品号 should show phone-required filters.");
+assert.ok(geminiFacetIds.includes("gemini_appeal_required"), "Gemini Pro 成品号 should show appeal-required filters.");
+assert.ok(!geminiFacetIds.includes("verification_single"), "Gemini Pro 成品号 must not show phone verification filters.");
 
 assert.deepEqual(
   parseOfferFilterTagsForProduct("chatgpt-plus", "duration_month,verification_single,warranty_long"),
@@ -450,6 +476,16 @@ assert.deepEqual(
   parseOfferFilterTagsForProduct("x-twitter-premium", "duration_quarter"),
   ["duration_quarter"],
   "X/Twitter Premium should accept duration filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("gemini-pro-year", "gemini_antigravity_gcp,gemini_phone_required,gemini_appeal_required"),
+  ["gemini_antigravity_gcp", "gemini_phone_required", "gemini_appeal_required"],
+  "Gemini Pro 成品号 should accept Gemini condition filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("chatgpt-plus", "gemini_antigravity_gcp,warranty_long"),
+  ["warranty_long"],
+  "ChatGPT Plus should ignore Gemini condition filters from the URL.",
 );
 const telegramAccountFacetIds = filterOfferFilterFacetsForProduct("telegram-account", productFacetCases).map((facet) => facet.id);
 assert.ok(telegramAccountFacetIds.includes("telegram_region_us"), "Telegram account should show US region filters.");
