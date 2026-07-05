@@ -63,15 +63,7 @@ with gemini_condition_candidates as (
   select id
   from raw_offers
   where hidden = false
-    and (
-      canonical_product_id = 'gemini-pro-year'
-      or source_title ~* '(gemini|google[[:space:]]*ai[[:space:]]*pro|pixel|反重力|gcp|google[[:space:]]*cloud|谷歌云)'
-    )
-    and (
-      source_title ~* '(包[[:space:]]*gcp|支持[[:space:]]*gcp|gcp[[:space:]]*可用|gcp[[:space:]]*已开|gcp[[:space:]]*正常|google[[:space:]]*cloud|谷歌云|包反重力|支持反重力|反重力直接用|反重力可用|可用反重力|antigravity|cli|codeassist)'
-      or source_title ~* '(需要绑定手机|需绑定手机|需要绑手机|需绑手机|绑定手机号|绑定手机|手机号接码|手机接码|长效接码|接码)'
-      or source_title ~* '(首登需要申诉|需要申诉|需申诉|申诉|需注册|需要注册|没注册过谷歌|未注册过谷歌|没注册过google|未注册过google)'
-    )
+    and canonical_product_id = 'gemini-pro-year'
 )
 update raw_offers
 set source_title = raw_offers.source_title
