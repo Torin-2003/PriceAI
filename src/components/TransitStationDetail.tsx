@@ -966,7 +966,7 @@ function PriceTable({
                     <tr className="bg-[#f2f4f4]/50">
                       <DataTableHead compact>分组 / 模型</DataTableHead>
                       <DataTableHead compact explanation={TRANSIT_COMBINED_RATE_EXPLANATION}>综合倍率</DataTableHead>
-                      <DataTableHead compact explanation="缓存命中率来自站点公开分组累计用量，会影响实际成本，但取决于请求是否复用上下文，不计入默认综合倍率。">缓存命中</DataTableHead>
+                      <DataTableHead compact explanation="缓存命中率来自站点公开分组累计用量，会影响实际成本，但取决于请求是否复用上下文，不计入默认综合倍率。">缓存命中率</DataTableHead>
                       <DataTableHead compact explanation={TRANSIT_MONITORED_PRICE_EXPLANATION}>监测模型价格</DataTableHead>
                       <DataTableHead compact explanation="展示该分组的可用性探测、来源披露和最近监测确认时间。">监测 / 确认</DataTableHead>
                     </tr>
@@ -1390,7 +1390,7 @@ function PriceGroupMobileCard({
       <div className="mt-3 grid grid-cols-2 gap-2">
         <MobilePriceFact label="充值折算" value={formatRate(group.rechargeCoefficient)} />
         <MobilePriceFact label="模型倍率" value={group.modelMultiplierLabel} />
-        <MobilePriceFact label="缓存命中" value={formatCacheHitRate(group.cacheUsage)} />
+        <MobilePriceFact label="缓存命中率" value={formatCacheHitRate(group.cacheUsage)} />
         <MobilePriceFact label="覆盖" value={`${group.prices.length} 个模型`} />
         <MobilePriceFact label="可用率" value={formatPercent(group.sevenDayRate)} />
       </div>
@@ -1454,7 +1454,7 @@ function CacheHitCell({ cacheUsage }: { cacheUsage: TransitModelPrice["cacheUsag
       className={`inline-flex rounded-full px-2.5 py-1 text-xs font-extrabold tabular-nums ${
         hasSamples ? "bg-[#eef3f8] text-[#47657a]" : "bg-[#f2f4f4] text-[#7f8889]"
       }`}
-      title="累计缓存命中率来自站点公开分组用量，会影响实际成本，但不计入默认综合倍率。"
+      title="缓存命中率来自站点公开分组累计用量，会影响实际成本，但不计入默认综合倍率。"
     >
       {formatCacheHitRate(cacheUsage)}
     </div>
