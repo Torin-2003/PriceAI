@@ -10,6 +10,10 @@ assert.ok(configuredRtocSource, "RTOC AI must stay in API transit public collect
 assert.equal(configuredRtocSource.collectorKind, "new_api_pricing");
 assert.equal(configuredRtocSource.monitorUrl, "https://ai.rtoc.cc/pricing");
 assert.equal(configuredRtocSource.monitorEndpointUrl, "https://api.rtoc.cc/api/perf-metrics/summary?period=24");
+const configuredAiTransitSnapshotSource = transitSourceConfig.find((source) => source.id === "sub-dimension-cc-cd");
+assert.ok(configuredAiTransitSnapshotSource, "Sub2API ai-transit snapshot test station must stay in collection sources.");
+assert.equal(configuredAiTransitSnapshotSource.collectorKind, "ai_transit_snapshot");
+assert.equal(configuredAiTransitSnapshotSource.autoPublish, true);
 
 const scheduledPublishedRtocSources = __test.selectSources(
   __test.filterSourcesByPublishedStationIds(transitSourceConfig, new Set(["ai-rtoc-cc"])),
@@ -403,6 +407,96 @@ const apinodeGpt55Economy = apinode.offers.find(
 assert.equal(apinodeGpt55Economy.model_multiplier, 0.3);
 assert.equal(apinodeGpt55Economy.availability_seven_day_rate, 0.976494);
 assert.match(apinodeGpt55Economy.availability_note, /非 PriceAI API Key 实测/);
+
+const aiTransitSnapshot = __test.parsePricingPayload(
+  configuredAiTransitSnapshotSource,
+  {
+    schema_version: "ai-transit.v1",
+    system: "sub2api",
+    generated_at: "2026-07-05T08:40:00.000Z",
+    station: {
+      name: "Sub2API",
+      homepage_url: "https://sub.dimension.cc.cd/home",
+      price_url: "https://sub.dimension.cc.cd/public/transit",
+      monitor_url: "https://sub.dimension.cc.cd/public/transit?view=monitoring",
+      system_type: "sub2api",
+    },
+    billing: {
+      currency: "CNY",
+      credit_currency: "USD",
+      recharge_ratio: "1 CNY = 1 USD balance",
+      recharge_multiplier: 1,
+      minimum_top_up: 1,
+    },
+    groups: [
+      {
+        name: "gpt free号池",
+        platform: "openai",
+        rate_multiplier: 0.1,
+        models: [
+          {
+            standard_model: "gpt-5.5",
+            raw_model: "gpt-5.5",
+            platform: "openai",
+            billing_mode: "token",
+            price: {
+              input_usd_per_token: 0.000005,
+              output_usd_per_token: 0.00003,
+              cache_read_usd_per_token: 0.0000005,
+            },
+          },
+        ],
+      },
+      {
+        name: "image",
+        platform: "openai",
+        rate_multiplier: 1,
+        models: [
+          {
+            standard_model: "gpt-image-2",
+            raw_model: "gpt-image-2",
+            platform: "openai",
+            billing_mode: "per_request",
+            price: {
+              image_output_usd_per_token: 0.00003,
+            },
+          },
+        ],
+      },
+    ],
+    monitoring: [
+      {
+        name: "gpt free号池",
+        provider: "openai",
+        primary_model: "gpt-5.5",
+        primary_status: "operational",
+        availability_7d: 96.5,
+        latest_latency_ms: 1985,
+        last_checked_at: "2026-07-05T08:35:59.000Z",
+        timeline: [
+          { status: "operational", latency_ms: 1985, checked_at: "2026-07-05T08:35:59.000Z" },
+          { status: "error", latency_ms: 24, checked_at: "2026-07-05T08:25:59.000Z" },
+        ],
+      },
+    ],
+  },
+  "2026-07-05T08:40:00.000Z",
+);
+assert.equal(aiTransitSnapshot.station.collector_kind, "ai_transit_snapshot");
+assert.equal(aiTransitSnapshot.station.published, true);
+assert.equal(aiTransitSnapshot.offers.length, 2);
+const aiTransitGpt = aiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.5");
+assert.equal(aiTransitGpt.model_multiplier, 0.1);
+assert.equal(aiTransitGpt.input_price, 0.1);
+assert.equal(aiTransitGpt.output_price, 0.1);
+assert.equal(aiTransitGpt.cache_read_price, 0.1);
+assert.equal(aiTransitGpt.availability_seven_day_rate, 0.965);
+assert.equal(aiTransitGpt.availability_source_type, "public_status");
+const aiTransitImage = aiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT Image 2");
+assert.equal(aiTransitImage.family, "image");
+assert.equal(aiTransitImage.image_output_price, 0.000001);
+assert.equal(aiTransitSnapshot.availabilitySamples.length, 2);
+assert.equal(aiTransitSnapshot.station.availability_seven_day_rate, 0.5);
 
 const onehopSource = {
   id: "onehop-ai",

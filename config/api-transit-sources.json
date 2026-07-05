@@ -47,6 +47,41 @@
     ]
   },
   {
+    "id": "sub-dimension-cc-cd",
+    "name": "Sub2API 测试公开页",
+    "websiteUrl": "https://sub.dimension.cc.cd/",
+    "apiBaseUrl": "https://sub.dimension.cc.cd/v1",
+    "pricingUrl": "https://sub.dimension.cc.cd/public/transit",
+    "pricingEndpointUrl": "https://sub.dimension.cc.cd/api/public/transit/v1/snapshot",
+    "monitorUrl": "https://sub.dimension.cc.cd/public/transit?view=monitoring",
+    "collectorKind": "ai_transit_snapshot",
+    "stationSystem": "sub_to_api",
+    "rechargeRatio": "1:1",
+    "autoPublish": true,
+    "channelTypes": ["mixed", "first_party_pool", "undisclosed"],
+    "accountPools": ["mixed", "undisclosed"],
+    "riskLabels": ["mixed_pool", "insufficient_samples", "pending_feedback"],
+    "summary": "Sub2API ai-transit.v1 测试公开页，提供 /.well-known/ai-transit.json 发现文件和 /api/public/transit/v1/snapshot 结构化快照；PriceAI 会自动抓取分组倍率、模型价格、缓存价格和公开监控时间线，真实扣费仍需测试 Key 核验。",
+    "strengths": [
+      "公开 ai-transit.v1 快照可稳定读取，字段包含分组、模型价格、充值比例、缓存价格和公开监测。",
+      "提供 .well-known 发现文件，适合后续自动发现和标准化接入验证。"
+    ],
+    "cautions": [
+      "当前公开快照模型覆盖较少，主要用于 Sub2API 公开标准联调。",
+      "公开可用性来自站点监控，不等同 PriceAI API Key 实测。"
+    ],
+    "verificationEvents": [
+      {
+        "id": "sub-dimension-ai-transit-v1-2026-07-05",
+        "source": "priceai",
+        "status": "success",
+        "title": "ai-transit.v1 公开快照可读取",
+        "description": "2026-07-05 检查 https://sub.dimension.cc.cd/.well-known/ai-transit.json 可发现 snapshot_url，/api/public/transit/v1/snapshot 返回分组、模型价格和公开监控时间线。",
+        "happenedAt": "2026-07-05T08:40:00.000Z"
+      }
+    ]
+  },
+  {
     "id": "onehop-ai",
     "name": "OneHop",
     "websiteUrl": "https://onehop.ai/",

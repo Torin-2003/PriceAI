@@ -25,6 +25,7 @@ const CALLAI_PARTNER_STATUS_COLLECTORS = new Set([
 const ONEHOP_PUBLIC_MODEL_COLLECTORS = new Set(["onehop_public_models"]);
 const APINODE_PUBLIC_SITE_INFO_COLLECTORS = new Set(["apinode_public_site_info", "sub2api_public_site_info"]);
 const ZIVV_MODEL_HUB_COLLECTORS = new Set(["zivv_model_hub"]);
+const AI_TRANSIT_SNAPSHOT_COLLECTORS = new Set(["ai_transit_snapshot"]);
 const SOURCE_SKIPPED = Symbol("source_skipped");
 const AVAILABILITY_SOURCES = {
   publicStatus: {
@@ -354,6 +355,9 @@ function parsePricingPayload(source, payload, collectedAt) {
   if (isZivvModelHubSource(source)) {
     return parseZivvModelHubPayload(source, payload, collectedAt);
   }
+  if (isAiTransitSnapshotSource(source)) {
+    return parseAiTransitSnapshotPayload(source, payload, collectedAt);
+  }
 
   const items = normalizePricingItems(payload);
   const groupRatios = normalizeGroupRatios(payload);
@@ -558,6 +562,10 @@ function isZivvModelHubSource(source) {
   return ZIVV_MODEL_HUB_COLLECTORS.has(source.collectorKind);
 }
 
+function isAiTransitSnapshotSource(source) {
+  return AI_TRANSIT_SNAPSHOT_COLLECTORS.has(source.collectorKind);
+}
+
 function isNewApiPricingSource(source) {
   return source?.collectorKind === "new_api_pricing";
 }
@@ -614,6 +622,298 @@ function parseZivvModelHubPayload(source, payload, collectedAt) {
     }),
     offers: deduped,
   };
+}
+
+function parseAiTransitSnapshotPayload(source, payload, collectedAt) {
+  const groups = Array.isArray(payload?.groups) ? payload.groups : [];
+  const generatedAt = stringOrNull(payload?.generated_at) || collectedAt;
+  const rechargeRatio = stringOrNull(payload?.billing?.recharge_ratio) || source.rechargeRatio || DEFAULT_RECHARGE_RATIO;
+  const availabilityByKey = aiTransitAvailabilityByKey(payload, generatedAt, source);
+  const offers = [];
+
+  for (const group of groups) {
+    const groupName = stringOrNull(group?.name) || "default";
+    const models = Array.isArray(group?.models) ? group.models : [];
+
+    for (const model of models) {
+      const standard = standardizeModelName([model?.standard_model, model?.raw_model].filter(Boolean).join(" "));
+      if (!standard) continue;
+
+      const offer = buildAiTransitSnapshotOfferRow({
+        source,
+        payload,
+        group,
+        model,
+        standard,
+        rechargeRatio,
+        generatedAt,
+        collectedAt,
+        availability:
+          availabilityByKey.get(aiTransitAvailabilityKey(groupName, standard)) ||
+          availabilityByKey.get(aiTransitAvailabilityKey(null, standard)) ||
+          null,
+      });
+      if (offer) offers.push(offer);
+    }
+  }
+
+  const deduped = dedupeBestOffers(offers);
+  const availabilitySamples = aiTransitAvailabilitySamples(source, payload, collectedAt);
+  const collectionError = deduped.length ? null : "ai-transit 快照未返回可识别的 PriceAI 标准模型。";
+  const warnings = Array.isArray(payload?.completeness?.warnings)
+    ? payload.completeness.warnings.map(stringOrNull).filter(Boolean)
+    : [];
+
+  return {
+    modelCount: groups.reduce((total, group) => total + (Array.isArray(group?.models) ? group.models.length : 0), 0),
+    collectionError,
+    station: buildStationRow(source, collectedAt, {
+      status: deduped.length ? (warnings.length ? "partial" : "success") : "partial",
+      offerCount: deduped.length,
+      meta: { generated_at: generatedAt },
+      collectionError,
+      availability: summarizeAiTransitSnapshotAvailability(availabilityByKey, availabilitySamples, generatedAt, source),
+    }),
+    offers: deduped,
+    availabilitySamples,
+  };
+}
+
+function buildAiTransitSnapshotOfferRow({
+  source,
+  payload,
+  group,
+  model,
+  standard,
+  rechargeRatio,
+  generatedAt,
+  collectedAt,
+  availability,
+}) {
+  const family = familyForStandardModel(standard);
+  const official = officialTransitPrices[standard];
+  const unitPricesUsd = aiTransitUnitPricesUsd(model?.price);
+  const splitMultipliers = getAiTransitSnapshotSplitMultipliers(unitPricesUsd, official, group?.rate_multiplier);
+  if (!splitMultipliers || splitMultipliers.model === null || splitMultipliers.model <= 0) return null;
+
+  const groupName = stringOrNull(group?.name) || "default";
+  const sourceText = [
+    groupName,
+    group?.platform,
+    group?.subscription_type,
+    payload?.disclosure?.upstream_type,
+    payload?.disclosure?.account_pool_type,
+    model?.source?.upstream_type,
+    model?.source?.account_pool_type,
+  ].filter(Boolean).join(" ");
+  const autoPublish = shouldAutoPublishSource(source);
+  const fallbackAvailability = {
+    rate: null,
+    samples: 0,
+    firstCheckedAt: null,
+    lastCheckedAt: generatedAt,
+    note: "ai-transit 公开快照已返回价格；该模型暂无公开监测样本，非 PriceAI API Key 实测。",
+    ...availabilitySourceFields(source, AVAILABILITY_SOURCES.publicModelCatalog),
+  };
+  const availabilitySource = availability || fallbackAvailability;
+
+  return {
+    id: stableId("api-transit-offer", source.id, standard, groupName),
+    station_id: source.id,
+    family,
+    standard_model: standard,
+    raw_model_name: String(model?.raw_model || model?.standard_model || standard),
+    group_name: groupName,
+    recharge_ratio: rechargeRatio,
+    model_multiplier: round(splitMultipliers.model, 6),
+    input_price: splitMultipliers.input === null ? null : round(splitMultipliers.input, 6),
+    output_price: splitMultipliers.output === null ? null : round(splitMultipliers.output, 6),
+    cache_read_price: splitMultipliers.cacheRead === null ? null : round(splitMultipliers.cacheRead, 6),
+    cache_write_price: splitMultipliers.cacheWrite === null ? null : round(splitMultipliers.cacheWrite, 6),
+    image_output_price: splitMultipliers.imageOutput === null ? null : round(splitMultipliers.imageOutput, 6),
+    currency: "CNY",
+    account_pool: inferAccountPool(sourceText),
+    channel_type: inferChannelType(sourceText),
+    price_source: "ai-transit 公开快照",
+    source_url: source.pricingEndpointUrl,
+    availability_seven_day_rate: availabilitySource.rate,
+    availability_seven_day_samples: availabilitySource.samples,
+    availability_first_checked_at: availabilitySource.firstCheckedAt,
+    availability_last_checked_at: availabilitySource.lastCheckedAt,
+    availability_note: availabilitySource.note,
+    availability_source_type: availabilitySource.availability_source_type || "public_model_catalog",
+    availability_source_label: availabilitySource.availability_source_label || "公开模型页",
+    availability_source_url: availabilitySource.availability_source_url || source.pricingEndpointUrl,
+    last_verified_at: availabilitySource.lastCheckedAt || generatedAt || collectedAt,
+    status: autoPublish ? "active" : "needs_review",
+    auto_publish: autoPublish,
+    raw_payload: {
+      collector_kind: source.collectorKind,
+      schema_version: stringOrNull(payload?.schema_version),
+      snapshot_generated_at: generatedAt,
+      system: stringOrNull(payload?.system),
+      group: compactAiTransitGroupPayload(group),
+      model,
+      billing: payload?.billing || null,
+      disclosure: payload?.disclosure || null,
+      unit_prices_usd: unitPricesUsd,
+      multiplier_basis: splitMultipliers.basis,
+    },
+    created_at: collectedAt,
+  };
+}
+
+function getAiTransitSnapshotSplitMultipliers(unitPricesUsd, official, groupMultiplierValue) {
+  const groupMultiplier = numberValue(groupMultiplierValue) ?? 1;
+  if (official && hasComparableOfficialPrice(official)) {
+    const input = ratioValue(unitPricesUsd.input, official.input, groupMultiplier);
+    const output = ratioValue(unitPricesUsd.output, official.output, groupMultiplier);
+    const cacheRead = ratioValue(unitPricesUsd.cacheRead, official.cacheRead, groupMultiplier);
+    const cacheWrite = ratioValue(unitPricesUsd.cacheWrite, official.cacheWrite, groupMultiplier);
+    const imageOutput = ratioValue(unitPricesUsd.imageOutput, official.imageOutput, groupMultiplier);
+    return {
+      model: input ?? output ?? cacheRead ?? cacheWrite ?? imageOutput,
+      input,
+      output,
+      cacheRead,
+      cacheWrite,
+      imageOutput,
+      basis: "ai_transit_unit_price_against_official",
+    };
+  }
+
+  return {
+    model: groupMultiplier,
+    input: groupMultiplier,
+    output: groupMultiplier,
+    cacheRead: null,
+    cacheWrite: null,
+    imageOutput: null,
+    basis: "ai_transit_group_rate_multiplier",
+  };
+}
+
+function aiTransitUnitPricesUsd(price) {
+  const imageSizePrices = price?.image_size_prices && typeof price.image_size_prices === "object" ? price.image_size_prices : {};
+  const tokenUnitFactor = 1_000_000;
+  return {
+    input: multiplyNullable(numberValue(price?.input_usd_per_token), tokenUnitFactor),
+    output: multiplyNullable(numberValue(price?.output_usd_per_token), tokenUnitFactor),
+    cacheRead: multiplyNullable(numberValue(price?.cache_read_usd_per_token), tokenUnitFactor),
+    cacheWrite: multiplyNullable(numberValue(price?.cache_write_usd_per_token), tokenUnitFactor),
+    imageOutput: numberValue(price?.image_output_usd_per_token) ?? maxNumber(Object.values(imageSizePrices)),
+  };
+}
+
+function multiplyNullable(value, multiplier) {
+  return value === null ? null : value * multiplier;
+}
+
+function maxNumber(values) {
+  const numbers = (values || []).map(numberValue).filter((value) => value !== null);
+  return numbers.length ? Math.max(...numbers) : null;
+}
+
+function compactAiTransitGroupPayload(group) {
+  if (!group || typeof group !== "object") return null;
+  return {
+    name: stringOrNull(group.name),
+    platform: stringOrNull(group.platform),
+    subscription_type: stringOrNull(group.subscription_type),
+    rate_multiplier: numberValue(group.rate_multiplier),
+    is_exclusive: group.is_exclusive === undefined ? null : Boolean(group.is_exclusive),
+    cache_usage: group.cache_usage || null,
+  };
+}
+
+function aiTransitAvailabilityByKey(payload, generatedAt, source) {
+  const byKey = new Map();
+  for (const item of Array.isArray(payload?.monitoring) ? payload.monitoring : []) {
+    const standard = standardizeModelName([item?.primary_model, item?.name].filter(Boolean).join(" "));
+    const groupName = stringOrNull(item?.name);
+    if (standard) {
+      byKey.set(
+        aiTransitAvailabilityKey(groupName, standard),
+        aiTransitAvailabilityFromMonitoringItem(item, standard, generatedAt, source),
+      );
+    }
+
+    for (const model of Array.isArray(item?.models) ? item.models : []) {
+      const modelStandard = standardizeModelName(model?.model || "");
+      if (!modelStandard) continue;
+      const availability = aiTransitAvailabilityFromMonitoringItem({ ...item, ...model }, modelStandard, generatedAt, source);
+      byKey.set(aiTransitAvailabilityKey(groupName, modelStandard), availability);
+      byKey.set(aiTransitAvailabilityKey(null, modelStandard), availability);
+    }
+  }
+  return byKey;
+}
+
+function aiTransitAvailabilityFromMonitoringItem(item, standard, generatedAt, source) {
+  const rateValue = numberValue(item?.availability_7d);
+  const rate = rateValue === null ? null : percentValueToRate(rateValue);
+  const lastCheckedAt = stringOrNull(item?.last_checked_at) || generatedAt;
+  return {
+    rate,
+    samples: rate === null ? 0 : 1,
+    firstCheckedAt: lastCheckedAt,
+    lastCheckedAt,
+    note: `${source.name} ai-transit 公开监测：${standard || "模型"} 最新状态 ${stringOrNull(item?.latest_status || item?.primary_status) || "unknown"}，7 日可用率 ${formatPercentValue(rateValue)}，最近延迟 ${formatLatencyMs(item?.latest_latency_ms)}；非 PriceAI API Key 实测。`,
+    ...availabilitySourceFields(source, AVAILABILITY_SOURCES.publicStatus),
+  };
+}
+
+function aiTransitAvailabilitySamples(source, payload, collectedAt) {
+  const samples = [];
+  for (const item of Array.isArray(payload?.monitoring) ? payload.monitoring : []) {
+    const groupName = stringOrNull(item?.name);
+    const standard = standardizeModelName(item?.primary_model || groupName || "");
+    const timeline = Array.isArray(item?.timeline) ? item.timeline : [];
+    timeline.forEach((point, index) => {
+      samples.push(buildAvailabilitySampleRow({
+        stationId: source.id,
+        scope: "station",
+        standardModel: standard,
+        groupName,
+        ok: String(point?.status || "").toLowerCase() === "operational",
+        checkedAt: stringOrNull(point?.checked_at) || collectedAt,
+        index,
+        source,
+        availabilitySource: AVAILABILITY_SOURCES.publicStatus,
+      }));
+    });
+  }
+  return samples;
+}
+
+function summarizeAiTransitSnapshotAvailability(availabilityByKey, availabilitySamples, generatedAt, source) {
+  const availabilityValues = Array.from(availabilityByKey.values()).filter((item) => item.rate !== null);
+  const sampleTimes = (availabilitySamples || []).map((sample) => stringOrNull(sample.checked_at)).filter(Boolean).sort();
+  if (!availabilityValues.length && !availabilitySamples?.length) {
+    return {
+      rate: null,
+      samples: 0,
+      firstCheckedAt: null,
+      lastCheckedAt: generatedAt,
+      note: "ai-transit 快照暂未返回公开监测样本；非 PriceAI API Key 实测。",
+      ...availabilitySourceFields(source, AVAILABILITY_SOURCES.publicModelCatalog),
+    };
+  }
+
+  const okSamples = (availabilitySamples || []).filter((sample) => sample.ok).length;
+  const sampleRate = availabilitySamples?.length ? okSamples / availabilitySamples.length : null;
+  return {
+    rate: sampleRate ?? round(availabilityValues.reduce((sum, item) => sum + item.rate, 0) / availabilityValues.length, 6),
+    samples: availabilitySamples?.length || availabilityValues.length,
+    firstCheckedAt: sampleTimes[0] || availabilityValues.map((item) => item.firstCheckedAt).filter(Boolean).sort().at(0) || null,
+    lastCheckedAt: sampleTimes.at(-1) || availabilityValues.map((item) => item.lastCheckedAt).filter(Boolean).sort().at(-1) || generatedAt,
+    note: "ai-transit 公开快照监测汇总；该口径来自站点公开监测，不等同 PriceAI API Key 实测。",
+    ...availabilitySourceFields(source, AVAILABILITY_SOURCES.publicStatus),
+  };
+}
+
+function aiTransitAvailabilityKey(groupName, standard) {
+  return `${stringOrNull(groupName) || "*"}|${stringOrNull(standard) || "*"}`;
 }
 
 function normalizeZivvModelHubItems(payload) {
