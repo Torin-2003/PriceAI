@@ -1916,6 +1916,8 @@ create table if not exists api_transit_offers (
   output_price numeric,
   cache_read_price numeric,
   cache_write_price numeric,
+  cache_hit_rate numeric,
+  cache_hit_sample_tokens bigint not null default 0,
   image_output_price numeric,
   currency text not null default 'CNY',
   account_pool text not null default 'undisclosed',

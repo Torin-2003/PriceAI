@@ -710,6 +710,7 @@ function buildAiTransitSnapshotOfferRow({
     model?.source?.account_pool_type,
   ].filter(Boolean).join(" ");
   const autoPublish = shouldAutoPublishSource(source);
+  const cacheUsage = cacheHitUsageFromGroup(group);
   const fallbackAvailability = {
     rate: null,
     samples: 0,
@@ -733,6 +734,8 @@ function buildAiTransitSnapshotOfferRow({
     output_price: splitMultipliers.output === null ? null : round(splitMultipliers.output, 6),
     cache_read_price: splitMultipliers.cacheRead === null ? null : round(splitMultipliers.cacheRead, 6),
     cache_write_price: splitMultipliers.cacheWrite === null ? null : round(splitMultipliers.cacheWrite, 6),
+    cache_hit_rate: cacheUsage.hitRate,
+    cache_hit_sample_tokens: cacheUsage.sampleTokens,
     image_output_price: splitMultipliers.imageOutput === null ? null : round(splitMultipliers.imageOutput, 6),
     currency: "CNY",
     account_pool: inferAccountPool(sourceText),
@@ -845,6 +848,27 @@ function compactAiTransitGroupPayload(group) {
     is_exclusive: group.is_exclusive === undefined ? null : Boolean(group.is_exclusive),
     cache_usage: group.cache_usage || null,
   };
+}
+
+function cacheHitUsageFromGroup(group) {
+  const total = group?.cache_usage?.total;
+  const hitRate = normalizedCacheHitRate(numberValue(total?.cache_hit_rate));
+  const sampleTokens = Math.max(
+    0,
+    (numberValue(total?.input_tokens) || 0) +
+      (numberValue(total?.cache_creation_tokens) || 0) +
+      (numberValue(total?.cache_read_tokens) || 0)
+  );
+
+  return {
+    hitRate,
+    sampleTokens: Math.trunc(sampleTokens),
+  };
+}
+
+function normalizedCacheHitRate(value) {
+  if (value === null || value < 0) return null;
+  return value > 1 ? Math.min(round(value / 100, 6), 1) : Math.min(round(value, 6), 1);
 }
 
 function aiTransitAvailabilityByKey(payload, generatedAt, source) {
@@ -1855,6 +1879,7 @@ function buildCallaiPartnerOfferRow({
   const checkedAt = stringOrNull(monitoring?.checked_at) || collectedAt;
   const availability = callaiAvailabilityFromMonitoring(monitoring, payload?.meta, collectedAt);
   const autoPublish = shouldAutoPublishSource(source) && payload?.meta?.stale !== true;
+  const cacheUsage = cacheHitUsageFromGroup(group);
 
   return {
     id: stableId("api-transit-offer", source.id, standard, groupKey),
@@ -1869,6 +1894,8 @@ function buildCallaiPartnerOfferRow({
     output_price: splitMultipliers.output === null ? null : round(splitMultipliers.output, 6),
     cache_read_price: splitMultipliers.cacheRead === null ? null : round(splitMultipliers.cacheRead, 6),
     cache_write_price: splitMultipliers.cacheWrite === null ? null : round(splitMultipliers.cacheWrite, 6),
+    cache_hit_rate: cacheUsage.hitRate,
+    cache_hit_sample_tokens: cacheUsage.sampleTokens,
     image_output_price: splitMultipliers.imageOutput === null ? null : round(splitMultipliers.imageOutput, 6),
     currency: "CNY",
     account_pool: inferAccountPool(`${entry?.key || ""} ${entry?.name || ""} ${group?.name || ""}`),
@@ -2547,6 +2574,10 @@ async function upsertOfferRows(supabase, offers) {
   const attempts = [
     { rows: offers, compatibility: null },
     {
+      rows: removeFieldsFromRows(offers, ["cache_hit_rate", "cache_hit_sample_tokens"]),
+      compatibility: "api_transit_offers cache hit columns missing; wrote offers without cumulative cache hit usage.",
+    },
+    {
       rows: removeFieldsFromRows(offers, ["availability_first_checked_at"]),
       compatibility: "api_transit_offers.availability_first_checked_at column missing; wrote offers without first-check window.",
     },
@@ -2559,12 +2590,20 @@ async function upsertOfferRows(supabase, offers) {
       compatibility: "api_transit_offers optional columns missing; wrote offers without first-check window and image output split.",
     },
     {
+      rows: removeFieldsFromRows(offers, ["availability_first_checked_at", "image_output_price", "cache_hit_rate", "cache_hit_sample_tokens"]),
+      compatibility: "api_transit_offers optional columns missing; wrote offers without first-check window, image output split, and cache hit usage.",
+    },
+    {
       rows: removeAvailabilitySourceFields(offers),
       compatibility: "api_transit_offers availability source columns missing; wrote offers without source labels.",
     },
     {
       rows: removeFieldsFromRows(removeAvailabilitySourceFields(offers), ["availability_first_checked_at", "image_output_price"]),
       compatibility: "api_transit_offers optional columns missing; wrote offers without first-check window, image output split, or source labels.",
+    },
+    {
+      rows: removeFieldsFromRows(removeAvailabilitySourceFields(offers), ["availability_first_checked_at", "image_output_price", "cache_hit_rate", "cache_hit_sample_tokens"]),
+      compatibility: "api_transit_offers optional columns missing; wrote offers without first-check window, image output split, source labels, or cache hit usage.",
     },
   ];
 
@@ -2577,6 +2616,8 @@ async function upsertOfferRows(supabase, offers) {
       if (
         !isMissingColumnError(error, "availability_first_checked_at") &&
         !isMissingColumnError(error, "image_output_price") &&
+        !isMissingColumnError(error, "cache_hit_rate") &&
+        !isMissingColumnError(error, "cache_hit_sample_tokens") &&
         !isAvailabilitySourceColumnError(error)
       ) {
         throw error;

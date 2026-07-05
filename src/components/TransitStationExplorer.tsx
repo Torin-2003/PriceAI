@@ -40,6 +40,7 @@ import {
 import {
   compareStations,
   formatAvailability,
+  formatCacheHitRate,
   getRechargeCoefficientFromRatio,
   formatMultiplierRange,
   formatRate,
@@ -53,6 +54,7 @@ import {
   getNormalizedSourceTags,
   getTransitOperatorType,
   getPrimaryTransitCommercialOffer,
+  getRepresentativeCacheUsage,
   getStationComparisonSummary,
   getStationPublishedAvailabilitySummary,
   getStationRechargeCoefficient,
@@ -481,6 +483,7 @@ function PriceBreakdownCell({
   compact?: boolean;
 }) {
   const summary = getStationComparisonSummary(station);
+  const cacheUsage = getScopedCacheUsage(station, activeFamily, activeStandardModel);
   const visibleSummaries = activeStandardModel !== "all"
     ? [getStandardModelRateSummary(station, activeStandardModel)].filter((item) => item.priceCount > 0)
     : TRANSIT_MODEL_FAMILY_ORDER
@@ -511,8 +514,32 @@ function PriceBreakdownCell({
           )}
         </div>
       </div>
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+        <span className="shrink-0 text-[10px] font-extrabold text-[#7f8889]">缓存命中</span>
+        <span className={`rounded-full px-2 py-0.5 tabular-nums ${
+          cacheUsage && cacheUsage.sampleTokens > 0 && cacheUsage.hitRate !== null
+            ? "bg-[#eef3f8] text-[#47657a]"
+            : "bg-[#f2f4f4] text-[#7f8889]"
+        }`}>
+          {formatCacheHitRate(cacheUsage)}
+        </span>
+      </div>
     </div>
   );
+}
+
+function getScopedCacheUsage(
+  station: TransitStation,
+  activeFamily: "all" | TransitModelFamily,
+  activeStandardModel: "all" | TransitStandardModel
+) {
+  const prices = station.prices.filter((price) => {
+    if (activeStandardModel !== "all") return price.standardModel === activeStandardModel;
+    if (activeFamily !== "all") return price.family === activeFamily;
+    return true;
+  });
+
+  return getRepresentativeCacheUsage(prices);
 }
 
 function bestFamilyLabel(summary: ReturnType<typeof getStationComparisonSummary>): string {

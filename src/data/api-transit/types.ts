@@ -52,6 +52,11 @@ export interface TransitAvailability {
   sourceUrl: string | null;
 }
 
+export interface TransitCacheUsage {
+  hitRate: number | null;
+  sampleTokens: number;
+}
+
 export interface TransitMultiplierHistoryPoint {
   observedAt: string;
   rechargeRatio: string | null;
@@ -106,6 +111,7 @@ export interface TransitModelPrice {
   priceSource: string;
   lastVerifiedAt: string;
   availability: TransitAvailability;
+  cacheUsage?: TransitCacheUsage;
   history?: TransitMultiplierHistoryPoint[];
 }
 

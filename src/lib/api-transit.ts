@@ -1302,6 +1302,25 @@ export function formatPercent(value: number | null): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+export function formatCacheHitRate(cacheUsage: TransitModelPrice["cacheUsage"] | null | undefined): string {
+  if (!cacheUsage || cacheUsage.sampleTokens <= 0 || cacheUsage.hitRate === null) return "样本不足";
+  return formatPercent(cacheUsage.hitRate);
+}
+
+export function getRepresentativeCacheUsage(
+  prices: TransitModelPrice[]
+): TransitModelPrice["cacheUsage"] | undefined {
+  return prices
+    .map((price) => price.cacheUsage)
+    .filter((cacheUsage): cacheUsage is NonNullable<TransitModelPrice["cacheUsage"]> => Boolean(cacheUsage))
+    .sort((left, right) => {
+      const leftHasSamples = left.sampleTokens > 0 && left.hitRate !== null;
+      const rightHasSamples = right.sampleTokens > 0 && right.hitRate !== null;
+      if (leftHasSamples !== rightHasSamples) return leftHasSamples ? -1 : 1;
+      return right.sampleTokens - left.sampleTokens;
+    })[0];
+}
+
 export function formatAvailability(
   availability: Pick<TransitStation["availability"], "sevenDayRate" | "sevenDaySamples">
 ): string {

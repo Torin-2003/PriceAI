@@ -126,6 +126,8 @@ const OFFER_BASE_COLUMNS = [
   "output_price",
   "cache_read_price",
   "cache_write_price",
+  "cache_hit_rate",
+  "cache_hit_sample_tokens",
   "image_output_price",
   "currency",
   "account_pool",
@@ -142,6 +144,7 @@ const OFFER_BASE_COLUMNS = [
   "availability_source_url",
 ];
 const OFFER_COLUMNS = OFFER_BASE_COLUMNS.join(",");
+const OFFER_COLUMNS_WITHOUT_CACHE_HIT = withoutColumns(OFFER_BASE_COLUMNS, "cache_hit_rate", "cache_hit_sample_tokens");
 const OFFER_COLUMNS_WITHOUT_IMAGE_OUTPUT = withoutColumns(OFFER_BASE_COLUMNS, "image_output_price");
 const OFFER_COLUMNS_WITHOUT_FIRST_CHECKED = withoutColumns(OFFER_BASE_COLUMNS, "availability_first_checked_at");
 const OFFER_COLUMNS_WITHOUT_FIRST_CHECKED_OR_IMAGE_OUTPUT = withoutColumns(
@@ -151,6 +154,14 @@ const OFFER_COLUMNS_WITHOUT_FIRST_CHECKED_OR_IMAGE_OUTPUT = withoutColumns(
 );
 const OFFER_COLUMNS_WITHOUT_AVAILABILITY_SOURCE = withoutColumns(
   OFFER_BASE_COLUMNS,
+  "availability_source_type",
+  "availability_source_label",
+  "availability_source_url"
+);
+const OFFER_COLUMNS_WITHOUT_CACHE_HIT_OR_AVAILABILITY_SOURCE = withoutColumns(
+  OFFER_BASE_COLUMNS,
+  "cache_hit_rate",
+  "cache_hit_sample_tokens",
   "availability_source_type",
   "availability_source_label",
   "availability_source_url"
@@ -343,10 +354,20 @@ async function readPublicOfferRows(
   } catch (error) {
     if (isMissingColumnError(error)) {
       try {
-        return await queryPublicOfferRows(client, publicTransitReadSignal(), OFFER_COLUMNS_WITHOUT_AVAILABILITY_SOURCE, stationId);
-      } catch (withoutSourceError) {
-        if (!isMissingColumnError(withoutSourceError)) throw withoutSourceError;
-        return readPublicOfferRowsWithoutNewOptionalColumns(client, stationId);
+        return await queryPublicOfferRows(client, publicTransitReadSignal(), OFFER_COLUMNS_WITHOUT_CACHE_HIT, stationId);
+      } catch (withoutCacheHitError) {
+        if (!isMissingColumnError(withoutCacheHitError)) throw withoutCacheHitError;
+        try {
+          return await queryPublicOfferRows(client, publicTransitReadSignal(), OFFER_COLUMNS_WITHOUT_AVAILABILITY_SOURCE, stationId);
+        } catch (withoutSourceError) {
+          if (!isMissingColumnError(withoutSourceError)) throw withoutSourceError;
+          try {
+            return await queryPublicOfferRows(client, publicTransitReadSignal(), OFFER_COLUMNS_WITHOUT_CACHE_HIT_OR_AVAILABILITY_SOURCE, stationId);
+          } catch (withoutCacheHitOrSourceError) {
+            if (!isMissingColumnError(withoutCacheHitOrSourceError)) throw withoutCacheHitOrSourceError;
+            return readPublicOfferRowsWithoutNewOptionalColumns(client, stationId);
+          }
+        }
       }
     }
     throw error;
@@ -359,11 +380,17 @@ async function readPublicOfferRowsWithoutNewOptionalColumns(
 ): Promise<DbRow[]> {
   const attempts = [
     OFFER_COLUMNS_WITHOUT_FIRST_CHECKED,
+    withoutColumnsFromSelect(OFFER_COLUMNS_WITHOUT_FIRST_CHECKED, "cache_hit_rate", "cache_hit_sample_tokens"),
     OFFER_COLUMNS_WITHOUT_IMAGE_OUTPUT,
+    withoutColumnsFromSelect(OFFER_COLUMNS_WITHOUT_IMAGE_OUTPUT, "cache_hit_rate", "cache_hit_sample_tokens"),
     OFFER_COLUMNS_WITHOUT_FIRST_CHECKED_OR_IMAGE_OUTPUT,
+    withoutColumnsFromSelect(OFFER_COLUMNS_WITHOUT_FIRST_CHECKED_OR_IMAGE_OUTPUT, "cache_hit_rate", "cache_hit_sample_tokens"),
     OFFER_COLUMNS_WITHOUT_IMAGE_OUTPUT_OR_AVAILABILITY_SOURCE,
+    withoutColumnsFromSelect(OFFER_COLUMNS_WITHOUT_IMAGE_OUTPUT_OR_AVAILABILITY_SOURCE, "cache_hit_rate", "cache_hit_sample_tokens"),
     OFFER_COLUMNS_WITHOUT_FIRST_CHECKED_OR_AVAILABILITY_SOURCE,
+    withoutColumnsFromSelect(OFFER_COLUMNS_WITHOUT_FIRST_CHECKED_OR_AVAILABILITY_SOURCE, "cache_hit_rate", "cache_hit_sample_tokens"),
     OFFER_COLUMNS_WITHOUT_FIRST_CHECKED_IMAGE_OUTPUT_OR_AVAILABILITY_SOURCE,
+    withoutColumnsFromSelect(OFFER_COLUMNS_WITHOUT_FIRST_CHECKED_IMAGE_OUTPUT_OR_AVAILABILITY_SOURCE, "cache_hit_rate", "cache_hit_sample_tokens"),
   ];
   let lastError: unknown = null;
   for (const columns of attempts) {
@@ -738,6 +765,7 @@ function mapOfferRow(
       sourceLabel: source.label,
       sourceUrl: source.url,
     },
+    cacheUsage: transitCacheUsageFromRow(row),
     history: historyByOffer.get(historyKey({
       station_id: row.station_id,
       family,
@@ -805,6 +833,23 @@ function numberValue(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function transitCacheUsageFromRow(row: DbRow): TransitModelPrice["cacheUsage"] {
+  const hitRate = normalizedPercentRate(numberValue(row.cache_hit_rate));
+  const sampleTokens = Math.max(0, integerValue(row.cache_hit_sample_tokens) || 0);
+
+  if (hitRate === null && sampleTokens <= 0) return undefined;
+
+  return {
+    hitRate,
+    sampleTokens,
+  };
+}
+
+function normalizedPercentRate(value: number | null): number | null {
+  if (value === null || value < 0) return null;
+  return value > 1 ? Math.min(value / 100, 1) : Math.min(value, 1);
 }
 
 function integerValue(value: unknown): number | null {

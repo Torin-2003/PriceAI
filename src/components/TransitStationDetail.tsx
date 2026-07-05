@@ -47,6 +47,7 @@ import {
   compareTransitModelPriority,
   getActiveTransitCommercialOffers,
   formatAvailability,
+  formatCacheHitRate,
   formatPercent,
   formatTransitModelMultiplier,
   getAvailabilitySourceMeta,
@@ -59,6 +60,7 @@ import {
   getPrimaryTransitCommercialOffer,
   getPrimaryTransitOutboundOffer,
   getRechargeCoefficientFromRatio,
+  getRepresentativeCacheUsage,
   getTransitStationOutboundUrl,
   getNormalizedSourceTags,
   getRateBadgeClass,
@@ -94,6 +96,7 @@ type TransitPriceGroup = {
   modelMultiplierMin: number | null;
   modelMultiplierMax: number | null;
   modelMultiplierLabel: string;
+  cacheUsage: TransitModelPrice["cacheUsage"];
   sevenDayRate: number | null;
   sevenDaySamples: number;
   firstCheckedAt: string | null;
@@ -953,15 +956,17 @@ function PriceTable({
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[720px] table-fixed border-collapse">
                   <colgroup>
-                    <col className="w-[30%]" />
+                    <col className="w-[28%]" />
                     <col className="w-[14%]" />
-                    <col className="w-[28%]" />
-                    <col className="w-[28%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[25%]" />
+                    <col className="w-[21%]" />
                   </colgroup>
                   <thead>
                     <tr className="bg-[#f2f4f4]/50">
                       <DataTableHead compact>分组 / 模型</DataTableHead>
                       <DataTableHead compact explanation={TRANSIT_COMBINED_RATE_EXPLANATION}>综合倍率</DataTableHead>
+                      <DataTableHead compact explanation="缓存命中率来自站点公开分组累计用量，会影响实际成本，但取决于请求是否复用上下文，不计入默认综合倍率。">缓存命中</DataTableHead>
                       <DataTableHead compact explanation={TRANSIT_MONITORED_PRICE_EXPLANATION}>监测模型价格</DataTableHead>
                       <DataTableHead compact explanation="展示该分组的可用性探测、来源披露和最近监测确认时间。">监测 / 确认</DataTableHead>
                     </tr>
@@ -1385,6 +1390,7 @@ function PriceGroupMobileCard({
       <div className="mt-3 grid grid-cols-2 gap-2">
         <MobilePriceFact label="充值折算" value={formatRate(group.rechargeCoefficient)} />
         <MobilePriceFact label="模型倍率" value={group.modelMultiplierLabel} />
+        <MobilePriceFact label="缓存命中" value={formatCacheHitRate(group.cacheUsage)} />
         <MobilePriceFact label="覆盖" value={`${group.prices.length} 个模型`} />
         <MobilePriceFact label="可用率" value={formatPercent(group.sevenDayRate)} />
       </div>
@@ -1440,6 +1446,21 @@ function MobilePriceFact({ label, value }: { label: string; value: string }) {
   );
 }
 
+function CacheHitCell({ cacheUsage }: { cacheUsage: TransitModelPrice["cacheUsage"] }) {
+  const hasSamples = Boolean(cacheUsage && cacheUsage.sampleTokens > 0 && cacheUsage.hitRate !== null);
+
+  return (
+    <div
+      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-extrabold tabular-nums ${
+        hasSamples ? "bg-[#eef3f8] text-[#47657a]" : "bg-[#f2f4f4] text-[#7f8889]"
+      }`}
+      title="累计缓存命中率来自站点公开分组用量，会影响实际成本，但不计入默认综合倍率。"
+    >
+      {formatCacheHitRate(cacheUsage)}
+    </div>
+  );
+}
+
 function PriceGroupRow({
   station,
   group,
@@ -1484,6 +1505,9 @@ function PriceGroupRow({
           <div title={TRANSIT_MODEL_MULTIPLIER_EXPLANATION}>模型倍率 {group.modelMultiplierLabel}</div>
           <div>{group.prices.length} 个模型</div>
         </div>
+      </td>
+      <td className="px-4 py-4">
+        <CacheHitCell cacheUsage={group.cacheUsage} />
       </td>
       <td className="px-4 py-3">
         <TransitPriceBreakdown station={station} price={primaryPrice} mode="detail" />
@@ -1586,6 +1610,7 @@ function buildPriceGroup(
     modelMultiplierMin: modelMultipliers.length ? Math.min(...modelMultipliers) : null,
     modelMultiplierMax: modelMultipliers.length ? Math.max(...modelMultipliers) : null,
     modelMultiplierLabel: formatModelGroupMultiplierLabel(primaryPrice, modelMultipliers),
+    cacheUsage: getRepresentativeCacheUsage(prices),
     sevenDayRate: weightedAvailability,
     sevenDaySamples: availabilitySamples,
     firstCheckedAt,

@@ -433,6 +433,14 @@ const aiTransitSnapshot = __test.parsePricingPayload(
         name: "gpt free号池",
         platform: "openai",
         rate_multiplier: 0.1,
+        cache_usage: {
+          total: {
+            input_tokens: 1_000,
+            cache_creation_tokens: 200,
+            cache_read_tokens: 8_800,
+            cache_hit_rate: 88,
+          },
+        },
         models: [
           {
             standard_model: "gpt-5.5",
@@ -491,6 +499,8 @@ assert.equal(aiTransitGpt.model_multiplier, 0.1);
 assert.equal(aiTransitGpt.input_price, 0.1);
 assert.equal(aiTransitGpt.output_price, 0.1);
 assert.equal(aiTransitGpt.cache_read_price, 0.1);
+assert.equal(aiTransitGpt.cache_hit_rate, 0.88);
+assert.equal(aiTransitGpt.cache_hit_sample_tokens, 10000);
 assert.equal(aiTransitGpt.availability_seven_day_rate, 0.965);
 assert.equal(aiTransitGpt.availability_source_type, "public_status");
 const aiTransitImage = aiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT Image 2");
