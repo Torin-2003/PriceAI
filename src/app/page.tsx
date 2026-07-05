@@ -175,7 +175,6 @@ export default async function Home() {
     <div className="min-h-screen bg-[var(--color-page)] text-[var(--color-text-body)]">
       <HomeUrlCleaner />
       <JsonLd data={buildHomeJsonLd()} />
-      <SponsoredPlacementPreview kind="topBanner" settings={sponsorSettings} />
       <div className="sticky top-0 z-40 bg-[var(--color-page-translucent)] shadow-[var(--shadow-control)] backdrop-blur-xl">
         <SiteHeader activeSection="home" />
       </div>

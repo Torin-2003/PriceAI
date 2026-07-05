@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import { Suspense } from "react";
-import { GlobalSponsorFooter } from "@/components/GlobalSponsorFooter";
+import { GlobalSponsorPlacements } from "@/components/GlobalSponsorPlacements";
 import { GoogleAnalytics } from "@/components/GoogleAnalytics";
 import { QQGroupAutoPrompt } from "@/components/QQGroupAutoPrompt";
 import { SiteNoticePrompt } from "@/components/SiteNoticePrompt";
@@ -69,8 +69,9 @@ export default function RootLayout({
     <html lang="zh-CN" className="h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full flex flex-col">
         <Script id="priceai-theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeInitScript }} />
-        {children}
-        <GlobalSponsorFooter />
+        <GlobalSponsorPlacements>
+          {children}
+        </GlobalSponsorPlacements>
         <SiteNoticePrompt />
         <Suspense fallback={null}>
           <QQGroupAutoPrompt />

@@ -5178,7 +5178,7 @@ function SponsorPlacementEditor({
                 </label>
                 {isTopBanner ? (
                   <p className="rounded-lg bg-[#eef3f8] px-3 py-2 text-[11px] leading-5 text-[#47657a] md:col-span-2 xl:col-span-4">
-                    顶部横幅是通知条样式，不读取图片素材；前台展示为一行短文案和跳转箭头。
+                    顶部横幅是全站通知条样式，不读取图片素材；前台展示为一行短文案和跳转箭头。
                   </p>
                 ) : (
                   <>
@@ -5416,7 +5416,7 @@ function SponsorTopBannerPreview({ creative, kind }: { creative: SponsorCreative
     <div className="mt-4 rounded-lg bg-[#f9f9f9] p-3 ring-1 ring-[#adb3b4]/20">
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-[#2d3435]">横幅效果预览</span>
-        <span className="rounded-full bg-[#eef3f8] px-2 py-0.5 text-[11px] font-semibold text-[#47657a]">首页顶部通知条</span>
+        <span className="rounded-full bg-[#eef3f8] px-2 py-0.5 text-[11px] font-semibold text-[#47657a]">全站顶部通知条</span>
       </div>
       <div className="overflow-hidden rounded-lg border-b border-[#d8e3df] bg-[#edf7f3] text-[#202829] ring-1 ring-[#d8e3df]">
         <div className="flex min-h-11 items-center gap-3 px-3">
@@ -5704,7 +5704,7 @@ function sponsorPlacementLabel(kind: string): string {
 }
 
 function sponsorPlacementDescription(kind: string): string {
-  if (kind === "topBanner") return "展示为首页顶部通知条，单独占满后台宽度，只需要短标题、说明和跳转链接。";
+  if (kind === "topBanner") return "展示为全站顶部通知条，单独占满后台宽度，只需要短标题、说明和跳转链接。";
   if (kind === "listFooter") return "底部区域支持多张图片卡，可放 AI 周边和中转 API 周边赞助；不得写成榜单推荐或排序权益。";
   return "展示为轻量横幅或图文卡片。";
 }

@@ -8,7 +8,7 @@ export const revalidate = 3600;
 
 export const metadata: Metadata = {
   title: "赞助位合作",
-  description: "PriceAI 赞助位合作说明：面向正在比较 AI 订阅、官方 API 和中转 API 的用户，提供顶部横幅、首页生态位、频道赞助位和底部展示区。",
+  description: "PriceAI 赞助位合作说明：面向正在比较 AI 订阅、官方 API 和中转 API 的用户，提供全站顶部横幅、首页生态位、频道赞助位和底部展示区。",
   alternates: {
     canonical: "/commercial",
   },
@@ -22,8 +22,8 @@ export const metadata: Metadata = {
 
 const slots = [
   {
-    title: "首页顶部横幅",
-    audience: "刚进入 PriceAI、还在选择购买路径的用户。",
+    title: "全站顶部横幅",
+    audience: "进入 PriceAI 任意公开页面、正在浏览价格或购买路径的用户。",
     fit: "云服务器、监控、开发者工具、域名、支付、算力、API 周边服务",
     format: "可关闭通知条，适合短期活动、品牌入口或重要更新。",
     note: "适合做轻提醒，不适合承载复杂说明。",

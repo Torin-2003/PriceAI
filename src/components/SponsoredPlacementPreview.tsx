@@ -46,11 +46,11 @@ const placementCopy: Record<SponsorPlacementKind, PlacementCopy> = {
   topBanner: {
     id: "top-banner",
     label: "广告",
-    eyebrow: "顶部通知条",
+    eyebrow: "全站顶部通知条",
     title: "AI 周边赞助位开放",
     body: "适合云服务器、开发者工具、监控、域名、支付、算力等服务，不放卡网订阅或中转站排名型推广。",
     cta: "查看投放要求",
-    slot: "首页顶部",
+    slot: "全站顶部",
     fit: "AI 周边",
     visualTitle: "AI 周边服务",
     visualBody: "云服务 / 监控 / 开发工具",

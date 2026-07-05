@@ -53,7 +53,7 @@ export type SponsorSettingsSummary = {
 };
 
 export const sponsorPlacementLabels: Record<SponsorPlacementKind, string> = {
-  topBanner: "首页顶部横幅",
+  topBanner: "全站顶部横幅",
   home: "首页生态合作位",
   apiTransit: "中转 API 频道赞助位",
   apiTransitModels: "中转 API 模型页赞助位",
