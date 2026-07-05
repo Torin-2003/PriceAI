@@ -32,6 +32,20 @@ type UpstreamType =
 type StatusTone = "pending" | "ready" | "muted" | "warn";
 type DetectionStatus = "queued" | "running" | "done" | "error";
 
+interface DetectorErrorDetail {
+  code?: string;
+  message?: string;
+  model?: string;
+  protocol?: string;
+  upstream_error?: string;
+}
+
+interface DetectorValidationError {
+  loc?: Array<string | number>;
+  msg?: string;
+  type?: string;
+}
+
 interface DetectorStatusPayload {
   job_id?: string;
   status?: "queued" | "running" | "done" | "error";
@@ -39,8 +53,8 @@ interface DetectorStatusPayload {
   result_url?: string;
   image_url?: string;
   json_url?: string;
-  error?: string;
-  detail?: string;
+  error?: string | DetectorErrorDetail;
+  detail?: string | DetectorErrorDetail | DetectorValidationError[];
 }
 
 interface DetectorClientProps {
@@ -74,6 +88,8 @@ interface DetectionResult {
   resultUrl?: string;
   jsonUrl?: string;
   imageUrl?: string;
+  errorCode?: string;
+  canForceSubmit?: boolean;
 }
 
 export interface DetectorStationOption {
@@ -198,6 +214,7 @@ const upstreamOptions: Array<{ value: UpstreamType; label: string; detail: strin
 
 export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstileSiteKey = "" }: DetectorClientProps) {
   const runIdRef = useRef(0);
+  const formRef = useRef<HTMLFormElement>(null);
   const turnstileRef = useRef<HTMLDivElement>(null);
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const turnstilePollTimerRef = useRef<number | null>(null);
@@ -217,6 +234,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
   const [turnstileScriptReady, setTurnstileScriptReady] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileError, setTurnstileError] = useState("");
+  const [forcePreflight, setForcePreflight] = useState(false);
 
   const normalizedServiceUrl = serviceUrl.trim().replace(/\/$/, "");
   const normalizedTurnstileSiteKey = turnstileSiteKey.trim();
@@ -246,6 +264,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
   }, [results]);
 
   function handlePresetClick(preset: PresetModel) {
+    setForcePreflight(false);
     setSelectedModelId(preset.id);
     setProtocol(preset.protocol);
     setModel(preset.model);
@@ -253,6 +272,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
   }
 
   function handleModelInput(nextModel: string) {
+    setForcePreflight(false);
     setModel(nextModel);
     if (selectedModelId !== "custom") {
       setSelectedModelId("custom");
@@ -260,12 +280,14 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
   }
 
   function handleStationChange(stationId: string) {
+    setForcePreflight(false);
     setSelectedStationId(stationId);
     const station = stations.find((item) => item.id === stationId);
     if (station?.apiBaseUrl) setBaseUrl(station.apiBaseUrl);
   }
 
   function handleClearApiKey() {
+    setForcePreflight(false);
     setApiKey("");
     setShowApiKey(false);
   }
@@ -294,7 +316,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
       },
       "error-callback": () => {
         setTurnstileToken("");
-        setTurnstileError("人机校验加载失败，请刷新或稍后再试。");
+        setTurnstileError("人机校验没有完成，请刷新校验或换一个网络后重试。");
       },
     });
   }, [normalizedTurnstileSiteKey]);
@@ -312,7 +334,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
 
       if (Date.now() - startedAt > 10_000) {
         window.clearInterval(timerId);
-        setTurnstileError("人机校验脚本加载超时，请刷新后重试。");
+        setTurnstileError("人机校验脚本加载超时，请检查是否拦截 Cloudflare 校验脚本，或刷新后重试。");
       }
     }, 200);
 
@@ -337,7 +359,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
           window.clearInterval(turnstilePollTimerRef.current);
           turnstilePollTimerRef.current = null;
         }
-        setTurnstileError("人机校验脚本加载超时，请刷新后重试。");
+        setTurnstileError("人机校验脚本加载超时，请检查是否拦截 Cloudflare 校验脚本，或刷新后重试。");
       }
     }, 200);
 
@@ -364,6 +386,17 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
     );
   }
 
+  function handleForcePreflightRetry(item: DetectionResult) {
+    setForcePreflight(true);
+    if (turnstileEnabled && !turnstileToken) {
+      setTurnstileError("请重新完成人机校验后点击“跳过预探测检测”。");
+    }
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    updateResult(item.localId, {
+      message: "已准备跳过模型预探测重试。请重新完成人机校验后提交。",
+    });
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (turnstileEnabled && !turnstileToken) {
@@ -384,7 +417,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
       modeLabel: activeCostProfile.label,
       upstreamLabel: selectedUpstream.label,
       status: "queued",
-      message: "正在提交检测任务。",
+      message: forcePreflight ? "正在提交检测任务，已跳过模型预探测。" : "正在提交检测任务。",
       submittedAt,
       costEstimateLabel: costEstimate.totalLabel,
     };
@@ -404,6 +437,9 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
       payload.set("api_key", apiKey.trim());
       payload.set("model", model.trim());
       payload.set("mode", backendModeForIntensity(intensity));
+      if (forcePreflight) {
+        payload.set("force", "1");
+      }
       if (turnstileEnabled) {
         payload.set("turnstile_token", turnstileToken);
       }
@@ -419,7 +455,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
       });
       const data = (await response.json().catch(() => ({}))) as DetectorStatusPayload;
       if (!response.ok) {
-        throw new Error(data.detail || data.error || "检测后端拒绝了这次请求。");
+        throw buildDetectorClientError(data, response.status);
       }
       if (!data.job_id || !data.status_url) {
         throw new Error("检测后端没有返回任务编号。");
@@ -435,11 +471,19 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
       await pollDetectorJob(data.status_url, nextRunId, localId);
     } catch (error) {
       if (runIdRef.current !== nextRunId) return;
-      const message = normalizeDetectorError(error);
+      const detectorError = normalizeDetectorError(error);
       setTaskStatus("error");
-      updateResult(localId, { status: "error", message });
+      updateResult(localId, {
+        status: "error",
+        message: detectorError.message,
+        errorCode: detectorError.code,
+        canForceSubmit: detectorError.canForceSubmit,
+      });
     } finally {
       resetTurnstile();
+      if (forcePreflight) {
+        setForcePreflight(false);
+      }
     }
   }
 
@@ -453,7 +497,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
       const response = await fetch(statusEndpoint, { cache: "no-store" });
       const data = (await response.json().catch(() => ({}))) as DetectorStatusPayload;
       if (!response.ok) {
-        throw new Error(data.detail || data.error || "读取检测状态失败。");
+        throw buildDetectorClientError(data, response.status);
       }
 
       if (data.status === "done") {
@@ -473,7 +517,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
       }
 
       if (data.status === "error") {
-        throw new Error(data.error || "检测任务失败。");
+        throw buildDetectorClientError({ error: data.error || "检测任务失败。" }, 500);
       }
 
       if (runIdRef.current === runId) {
@@ -501,7 +545,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
           onError={() => {
             setTurnstileScriptReady(false);
             setTurnstileToken("");
-            setTurnstileError("人机校验脚本加载失败，请刷新后重试。");
+            setTurnstileError("人机校验脚本加载失败，请检查是否拦截 Cloudflare 校验脚本，或刷新后重试。");
           }}
         />
       ) : null}
@@ -523,7 +567,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
           </div>
         </div>
 
-        <form className="space-y-5 px-5 py-5" onSubmit={handleSubmit}>
+        <form ref={formRef} className="space-y-5 px-5 py-5" onSubmit={handleSubmit}>
           <div className="grid gap-3 xl:grid-cols-[minmax(170px,0.62fr)_minmax(280px,0.95fr)_minmax(300px,0.9fr)]">
             <label className="block">
               <span className="mb-2 block text-sm font-semibold text-[#202829]">已收录站点</span>
@@ -547,7 +591,10 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
               <span className="mb-2 block text-sm font-semibold text-[#202829]">API 接口地址</span>
               <input
                 value={baseUrl}
-                onChange={(event) => setBaseUrl(event.target.value)}
+                onChange={(event) => {
+                  setForcePreflight(false);
+                  setBaseUrl(event.target.value);
+                }}
                 placeholder={selectedStation && !selectedStation.apiBaseUrl ? "该站点未公开接口地址，请手动填写" : "输入中转站接口地址"}
                 className="h-11 w-full rounded-lg border border-[#dfe4e5] bg-white px-3 text-sm text-[#202829] outline-none transition placeholder:text-[#7a8284] focus:border-[#45bf78]"
               />
@@ -559,7 +606,10 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
                 <KeyRound className="h-4 w-4 shrink-0 text-[#5a6061]" />
                 <input
                   value={apiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
+                  onChange={(event) => {
+                    setForcePreflight(false);
+                    setApiKey(event.target.value);
+                  }}
                   type={showApiKey ? "text" : "password"}
                   autoComplete="off"
                   placeholder="粘贴临时测试 Key"
@@ -596,6 +646,11 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
             请使用单独创建的低额度测试 Key，不要使用主账号或长期高额度 Key；检测完成后建议到原中转站删除或撤销该 Key。
             原始 Key 只会提交给独立检测服务，报告和 PriceAI 主站不会保存原始 Key。
           </div>
+          {forcePreflight ? (
+            <div className="rounded-lg bg-[#eef7f4] px-4 py-3 text-xs leading-5 text-[#315f49] ring-1 ring-[#45bf78]/25">
+              本次会跳过模型可用性预探测，直接进入完整检测。适合中转站对短探测请求误拦截的情况；如果模型确实不可用，检测结果里仍会保留失败证据。
+            </div>
+          ) : null}
 
           <div>
             <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
@@ -642,6 +697,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
               <select
                 value={protocol}
                 onChange={(event) => {
+                  setForcePreflight(false);
                   const nextProtocol = event.target.value as DetectorProtocol;
                   setProtocol(nextProtocol);
                   if (nextProtocol === "gemini") setIncludeLongContext(false);
@@ -660,7 +716,10 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
               <span className="mb-2 block text-sm font-semibold text-[#202829]">线路类型</span>
               <select
                 value={upstream}
-                onChange={(event) => setUpstream(event.target.value as UpstreamType)}
+                onChange={(event) => {
+                  setForcePreflight(false);
+                  setUpstream(event.target.value as UpstreamType);
+                }}
                 className="h-11 w-full rounded-lg border border-[#dfe4e5] bg-white px-3 text-sm font-medium text-[#202829] outline-none transition focus:border-[#45bf78]"
               >
                 {upstreamOptions.map((item) => (
@@ -753,7 +812,13 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
                   {turnstileError ? (
                     <p className="mt-1 text-xs font-medium text-[#8a4c00]">{turnstileError}</p>
                   ) : (
-                    <p className="mt-1 text-xs text-[#5a6061]">用于防止检测接口被批量滥用。</p>
+                    <p className="mt-1 text-xs text-[#5a6061]">
+                      {turnstileToken
+                        ? "人机校验已通过，提交后会自动刷新校验。"
+                        : turnstileScriptReady
+                          ? "请先完成人机校验，用于防止检测接口被批量滥用。"
+                          : "人机校验加载中。"}
+                    </p>
                   )}
                 </div>
               ) : null}
@@ -763,7 +828,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
                 disabled={!canSubmit}
               >
                 <Play className="h-4 w-4" />
-                {submitLabel(taskStatus, serviceConnected, turnstileEnabled && !turnstileToken)}
+                {submitLabel(taskStatus, serviceConnected, turnstileEnabled && !turnstileToken, forcePreflight)}
               </button>
             </div>
           </div>
@@ -809,6 +874,15 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
                       <div className="flex flex-col gap-1">
                         <StatusPill tone={resultTone(item.status)}>{resultStatusLabel(item.status)}</StatusPill>
                         <span className="max-w-[220px] text-xs leading-5 text-[#5a6061]">{item.message}</span>
+                        {item.canForceSubmit ? (
+                          <button
+                            type="button"
+                            onClick={() => handleForcePreflightRetry(item)}
+                            className="mt-1 inline-flex h-8 w-fit items-center justify-center rounded-full bg-[#202829] px-3 text-[0.68rem] font-semibold text-white transition hover:bg-[#2d3435]"
+                          >
+                            跳过预探测重试
+                          </button>
+                        ) : null}
                         {item.jobId ? <span className="max-w-[220px] break-all text-[0.68rem] text-[#7a8284]">任务：{item.jobId}</span> : null}
                       </div>
                     </td>
@@ -870,12 +944,88 @@ function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function normalizeDetectorError(error: unknown) {
-  if (!(error instanceof Error)) return "检测提交失败，请稍后再试。";
-  if (error.message === "Failed to fetch") {
-    return "无法连接检测后端。请确认本地 8017 服务已启动，并允许来自当前页面的跨域请求。";
+interface DetectorErrorView {
+  message: string;
+  code?: string;
+  canForceSubmit?: boolean;
+}
+
+class DetectorClientError extends Error {
+  code?: string;
+  canForceSubmit?: boolean;
+
+  constructor(message: string, options: { code?: string; canForceSubmit?: boolean } = {}) {
+    super(message);
+    this.name = "DetectorClientError";
+    this.code = options.code;
+    this.canForceSubmit = options.canForceSubmit;
   }
-  return error.message;
+}
+
+function normalizeDetectorError(error: unknown): DetectorErrorView {
+  if (!(error instanceof Error)) return { message: "检测提交失败，请稍后再试。" };
+  if (error.message === "Failed to fetch") {
+    return { message: "无法连接检测后端。请确认检测服务可访问，并允许来自当前页面的跨域请求。" };
+  }
+  if (error instanceof DetectorClientError) {
+    return {
+      message: error.message,
+      code: error.code,
+      canForceSubmit: error.canForceSubmit,
+    };
+  }
+  return { message: error.message };
+}
+
+function buildDetectorClientError(data: DetectorStatusPayload, status: number): DetectorClientError {
+  const detail = data.detail;
+  if (isRecord(detail)) {
+    const code = stringValue(detail.code);
+    const message = stringValue(detail.message);
+    const upstreamError = stringValue(detail.upstream_error);
+
+    if (code === "model_not_alive") {
+      const model = stringValue(detail.model);
+      const text = [
+        message || (model ? `模型 ${model} 在该中转站实际不可用。` : "模型在该中转站实际不可用。"),
+        upstreamError ? `上游返回：${upstreamError}` : "",
+      ].filter(Boolean).join(" ");
+      return new DetectorClientError(text, { code, canForceSubmit: true });
+    }
+
+    return new DetectorClientError(message || upstreamError || `检测提交失败（HTTP ${status}）。`, { code });
+  }
+
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => isRecord(item) ? stringValue(item.msg) : "")
+      .filter(Boolean);
+    return new DetectorClientError(messages[0] || `检测提交参数无效（HTTP ${status}）。`);
+  }
+
+  const detailText = stringValue(detail);
+  const errorText = isRecord(data.error) ? stringValue(data.error.message) : stringValue(data.error);
+  const message = detailText || errorText;
+
+  if (status === 403 && message.toLowerCase().includes("human verification")) {
+    return new DetectorClientError("人机校验未通过，请重新验证后再提交。", { code: "turnstile_failed" });
+  }
+  if (status === 400 && message.toLowerCase().includes("human verification")) {
+    return new DetectorClientError("请先完成人机校验后再提交。", { code: "turnstile_required" });
+  }
+  if (status === 503 && message.toLowerCase().includes("human verification")) {
+    return new DetectorClientError("人机校验服务暂时不可用，请稍后再试。", { code: "turnstile_unavailable" });
+  }
+
+  return new DetectorClientError(message || `检测后端拒绝了这次请求（HTTP ${status}）。`);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function backendModeForIntensity(intensity: DetectorIntensity): BackendMode {
@@ -1004,11 +1154,13 @@ function submitLabel(
   status: DetectionStatus | "idle",
   serviceConnected: boolean,
   waitingForVerification = false,
+  forcePreflight = false,
 ) {
   if (!serviceConnected) return "检测服务未连接";
   if (waitingForVerification) return "等待校验";
   if (status === "queued") return "提交中";
   if (status === "running") return "检测中";
+  if (forcePreflight) return "跳过预探测检测";
   return "开始检测";
 }
 
