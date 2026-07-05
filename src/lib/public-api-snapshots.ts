@@ -1,11 +1,14 @@
 import "server-only";
 
-import { getSupabaseServerClient } from "./supabase";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 
 const SNAPSHOT_READ_TIMEOUT_MS = 2_500;
 const SNAPSHOT_WRITE_TIMEOUT_MS = 15_000;
 const NEXT_PRODUCTION_BUILD_PHASE = "phase-production-build";
 export const PUBLIC_API_SNAPSHOT_SCHEMA_VERSION = 1;
+
+let snapshotClient: SupabaseClient | null = null;
 
 export type PublicApiSnapshotKind = "explorer" | "offers" | "product_offers" | "merchants" | "refresh_state";
 
@@ -26,7 +29,7 @@ export async function readPublicApiSnapshot<T>(
 ): Promise<PublicApiSnapshotPayload<T> | null> {
   if (isProductionBuildPhase()) return null;
 
-  const supabase = getSupabaseServerClient();
+  const supabase = getPublicApiSnapshotClient();
   if (!supabase) return null;
 
   const { data, error } = await supabase
@@ -68,7 +71,7 @@ export async function writePublicApiSnapshot<T>({
 }): Promise<boolean> {
   if (isProductionBuildPhase()) return false;
 
-  const supabase = getSupabaseServerClient();
+  const supabase = getPublicApiSnapshotClient();
   if (!supabase) return false;
 
   const now = new Date().toISOString();
@@ -96,6 +99,27 @@ export async function writePublicApiSnapshot<T>({
 
 function isProductionBuildPhase(): boolean {
   return process.env.NEXT_PHASE === NEXT_PRODUCTION_BUILD_PHASE;
+}
+
+function getPublicApiSnapshotClient(): SupabaseClient | null {
+  const url = getRuntimeEnv("NEXT_PUBLIC_SUPABASE_URL");
+  const key = getRuntimeEnv("SUPABASE_SERVICE_ROLE_KEY");
+
+  if (!url || !key) return null;
+
+  if (!snapshotClient) {
+    snapshotClient = createClient(url, key, {
+      db: {
+        timeout: SNAPSHOT_READ_TIMEOUT_MS,
+      },
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
+  }
+
+  return snapshotClient;
 }
 
 function isMissingSnapshotTableError(message: string): boolean {
