@@ -445,10 +445,10 @@ function mergeStaticApiModelDataset(dataset: ApiModelDataset): ApiModelDataset {
   return {
     ...dataset,
     generatedAt: latestDate([dataset.generatedAt, staticApiModelDataset.generatedAt]),
-    models: mergeById(dataset.models, staticApiModelDataset.models),
-    providers: mergeById(dataset.providers, staticApiModelDataset.providers),
-    plans: mergeById(dataset.plans, staticApiModelDataset.plans),
-    offers: mergeById(dataset.offers, staticApiModelDataset.offers),
+    models: mergeById(staticApiModelDataset.models, dataset.models),
+    providers: mergeById(staticApiModelDataset.providers, dataset.providers),
+    plans: mergeById(staticApiModelDataset.plans, dataset.plans),
+    offers: mergeById(staticApiModelDataset.offers, dataset.offers),
   };
 }
 

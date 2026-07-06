@@ -5,6 +5,7 @@ These assets are cached locally for stable rendering and performance. They are s
 | File | Source | Notes |
 |---|---|---|
 | `chatgpt.svg` | Legacy cached SVG mark. | Monochrome asset kept for direct file compatibility; UI surfaces render ChatGPT/OpenAI through `BrandIcon` as an inline `currentColor` SVG so the mark remains visible in dark mode. |
+| `claude.svg` | Legacy cached SVG mark. | Claude public brand mark kept for Anthropic Claude API and Claude subscription provider rows. |
 | `grok.svg` | Legacy cached SVG mark. | Monochrome asset kept for direct file compatibility; UI surfaces render Grok through `BrandIcon` as an inline `currentColor` SVG so the mark remains visible in dark mode. |
 | `gemini.svg` | Legacy cached SVG mark. | Gemini public brand mark kept for Gemini model and provider rows. |
 | `gmail.png` | `https://ssl.gstatic.com/ui/v1/icons/mail/rfr/gmail.ico` | Converted from official Google-hosted Gmail favicon to PNG. |

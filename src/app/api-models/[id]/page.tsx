@@ -404,7 +404,7 @@ function PriceMetric({ label, value, helper }: { label: string; value: string; h
 }
 
 function formatCacheApiPrice(price: ApiModelOfferWithRelations["cacheReadPrice"], currency: ApiCurrency) {
-  return price ? formatApiPrice(price, currency, { maximumFractionDigits: 3 }) : "待确认";
+  return price ? formatApiPrice(price, currency, { maximumFractionDigits: 3 }) : "-";
 }
 
 function formatDatasetDate(value: string) {

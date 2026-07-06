@@ -1684,7 +1684,7 @@ function PriceMetric({ label, value, helper }: { label: string; value: string; h
 }
 
 function StandardPriceCell({ value }: { value: string }) {
-  const muted = value === "待确认";
+  const muted = value === "待确认" || value === "-";
 
   return (
     <span className={`block break-words text-sm font-semibold leading-6 ${muted ? "text-[#5a6061]" : "text-[#202829]"}`}>
@@ -1694,19 +1694,19 @@ function StandardPriceCell({ value }: { value: string }) {
 }
 
 function formatBenchmarkApiPrice(price: ApiModelOfferWithRelations["inputPrice"], currency: ApiCurrency) {
-  if (price.kind !== "numeric") return "待确认";
+  if (price.kind === "text") return price.text.trim() || "待确认";
   return formatApiPrice(price, currency, { maximumFractionDigits: 3 }).replace(" / 1M tokens", "");
 }
 
 function formatBenchmarkOptionalApiPrice(price: ApiModelOfferWithRelations["cacheReadPrice"], currency: ApiCurrency) {
-  return price ? formatBenchmarkApiPrice(price, currency) : "待确认";
+  return price ? formatBenchmarkApiPrice(price, currency) : "-";
 }
 
 function formatBenchmarkCacheWritePrice(offer: ApiModelOfferWithRelations | null | undefined, currency: ApiCurrency) {
   if (!offer) return "待确认";
   if (offer.cacheWritePrice) return formatBenchmarkApiPrice(offer.cacheWritePrice, currency);
-  if (offer.cacheReadPrice?.kind === "numeric" && offer.inputPrice.kind === "numeric") return formatBenchmarkApiPrice(offer.inputPrice, currency);
-  return "待确认";
+  if (offer.cacheReadPrice) return "-";
+  return "-";
 }
 
 function formatCacheApiPrice(price: ApiModelOfferWithRelations["cacheReadPrice"], currency: ApiCurrency) {
