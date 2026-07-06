@@ -99,6 +99,7 @@ assert(!/refreshPublicApiSnapshots/.test(crawlLogRouteText), "src/app/api/admin/
 const adminText = read("src/lib/admin.ts");
 assert(/upsertRawOfferConfirmations/.test(adminText), "src/lib/admin.ts: unchanged offers must write lightweight confirmation rows instead of refreshing raw_offers.");
 assert(/raw_offer_confirmations/.test(adminText), "src/lib/admin.ts: offer confirmation writes must use raw_offer_confirmations.");
+assert(/preserveExistingUnavailableStateForImplicitConfirmation/.test(adminText), "src/lib/admin.ts: implicit collector confirmations must not revive explicitly unavailable offers.");
 assert(!/UNCHANGED_OFFER_REFRESH_INTERVAL_MS/.test(adminText), "src/lib/admin.ts: unchanged confirmation timing must not be implemented by raw_offers refresh intervals.");
 assert(!/function\s+shouldRefreshUnchangedOffer/.test(adminText), "src/lib/admin.ts: unchanged offer confirmation must not depend on old raw_offers refresh logic.");
 assert(/function expireStaleOffersAfterRepeatedFailures/.test(adminText), "src/lib/admin.ts: repeated collector failures must only expire stale offers after a threshold.");
@@ -111,6 +112,8 @@ const migrationText = listMigrationFiles().map((file) => read(file)).join("\n");
 assert(/create index if not exists raw_offers_public_dedupe_key_idx/.test(migrationText), "supabase/migrations: raw_offers duplicate-hide trigger must have a public dedupe-key index.");
 assert(/priceai_public_offer_dedupe_key\(\s*canonical_product_id,\s*url,\s*source_title,\s*price\s*\)/.test(migrationText), "supabase/migrations: raw_offers public dedupe index must match the trigger key expression.");
 assert(/raw_offers_public_dedupe_key_idx[\s\S]{0,300}where hidden = false/.test(migrationText), "supabase/migrations: raw_offers public dedupe index must stay scoped to visible offers.");
+assert(/prefer_base_unavailable/.test(migrationText), "supabase/migrations: raw_offer_public_state must guard against stale confirmation rows.");
+assert(/raw_offers\.effective_status = 'unavailable'/.test(migrationText), "supabase/migrations: unavailable raw offer rows must be able to dominate stale confirmation rows.");
 
 const snapshotRefreshWorkflowText = read(".github/workflows/refresh-public-api-snapshots.yml");
 assert(snapshotRefreshWorkflowText.includes('cron: "*/30 * * * *"'), ".github/workflows/refresh-public-api-snapshots.yml: GitHub scheduled snapshot refresh must remain a low-frequency fallback.");

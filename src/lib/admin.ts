@@ -404,6 +404,7 @@ export async function upsertRawOffers(
   const collectionMethod = options.collectionMethod || "browser";
   const sourceCache = new Map<string, Source>();
   const checkedAt = normalizedDateString(options.checkedAt) || new Date().toISOString();
+  const explicitEffectiveStatusById = new Map<string, string>();
 
   for (const offer of offers) {
     const sourceKey = offer.sourceId || `${offer.sourceName}|${offer.sourceUrl}|${collectionMethod}`;
@@ -428,12 +429,15 @@ export async function upsertRawOffers(
     const tags = parseTags(offer.tags || "");
     const canonical = classifyOffer(offer.sourceTitle, { tags, price: offer.price ?? null });
     const trustFields = freshnessFields({ method: collectionMethod, status, verifiedAt: checkedAt });
-    const effectiveStatus = normalizeEffectiveStatus(offer.effectiveStatus || null) || trustFields.effective_status;
+    const explicitEffectiveStatus = normalizeEffectiveStatus(offer.effectiveStatus || null);
+    const effectiveStatus = explicitEffectiveStatus || trustFields.effective_status;
     const freshnessStatus = normalizeFreshnessStatus(offer.freshnessStatus || null) || trustFields.freshness_status;
     const failureReason = normalizeFailureReason(offer.failureReason);
+    const id = rawOfferInputId(normalizedOffer);
+    if (explicitEffectiveStatus) explicitEffectiveStatusById.set(id, explicitEffectiveStatus);
 
     const row = toRawOfferRow({
-      id: rawOfferInputId(normalizedOffer),
+      id,
       sourceId: source.id,
       sourceName: source.name,
       sourceStoreName: normalizedOffer.sourceStoreName,
@@ -484,6 +488,11 @@ export async function upsertRawOffers(
 
   for (const row of rows) {
     const existingRow = existingById.get(String(row.id));
+    preserveExistingUnavailableStateForImplicitConfirmation(
+      row,
+      existingRow,
+      explicitEffectiveStatusById.get(String(row.id)) || null,
+    );
     if (isRawOfferRowUnchanged(row, existingRow)) {
       unchangedRows.push(row);
     } else {
@@ -515,7 +524,7 @@ async function getExistingOfferRowsById(ids: string[]): Promise<Map<string, Reco
   for (const idChunk of chunks(Array.from(new Set(ids)), 100)) {
     const { data, error } = await supabase
       .from("raw_offers")
-      .select("id,source_id,source_name,source_store_name,source_title,price,listed_price,fee_amount,price_basis,currency,status,url,tags,stock_count,hidden,canonical_product_id,category_slug,last_seen_at,verified_at,updated_at,last_failed_at,failure_reason")
+      .select("id,source_id,source_name,source_store_name,source_title,price,listed_price,fee_amount,price_basis,currency,status,source_status,effective_status,freshness_status,expires_at,source_priority,confidence,url,tags,stock_count,hidden,canonical_product_id,category_slug,last_seen_at,verified_at,updated_at,last_failed_at,failure_reason")
       .in("id", idChunk);
 
     if (error) throw error;
@@ -539,6 +548,9 @@ function isRawOfferRowUnchanged(next: Record<string, unknown>, existing?: Record
     "price_basis",
     "currency",
     "status",
+    "source_status",
+    "effective_status",
+    "freshness_status",
     "url",
     "tags",
     "stock_count",
@@ -550,6 +562,38 @@ function isRawOfferRowUnchanged(next: Record<string, unknown>, existing?: Record
   ];
 
   return keys.every((key) => comparableValue(next[key]) === comparableValue(existing[key]));
+}
+
+function preserveExistingUnavailableStateForImplicitConfirmation(
+  next: Record<string, unknown>,
+  existing: Record<string, unknown> | undefined,
+  explicitEffectiveStatus: string | null,
+) {
+  if (!existing || explicitEffectiveStatus) return;
+
+  const existingEffectiveStatus = String(existing.effective_status || "");
+  if (!shouldPreserveUnavailableBaseStatus(existing, existingEffectiveStatus)) return;
+
+  const nextEffectiveStatus = String(next.effective_status || "");
+  if (nextEffectiveStatus !== "available") return;
+
+  next.source_status = existing.source_status || next.source_status;
+  next.effective_status = existing.effective_status;
+  next.freshness_status = existing.freshness_status || next.freshness_status;
+  next.expires_at = existing.expires_at || next.expires_at;
+  next.source_priority = existing.source_priority ?? next.source_priority;
+  next.confidence = existing.confidence ?? next.confidence;
+  next.last_failed_at = existing.last_failed_at || next.last_failed_at || null;
+  next.failure_reason = existing.failure_reason || next.failure_reason || null;
+}
+
+function shouldPreserveUnavailableBaseStatus(existing: Record<string, unknown>, effectiveStatus: string): boolean {
+  if (effectiveStatus !== "unavailable") return false;
+  if (String(existing.status || "") === "out_of_stock") return false;
+  if (existing.last_failed_at) return false;
+
+  const reason = String(existing.failure_reason || "");
+  return !reason.startsWith("连续采集失败");
 }
 
 function normalizeFailureReason(value: string | null | undefined): string | null {

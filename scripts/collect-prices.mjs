@@ -782,7 +782,7 @@ async function collectShopApi(target, options = {}) {
                 feeAmount: effectivePrice.feeAmount,
                 priceBasis: effectivePrice.priceBasis,
                 status,
-                effectiveStatus: shopAvailability.closed ? "unavailable" : null,
+                effectiveStatus: shopAvailability.closed ? "unavailable" : "available",
                 failureReason: shopAvailability.closed ? shopAvailability.reason : null,
                 stockCount,
                 url: item.link || `${base}/item/${item.goods_key}`,

@@ -1114,9 +1114,15 @@ async function overlayRawOfferConfirmations(rows: Record<string, unknown>[]): Pr
     for (const confirmation of confirmations) {
       const row = byId.get(String(confirmation.raw_offer_id || ""));
       if (!row) continue;
+      const baseEffectiveStatus = String(row.effective_status || "");
+      const confirmationEffectiveStatus = String(confirmation.effective_status || "");
+      const keepBaseUnavailable =
+        shouldPreferBaseUnavailableStatus(row, baseEffectiveStatus) &&
+        confirmationEffectiveStatus !== baseEffectiveStatus;
       row.captured_at = confirmation.captured_at || row.captured_at;
       row.last_seen_at = confirmation.last_seen_at || row.last_seen_at;
       row.verified_at = confirmation.verified_at || row.verified_at;
+      if (keepBaseUnavailable) continue;
       row.expires_at = confirmation.expires_at || row.expires_at;
       row.source_status = confirmation.source_status || row.source_status;
       row.effective_status = confirmation.effective_status || row.effective_status;
@@ -1127,6 +1133,15 @@ async function overlayRawOfferConfirmations(rows: Record<string, unknown>[]): Pr
   }
 
   return rows;
+}
+
+function shouldPreferBaseUnavailableStatus(row: Record<string, unknown>, effectiveStatus: string): boolean {
+  if (effectiveStatus !== "unavailable") return false;
+  if (String(row.status || "") === "out_of_stock") return false;
+  if (row.last_failed_at) return false;
+
+  const reason = String(row.failure_reason || "");
+  return !reason.startsWith("连续采集失败");
 }
 
 async function readPublicOfferData(): Promise<PublicOfferData> {
