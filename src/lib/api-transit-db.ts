@@ -250,6 +250,37 @@ export function clearTransitStationsCache(): void {
   cachedBySlug.clear();
 }
 
+export type TransitStationsSnapshotRefreshResult = {
+  generatedAt: string;
+  snapshotWritten: boolean;
+  slugs: string[];
+  stationCount: number;
+};
+
+export async function refreshTransitStationsSnapshot(): Promise<TransitStationsSnapshotRefreshResult> {
+  const generatedAt = new Date().toISOString();
+  const stations = await readStationsFromSupabase();
+
+  if (!stations.length) {
+    return {
+      generatedAt,
+      snapshotWritten: false,
+      slugs: [],
+      stationCount: 0,
+    };
+  }
+
+  setTransitStationsCache(stations, new Date(generatedAt).getTime());
+  const snapshotWritten = await writeTransitStationsSnapshot(stations, generatedAt);
+
+  return {
+    generatedAt,
+    snapshotWritten,
+    slugs: stations.map((station) => station.slug),
+    stationCount: stations.length,
+  };
+}
+
 export async function getTransitStations(): Promise<TransitStation[]> {
   const now = Date.now();
   if (cached && now - cachedAt < CACHE_TTL_MS) return cached;
@@ -304,11 +335,15 @@ async function readTransitStationsSnapshot(): Promise<{ stations: TransitStation
   };
 }
 
-async function writeTransitStationsSnapshot(stations: TransitStation[]): Promise<void> {
-  await writePublicApiSnapshot({
+async function writeTransitStationsSnapshot(
+  stations: TransitStation[],
+  generatedAt?: string,
+): Promise<boolean> {
+  return writePublicApiSnapshot({
     kind: "api_transit",
     key: API_TRANSIT_SNAPSHOT_KEY,
     payload: stations,
+    generatedAt,
   });
 }
 
