@@ -1005,10 +1005,10 @@ function OfferTable({
   return (
     <section className="mt-6 hidden overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15 md:block">
       <div className="overflow-x-auto">
-        <table className="min-w-[1160px] w-full table-fixed border-collapse text-left text-sm">
+        <table className="min-w-[1220px] w-full table-fixed border-collapse text-left text-sm">
           <colgroup>
             <col className="w-[90px]" />
-            <col className="w-[205px]" />
+            <col className="w-[250px]" />
             <col />
             <col className="w-[115px]" />
             <col className="w-[120px]" />
@@ -1041,16 +1041,17 @@ function OfferTable({
                   <td className="px-5 py-4">
                     <OfferStatusBadge available={available} />
                   </td>
-                  <td className="max-w-[195px] px-4 py-4">
+                  <td className="px-4 py-4">
                     <span className="flex min-w-0 items-center gap-2">
                       <CollectorSourceLogo group={merchantCollectorGroup(offer.collectorKind)} size="compact" />
-                      <span className="min-w-0">
+                      <span className="min-w-0 max-w-full">
                         <span className="block truncate font-semibold text-[#202829]">
                           {sourceLabel(offer)}
                         </span>
                         {sourceSecondaryLabel(offer) ? (
                           <span className="mt-1 block truncate text-xs text-[#5a6061]">{sourceSecondaryLabel(offer)}</span>
                         ) : null}
+                        <OfferMerchantTimeSummary offer={offer} />
                       </span>
                     </span>
                   </td>
@@ -1108,6 +1109,7 @@ function OfferListItem({
           <div className="min-w-0">
             <p className="truncate font-semibold text-[#202829]">{sourceLabel(offer)}</p>
             <OfferSourceTitle title={offer.sourceTitle} mode="card" sharedAccess={sharedAccess} />
+            <OfferMerchantTimeSummary offer={offer} />
           </div>
         </div>
         <OfferStatusBadge available={available} />
@@ -1500,10 +1502,57 @@ function OfferStatusBadge({ available }: { available: boolean }) {
   );
 }
 
+function OfferMerchantTimeSummary({ offer }: { offer: RawOffer }) {
+  const includedAt = offer.sourceIncludedAt || null;
+  const shopCreatedAt = offer.sourceShopCreatedAt || null;
+  const parts = [
+    includedAt ? `收录 ${formatElapsedDays(includedAt)}` : null,
+    shopCreatedAt ? `公开运营 ${formatMerchantAge(shopCreatedAt)}` : null,
+  ].filter((part): part is string => Boolean(part));
+
+  if (!parts.length) return null;
+
+  return (
+    <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[0.68rem] leading-4 text-[#7a8587]" suppressHydrationWarning>
+      {parts.map((part) => (
+        <span key={part} className="inline-flex shrink-0 items-center rounded-full bg-[#f2f4f4] px-1.5 py-0.5">
+          {part}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function OfferRelativeTime({ value }: { value: string | null | undefined }) {
   const mounted = useClientHydrated();
 
   return <span suppressHydrationWarning>{mounted ? formatRelativeTime(value) : formatDateMinute(value)}</span>;
+}
+
+function formatElapsedDays(value: string | null | undefined): string {
+  const days = daysSince(value);
+  if (days === null) return "未记录";
+  if (days < 1) return "今天";
+  return `${days}天前`;
+}
+
+function formatMerchantAge(value: string | null | undefined): string {
+  const days = daysSince(value);
+  if (days === null) return "未公开";
+  if (days < 1) return "今天";
+  if (days < 30) return `${days}天`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}个月`;
+  const years = Math.floor(months / 12);
+  const remainingMonths = months % 12;
+  return remainingMonths ? `${years}年${remainingMonths}个月` : `${years}年`;
+}
+
+function daysSince(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return null;
+  return Math.max(0, Math.floor((Date.now() - timestamp) / 86_400_000));
 }
 
 function useClientHydrated(): boolean {

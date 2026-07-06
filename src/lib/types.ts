@@ -62,6 +62,8 @@ export type RawOffer = {
   sourceId?: string | null;
   sourceName: string;
   sourceStoreName?: string | null;
+  sourceIncludedAt?: string | null;
+  sourceShopCreatedAt?: string | null;
   collectorKind?: CollectorKind | null;
   sourceTitle: string;
   price: number | null;

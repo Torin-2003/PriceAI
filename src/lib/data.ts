@@ -1048,7 +1048,7 @@ async function readDashboardData(): Promise<DashboardData> {
     }
 
     const sources = (sourcesResult.data || []).map(mapSource);
-    const offers = attachKnownSourceCollectorKinds(offerRows.map(mapRawOffer), sourceCollectorKindMap(sources));
+    const offers = attachKnownSourceCollectorKinds(offerRows.map(mapRawOffer), sourceMetaMap(sources));
     const products = (productsResult.data || []).map(mapCanonicalProduct);
 
     return buildDashboard(offers, sources, products.length ? products : canonicalCatalog, true);
@@ -1179,7 +1179,7 @@ async function loadPublicOfferData(): Promise<PublicOfferData> {
     ]);
 
     const publicProducts = publicCatalogProducts(products.length ? products : canonicalCatalog);
-    const mappedOffers = attachKnownSourceCollectorKinds(offerRows.map(mapRawOffer), sourceCollectorKindMap(sources));
+    const mappedOffers = attachKnownSourceCollectorKinds(offerRows.map(mapRawOffer), sourceMetaMap(sources));
     const offers = attachPublicRiskFeedback(
       mappedOffers.filter((offer) => isPublicOfferForProducts(offer, publicProducts)),
       riskFeedback,
@@ -4127,21 +4127,21 @@ function attachPublicRiskFeedback(offers: RawOffer[], summary: PublicRiskFeedbac
 }
 
 async function attachSourceCollectorKinds(offers: RawOffer[]): Promise<RawOffer[]> {
-  if (!offers.length || offers.every((offer) => offer.collectorKind)) return offers;
+  if (!offers.length || offers.every((offer) => offer.collectorKind && offer.sourceIncludedAt !== undefined && offer.sourceShopCreatedAt !== undefined)) return offers;
 
   const supabase = getSupabaseServerClient();
   if (!supabase) return offers;
 
   const sourceIds = Array.from(new Set(
     offers
-      .filter((offer) => !offer.collectorKind && offer.sourceId)
+      .filter((offer) => (!offer.collectorKind || offer.sourceIncludedAt === undefined || offer.sourceShopCreatedAt === undefined) && offer.sourceId)
       .map((offer) => String(offer.sourceId)),
   ));
   if (!sourceIds.length) return offers;
 
   const { data, error } = await supabase
     .from("sources")
-    .select("id,collector_kind")
+    .select("id,collector_kind,created_at,shop_created_at")
     .in("id", sourceIds)
     .abortSignal(publicSupabaseReadSignal());
 
@@ -4155,7 +4155,11 @@ async function attachSourceCollectorKinds(offers: RawOffer[]): Promise<RawOffer[
     new Map(
       ((data || []) as Array<Record<string, unknown>>).map((row) => [
         String(row.id),
-        normalizeSourceCollectorKind(row.collector_kind),
+        {
+          collectorKind: normalizeSourceCollectorKind(row.collector_kind),
+          includedAt: row.created_at ? String(row.created_at) : null,
+          shopCreatedAt: row.shop_created_at ? String(row.shop_created_at) : null,
+        },
       ]),
     ),
   );
@@ -4163,19 +4167,33 @@ async function attachSourceCollectorKinds(offers: RawOffer[]): Promise<RawOffer[
 
 function attachKnownSourceCollectorKinds(
   offers: RawOffer[],
-  collectorKindsBySourceId: Map<string, Source["collectorKind"]>,
+  sourceMetaBySourceId: Map<string, { collectorKind: Source["collectorKind"]; includedAt: string | null; shopCreatedAt: string | null }>,
 ): RawOffer[] {
-  if (!collectorKindsBySourceId.size) return offers;
+  if (!sourceMetaBySourceId.size) return offers;
 
   return offers.map((offer) => {
-    if (offer.collectorKind || !offer.sourceId) return offer;
-    const collectorKind = collectorKindsBySourceId.get(offer.sourceId);
-    return collectorKind ? { ...offer, collectorKind } : offer;
+    if (!offer.sourceId) return offer;
+    const sourceMeta = sourceMetaBySourceId.get(offer.sourceId);
+    if (!sourceMeta) return offer;
+
+    return {
+      ...offer,
+      collectorKind: offer.collectorKind || sourceMeta.collectorKind,
+      sourceIncludedAt: offer.sourceIncludedAt ?? sourceMeta.includedAt,
+      sourceShopCreatedAt: offer.sourceShopCreatedAt ?? sourceMeta.shopCreatedAt,
+    };
   });
 }
 
-function sourceCollectorKindMap(sources: Array<Pick<Source, "id" | "collectorKind">>): Map<string, Source["collectorKind"]> {
-  return new Map(sources.map((source) => [source.id, source.collectorKind || null]));
+function sourceMetaMap(sources: Array<Pick<Source, "id" | "collectorKind" | "createdAt" | "shopCreatedAt">>): Map<string, { collectorKind: Source["collectorKind"]; includedAt: string | null; shopCreatedAt: string | null }> {
+  return new Map(sources.map((source) => [
+    source.id,
+    {
+      collectorKind: source.collectorKind || null,
+      includedAt: source.createdAt || null,
+      shopCreatedAt: source.shopCreatedAt || null,
+    },
+  ]));
 }
 
 function addPublicRiskFeedbackAggregate(
@@ -4223,6 +4241,8 @@ function compactPublicOffer(offer: RawOffer): RawOffer {
     sourceId: offer.sourceId,
     sourceName: offer.sourceName,
     sourceStoreName: offer.sourceStoreName,
+    sourceIncludedAt: offer.sourceIncludedAt,
+    sourceShopCreatedAt: offer.sourceShopCreatedAt,
     collectorKind: offer.collectorKind,
     sourceTitle: offer.sourceTitle,
     price: offer.price,
