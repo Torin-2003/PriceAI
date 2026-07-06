@@ -105,6 +105,7 @@ type TransitPriceGroup = {
   lastCheckedAt: string | null;
   latestLatencyMs: number | null;
   avgLatency7dMs: number | null;
+  recentSamples: TransitModelPrice["availability"]["recentSamples"];
   latestVerifiedAt: string;
   priceSource: string;
   availabilitySourceLabel: string;
@@ -266,7 +267,7 @@ export default function TransitStationDetail({ station, children }: Props) {
               {familySummaries.length === 0 ? (
                 <MetricCard label="综合倍率" value="—" helper="暂无报价" />
               ) : null}
-              <MetricCard label="可用率" value={formatPercent(stationAvailability.sevenDayRate)} helper={`样本 ${stationAvailability.sevenDaySamples}`} />
+              <MetricCard label="7天可用性" value={formatPercent(stationAvailability.sevenDayRate)} helper={`样本 ${stationAvailability.sevenDaySamples}`} />
               <MetricCard label="最近检查" value={formatDateMinute(stationAvailability.lastCheckedAt)} helper={formatAvailabilityBasis(stationAvailability)} />
             </div>
           </div>
@@ -1400,7 +1401,7 @@ function PriceGroupMobileCard({
           valueClassName={getCacheHitRateTextClass(group.cacheUsage)}
         />
         <MobilePriceFact label="覆盖" value={`${group.prices.length} 个模型`} />
-        <MobilePriceFact label="可用率" value={formatPercent(group.sevenDayRate)} />
+        <MobilePriceFact label="7天可用性" value={formatPercent(group.sevenDayRate)} />
       </div>
 
       <div className="mt-3">
@@ -1432,6 +1433,7 @@ function PriceGroupMobileCard({
         <TransitAvailabilityStrip
           rate={group.sevenDayRate}
           samples={group.sevenDaySamples}
+          recentSamples={group.recentSamples}
           firstCheckedAt={group.firstCheckedAt}
           lastCheckedAt={group.lastCheckedAt}
           className="shrink-0"
@@ -1546,6 +1548,7 @@ function PriceGroupRow({
           <TransitAvailabilityStrip
             rate={group.sevenDayRate}
             samples={group.sevenDaySamples}
+            recentSamples={group.recentSamples}
             firstCheckedAt={group.firstCheckedAt}
             lastCheckedAt={group.lastCheckedAt}
           />
@@ -1633,6 +1636,7 @@ function buildPriceGroup(
     lastCheckedAt,
     latestLatencyMs: latestLatencyFromPrices(prices),
     avgLatency7dMs: weightedAverageLatencyFromPrices(prices),
+    recentSamples: mergeRecentAvailabilitySamples(prices.map((price) => price.availability.recentSamples)),
     latestVerifiedAt,
     priceSource: primaryPrice.priceSource,
     availabilitySourceLabel: sourceMeta.label,
@@ -1706,6 +1710,7 @@ function AvailabilityTable({ station }: { station: TransitStation }) {
       sevenDaySamples: stationAvailability.sevenDaySamples,
       firstCheckedAt: stationAvailability.firstCheckedAt,
       lastCheckedAt: stationAvailability.lastCheckedAt,
+      recentSamples: stationAvailability.recentSamples,
       latestLatencyMs: stationAvailability.latestLatencyMs ?? null,
       avgLatency7dMs: stationAvailability.avgLatency7dMs ?? null,
       monitorModel: families.length
@@ -1722,6 +1727,7 @@ function AvailabilityTable({ station }: { station: TransitStation }) {
         sevenDaySamples: summary.sevenDaySamples,
         firstCheckedAt: summary.firstCheckedAt,
         lastCheckedAt: summary.lastCheckedAt,
+        recentSamples: summary.recentSamples,
         latestLatencyMs: summary.latestLatencyMs,
         avgLatency7dMs: summary.avgLatency7dMs,
         monitorModel: getFamilyMonitorModelLabel(station, family),
@@ -1762,7 +1768,7 @@ function AvailabilityTable({ station }: { station: TransitStation }) {
           <thead>
             <tr className="bg-[#f2f4f4]/50">
               <DataTableHead>范围</DataTableHead>
-              <DataTableHead explanation="近 7 日样本成功率，绿色条表示成功样本，灰色表示窗口内未检测。">可用状态</DataTableHead>
+              <DataTableHead explanation="主指标是 7 天综合可用性；下方条形图只展示最近 60 次真实逐次记录，不用汇总样本伪造时间序列。">7天可用性</DataTableHead>
               <DataTableHead className="whitespace-nowrap text-right" explanation="PriceAI 在当前滚动窗口内记录的结构化可用性样本数。">样本数</DataTableHead>
               <DataTableHead explanation="同一范围内第一条与最新一条可用性样本的时间；只有一条样本时显示单次检查。">监测区间</DataTableHead>
               <DataTableHead explanation="公开监测返回的最近请求延迟和 7 日平均延迟；没有字段时显示未记录。">延迟</DataTableHead>
@@ -1779,6 +1785,7 @@ function AvailabilityTable({ station }: { station: TransitStation }) {
                     <AvailabilityStatus
                       rate={row.rate}
                       samples={row.sevenDaySamples}
+                      recentSamples={row.recentSamples}
                       firstCheckedAt={row.firstCheckedAt}
                       lastCheckedAt={row.lastCheckedAt}
                     />
@@ -1817,6 +1824,7 @@ type AvailabilityRow = {
   sevenDaySamples: number;
   firstCheckedAt?: string | null;
   lastCheckedAt: string | null;
+  recentSamples?: TransitModelPrice["availability"]["recentSamples"];
   latestLatencyMs: number | null;
   avgLatency7dMs: number | null;
   monitorModel: string;
@@ -1835,6 +1843,7 @@ function AvailabilityMobileCard({ row }: { row: AvailabilityRow }) {
         <AvailabilityStatus
           rate={row.rate}
           samples={row.sevenDaySamples}
+          recentSamples={row.recentSamples}
           firstCheckedAt={row.firstCheckedAt}
           lastCheckedAt={row.lastCheckedAt}
         />
@@ -1862,11 +1871,13 @@ function MobileTextBlock({ label, value }: { label: string; value: string }) {
 function AvailabilityStatus({
   rate,
   samples,
+  recentSamples,
   firstCheckedAt,
   lastCheckedAt,
 }: {
   rate: number | null;
   samples: number;
+  recentSamples?: TransitModelPrice["availability"]["recentSamples"];
   firstCheckedAt?: string | null;
   lastCheckedAt: string | null;
 }) {
@@ -1879,8 +1890,10 @@ function AvailabilityStatus({
       <TransitAvailabilityStrip
         rate={rate}
         samples={samples}
+        recentSamples={recentSamples}
         firstCheckedAt={firstCheckedAt}
         lastCheckedAt={lastCheckedAt}
+        showLabels
         className="mt-1"
       />
     </div>
@@ -1934,6 +1947,17 @@ function weightedAverageLatencyFromPrices(prices: TransitModelPrice[]): number |
     samples += weight;
   }
   return samples > 0 ? total / samples : null;
+}
+
+function mergeRecentAvailabilitySamples(
+  sampleGroups: Array<TransitModelPrice["availability"]["recentSamples"] | undefined>
+): NonNullable<TransitModelPrice["availability"]["recentSamples"]> {
+  return sampleGroups
+    .flatMap((samples) => samples || [])
+    .filter((sample) => sample.checkedAt)
+    .sort((left, right) => new Date(right.checkedAt).getTime() - new Date(left.checkedAt).getTime())
+    .slice(0, 60)
+    .reverse();
 }
 
 function getCacheHitRateTextClass(cacheUsage: TransitModelPrice["cacheUsage"]): string {

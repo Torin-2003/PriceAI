@@ -1,6 +1,7 @@
 import "server-only";
 
 import type {
+  TransitAvailabilitySample,
   TransitAvailabilitySourceType,
   TransitModelFamily,
   TransitMultiplierHistoryPoint,
@@ -29,6 +30,10 @@ const API_TRANSIT_SNAPSHOT_MAX_STALE_MS = 10 * 60 * 1000;
 const NEXT_PRODUCTION_BUILD_PHASE = "phase-production-build";
 const TRANSIT_HISTORY_DAYS = 45;
 const TRANSIT_HISTORY_STATION_LIMIT = 320;
+const TRANSIT_AVAILABILITY_RECENT_SAMPLE_LIMIT = 60;
+const TRANSIT_AVAILABILITY_WINDOW_DAYS = 7;
+const TRANSIT_AVAILABILITY_LIST_SAMPLE_LIMIT = 5_000;
+const TRANSIT_AVAILABILITY_DETAIL_SAMPLE_LIMIT = 2_000;
 const STATION_CORE_BASE_COLUMNS = [
   "id",
   "slug",
@@ -406,7 +411,7 @@ async function readStationsFromSupabase(): Promise<TransitStation[]> {
       offersByStation.set(stationId, [...(offersByStation.get(stationId) || []), offer]);
     }
 
-    return stationRows.map((row) => {
+    const stations = stationRows.map((row) => {
       const id = stringValue(row.id);
       return mapStationRow(
         row,
@@ -414,6 +419,14 @@ async function readStationsFromSupabase(): Promise<TransitStation[]> {
         enhancementsByStation.get(id)
       );
     });
+    const sampleRows = await readAvailabilitySampleRows(
+      client,
+      stationRows.map((row) => stringValue(row.id)).filter(Boolean),
+      availabilityCutoffIso(),
+      TRANSIT_AVAILABILITY_LIST_SAMPLE_LIMIT
+    );
+
+    return attachAvailabilitySamples(stations, sampleRows);
   } catch (error) {
     console.warn("API transit Supabase read failed:", error);
     throw error;
@@ -686,7 +699,7 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
 
   const cutoff = new Date(Date.now() - TRANSIT_HISTORY_DAYS * 24 * 60 * 60 * 1000).toISOString();
   try {
-    const [historyResult, samplesResult] = await Promise.all([
+    const [historyResult, sampleRows] = await Promise.all([
       supabase
         .from("api_transit_multiplier_history")
         .select(
@@ -708,17 +721,14 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
         .order("observed_at", { ascending: false })
         .limit(TRANSIT_HISTORY_STATION_LIMIT)
         .abortSignal(publicTransitReadSignal()),
-      supabase
-        .from("api_transit_availability_samples")
-        .select("scope,standard_model,group_name,checked_at")
-        .eq("station_id", station.id)
-        .gte("checked_at", cutoff)
-        .order("checked_at", { ascending: true })
-        .limit(1200)
-        .abortSignal(publicTransitReadSignal()),
+      readAvailabilitySampleRows(
+        supabase,
+        [station.id],
+        availabilityCutoffIso(),
+        TRANSIT_AVAILABILITY_DETAIL_SAMPLE_LIMIT
+      ),
     ]);
     if (historyResult.error) throw historyResult.error;
-    if (samplesResult.error && !isMissingTableError(samplesResult.error)) throw samplesResult.error;
 
     const historyByOffer = new Map<string, TransitMultiplierHistoryPoint[]>();
     for (const row of dbRows(historyResult.data)) {
@@ -730,8 +740,10 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
       points.sort((left, right) => new Date(left.observedAt).getTime() - new Date(right.observedAt).getTime());
     }
 
-    const availabilityWindows = buildAvailabilityWindows(dbRows(samplesResult.data), station.id);
+    const availabilitySamples = buildAvailabilitySampleMap(sampleRows, station.id);
+    const availabilityWindows = buildAvailabilityWindows(sampleRows, station.id);
     const stationWindow = availabilityWindows.get(`${station.id}|station||`);
+    const stationRecentSamples = availabilitySamples.get(`${station.id}|station||`) || [];
 
     return {
       ...station,
@@ -739,6 +751,7 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
         ...station.availability,
         firstCheckedAt: earliestTimestamp(station.availability.firstCheckedAt, stationWindow?.first),
         lastCheckedAt: station.availability.lastCheckedAt || stationWindow?.last || null,
+        recentSamples: stationRecentSamples,
       },
       prices: station.prices.map((price) => ({
         ...price,
@@ -752,6 +765,8 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
             price.availability.lastCheckedAt ||
             availabilityWindows.get(availabilityWindowKey(station.id, "offer", price.standardModel, price.groupName))?.last ||
             null,
+          recentSamples:
+            availabilitySamples.get(availabilityWindowKey(station.id, "offer", price.standardModel, price.groupName)) || [],
         },
         history: historyByOffer.get(historyKey({
           station_id: station.id,
@@ -768,6 +783,67 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
     }
     return station;
   }
+}
+
+async function readAvailabilitySampleRows(
+  client: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
+  stationIds: string[],
+  since: string,
+  limit: number
+): Promise<DbRow[]> {
+  if (!stationIds.length) return [];
+  try {
+    const { data, error } = await client
+      .from("api_transit_availability_samples")
+      .select("station_id,scope,standard_model,group_name,ok,latency_ms,ping_latency_ms,checked_at,source_type,source_label,source_url")
+      .in("station_id", stationIds)
+      .gte("checked_at", since)
+      .order("checked_at", { ascending: false })
+      .limit(limit)
+      .abortSignal(publicTransitReadSignal());
+    if (error) throw error;
+    return dbRows(data);
+  } catch (error) {
+    if (isMissingTableError(error) || isMissingColumnError(error)) return [];
+    throw error;
+  }
+}
+
+function attachAvailabilitySamples(stations: TransitStation[], rows: DbRow[]): TransitStation[] {
+  if (!stations.length || !rows.length) return stations;
+  return stations.map((station) => {
+    const stationRows = rows.filter((row) => stringValue(row.station_id) === station.id);
+    const availabilitySamples = buildAvailabilitySampleMap(stationRows, station.id);
+    const availabilityWindows = buildAvailabilityWindows(stationRows, station.id);
+    const stationKey = availabilityWindowKey(station.id, "station", "", "");
+    const stationWindow = availabilityWindows.get(stationKey);
+    return {
+      ...station,
+      availability: {
+        ...station.availability,
+        firstCheckedAt: earliestTimestamp(station.availability.firstCheckedAt, stationWindow?.first),
+        lastCheckedAt: latestTimestamp(station.availability.lastCheckedAt, stationWindow?.last),
+        recentSamples: availabilitySamples.get(stationKey) || station.availability.recentSamples || [],
+      },
+      prices: station.prices.map((price) => {
+        const key = availabilityWindowKey(station.id, "offer", price.standardModel, price.groupName);
+        const window = availabilityWindows.get(key);
+        return {
+          ...price,
+          availability: {
+            ...price.availability,
+            firstCheckedAt: earliestTimestamp(price.availability.firstCheckedAt, window?.first),
+            lastCheckedAt: latestTimestamp(price.availability.lastCheckedAt, window?.last),
+            recentSamples: availabilitySamples.get(key) || price.availability.recentSamples || [],
+          },
+        };
+      }),
+    };
+  });
+}
+
+function availabilityCutoffIso(): string {
+  return new Date(Date.now() - TRANSIT_AVAILABILITY_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function buildAvailabilityWindows(rows: DbRow[], stationId: string): Map<string, { first: string; last: string }> {
@@ -792,6 +868,42 @@ function buildAvailabilityWindows(rows: DbRow[], stationId: string): Map<string,
   }
 
   return windows;
+}
+
+function buildAvailabilitySampleMap(rows: DbRow[], stationId: string): Map<string, TransitAvailabilitySample[]> {
+  const samplesByScope = new Map<string, TransitAvailabilitySample[]>();
+
+  for (const row of rows) {
+    const checkedAt = nullableTimestamp(row.checked_at);
+    if (!checkedAt) continue;
+    const key = availabilityWindowKey(
+      stationId,
+      stringValue(row.scope) === "offer" ? "offer" : "station",
+      stringValue(row.standard_model),
+      stringValue(row.group_name)
+    );
+    const samples = samplesByScope.get(key) || [];
+    samples.push({
+      ok: booleanValue(row.ok),
+      checkedAt,
+      latencyMs: integerValue(row.latency_ms),
+      pingLatencyMs: integerValue(row.ping_latency_ms),
+      sourceType: availabilitySourceType(row.source_type),
+      sourceLabel: nullableString(row.source_label),
+      sourceUrl: nullableString(row.source_url),
+    });
+    samplesByScope.set(key, samples);
+  }
+
+  for (const [key, samples] of samplesByScope) {
+    const recent = samples
+      .sort((left, right) => new Date(right.checkedAt).getTime() - new Date(left.checkedAt).getTime())
+      .slice(0, TRANSIT_AVAILABILITY_RECENT_SAMPLE_LIMIT)
+      .reverse();
+    samplesByScope.set(key, recent);
+  }
+
+  return samplesByScope;
 }
 
 function availabilityWindowKey(
@@ -979,6 +1091,10 @@ function nullableString(value: unknown): string | null {
   return text ? text : null;
 }
 
+function booleanValue(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
 function numberValue(value: unknown): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value === "string" && value.trim()) {
@@ -1075,6 +1191,13 @@ function earliestTimestamp(...values: Array<string | null | undefined>): string 
     .filter((value): value is string => Boolean(value))
     .sort()
     .at(0) ?? null;
+}
+
+function latestTimestamp(...values: Array<string | null | undefined>): string | null {
+  return values
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1) ?? null;
 }
 
 function stringArray(value: unknown): string[] {

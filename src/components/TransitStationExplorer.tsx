@@ -747,6 +747,7 @@ function AvailabilityCell({
       <TransitAvailabilityStrip
         rate={availability.sevenDayRate}
         samples={availability.sevenDaySamples}
+        recentSamples={availability.recentSamples}
         firstCheckedAt={availability.firstCheckedAt}
         lastCheckedAt={availability.lastCheckedAt}
         className="mt-1"

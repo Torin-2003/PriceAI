@@ -1,5 +1,6 @@
 import type {
   TransitAvailability,
+  TransitAvailabilitySample,
   TransitChannelType,
   TransitCommercialOffer,
   TransitModelFamily,
@@ -514,6 +515,7 @@ export type TransitFamilyRateSummary = {
   lastCheckedAt: string | null;
   latestLatencyMs: number | null;
   avgLatency7dMs: number | null;
+  recentSamples: TransitAvailabilitySample[];
 };
 
 export type TransitAvailabilityRollup = Pick<
@@ -524,6 +526,7 @@ export type TransitAvailabilityRollup = Pick<
   | "lastCheckedAt"
   | "latestLatencyMs"
   | "avgLatency7dMs"
+  | "recentSamples"
   | "sourceType"
   | "sourceLabel"
   | "sourceUrl"
@@ -569,6 +572,7 @@ function summarizeRateScope(
       .at(0) ?? null;
   const latestLatencyMs = latestLatencyFromPrices(prices);
   const avgLatency7dMs = weightedAverageLatency(prices);
+  const recentSamples = mergeRecentAvailabilitySamples(prices.map((price) => price.availability.recentSamples));
 
   return {
     family,
@@ -584,6 +588,7 @@ function summarizeRateScope(
     lastCheckedAt,
     latestLatencyMs,
     avgLatency7dMs,
+    recentSamples,
   };
 }
 
@@ -735,11 +740,23 @@ export function getStationPublishedAvailabilitySummary(station: TransitStation):
     lastCheckedAt,
     latestLatencyMs: latestLatencyFromSummaries(summaries),
     avgLatency7dMs: weightedAverageLatencyFromSummaries(summaries),
+    recentSamples: mergeRecentAvailabilitySamples(summaries.map((summary) => summary.recentSamples)),
     note: `按当前公开模型分组汇总：${formatPercent(roundAvailabilityRate(weightedRate))} · 样本 ${samples}`,
     sourceType: source.sourceType,
     sourceLabel: source.sourceLabel,
     sourceUrl: source.sourceUrl,
   };
+}
+
+function mergeRecentAvailabilitySamples(
+  sampleGroups: Array<TransitAvailabilitySample[] | undefined>
+): TransitAvailabilitySample[] {
+  return sampleGroups
+    .flatMap((samples) => samples || [])
+    .filter((sample) => sample.checkedAt)
+    .sort((left, right) => new Date(right.checkedAt).getTime() - new Date(left.checkedAt).getTime())
+    .slice(0, 60)
+    .reverse();
 }
 
 function getStationPublishedAvailabilitySourceMeta(station: TransitStation): Pick<
