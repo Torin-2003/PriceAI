@@ -36,7 +36,7 @@ import {
 import { PRICE_DATA_CACHE_TTL_MS } from "./public-cache-policy";
 import { seedRawOffers, seedSources } from "./sample-data";
 import { getSupabaseServerClient } from "./supabase";
-import { API_CDK_PLATFORM, API_CDK_PRODUCT_ID, apiCdkPublicVisible, getPublicRiskPrecheck, isPublicCatalogProduct } from "./trust-risk";
+import { API_CDK_PLATFORM, getPublicRiskPrecheck, isPublicCatalogProduct } from "./trust-risk";
 import type {
   AdminCollectorStatus,
   AdminSummary,
@@ -2014,7 +2014,7 @@ function isPublicProductKeyVisible(id: string | null | undefined): boolean {
   const catalogProduct = canonicalCatalog.find((product) => product.id === productKey || product.slug === productKey);
   if (catalogProduct) return isPublicCatalogProduct(catalogProduct);
 
-  return productKey !== API_CDK_PRODUCT_ID || apiCdkPublicVisible();
+  return true;
 }
 
 function isPublicOfferPageRowProductVisible(row: PublicOfferPageRow): boolean {
@@ -2144,7 +2144,7 @@ function normalizePublicSnapshotText(value: string | null | undefined): string {
 }
 
 function publicSnapshotPlatforms(): string[] {
-  return allPlatformOptions.filter((platform) => platform !== API_CDK_PLATFORM || apiCdkPublicVisible());
+  return allPlatformOptions.filter((platform) => platform !== API_CDK_PLATFORM);
 }
 
 function publicListViewSnapshotKey(
@@ -3744,8 +3744,6 @@ async function listPublicOffersFromDatabase(filters: OfferListFilters = {}) {
 }
 
 async function listPublicMerchantsFromDatabase(): Promise<PublicMerchantsResult | null> {
-  if (!apiCdkPublicVisible()) return null;
-
   const supabase = getSupabaseServerClient();
   if (!supabase) return null;
 

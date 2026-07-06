@@ -24,13 +24,11 @@ import { OfferActions, OfferFeedbackButton, OfferFeedbackDialog, OfferLink } fro
 import { SiteHeader } from "@/components/SiteHeader";
 import { listDetailNavigationHref, shouldHandleListDetailClick } from "@/lib/list-return";
 import {
-  allPlatformOptions,
   comparePlatformOrder,
   isAvailable,
   platformOptions,
   productTypeOptions,
 } from "@/lib/catalog";
-import { apiCdkPublicVisibleForClient } from "@/lib/trust-risk";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { readSessionCache, writeSessionCache } from "@/lib/client-cache";
 import { useMediaQuery } from "@/lib/client-hooks";
@@ -128,7 +126,7 @@ const viewOptions = ["cards", "table"] as const;
 const scopeOptions = ["products", "offers", "merchants"] as const;
 const merchantCollectorOptions = MERCHANT_COLLECTOR_FILTERS;
 const merchantSignalOptions = ["all", "lowest", "warranty", "platform_aftersales", "risk_clear"] as const;
-const visiblePlatformOptions = apiCdkPublicVisibleForClient() ? allPlatformOptions : platformOptions;
+const visiblePlatformOptions = platformOptions;
 
 function defaultViewModeForScope(scopeMode: ScopeMode): ViewMode {
   return scopeMode === "merchants" ? "cards" : "table";

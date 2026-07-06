@@ -146,7 +146,7 @@ export const canonicalCatalog: CanonicalProduct[] = [
     id: "openai-api-cdk",
     slug: "openai-api-cdk",
     displayName: "API / CDK / 额度",
-    platform: "API/CDK",
+    platform: "其他",
     productType: "API额度",
     spec: "API 额度 / CDK",
     summary: "通用 API、中转、余额、额度、Codex API 或 OpenAI API 商品。",
@@ -832,12 +832,15 @@ function classifyOfferByTitle(
     return getCanonicalProduct("chatgpt-codex-service");
   }
 
-  if (matches(value, ["codex", "api", "cdk", "token", "额度", "中转", "余额"])) {
-    return getCanonicalProduct("openai-api-cdk");
-  }
-
   if (matches(value, ["gmail", "google 邮箱", "谷歌邮箱", "hotmail", "outlook", "微软邮箱", "邮箱"])) {
     return getCanonicalProduct(classifyPureEmail(value));
+  }
+
+  if (
+    matches(value, ["codex", "api", "cdk", "token", "中转"]) ||
+    (matches(value, ["额度", "余额"]) && !hasAccountOrSubscriptionDeliverySignal(value))
+  ) {
+    return getCanonicalProduct("openai-api-cdk");
   }
 
   if (contextValue && matches(contextValue, ["chatgpt", "openai"]) && matches(value, ["plus"])) {
@@ -1234,6 +1237,10 @@ function isStandaloneVerificationService(value: string): boolean {
       "google 反重力可用 claude",
       "codex接码",
       "codex 接码",
+      "codex接🐎",
+      "codex 接🐎",
+      "codex接马",
+      "codex 接马",
       "gpt codex 接码",
       "gpt codex接码",
       "openai codex 接码",
@@ -1687,18 +1694,42 @@ function isApiProduct(value: string): boolean {
   if (isCodexPhoneVerification(value)) return false;
   if (isChatGptPeripheralService(value)) return false;
   if (isGooglePlayOrPixelRechargeProduct(value)) return false;
-  if (isChatGptTransitOrApiCreditProduct(value)) return true;
-  if (isKiroApiCreditProduct(value)) return true;
-  if (isModelApiCreditProduct(value)) return true;
-  if (isModelPoolCreditProduct(value)) return true;
-  if (isClaudeCodeCreditProduct(value)) return true;
+
+  if (hasExplicitApiProductSignal(value)) return true;
+
   if (isChatGptAccountOrSubscriptionDominant(value)) return false;
   if (isChatGptTeam(value)) return false;
   if (isClaudeProduct(value) && matches(value, ["team", "席位", "标准席位", "高级席位", "1.25x", "1.25倍", "6.25x", "6.25倍"])) return false;
   if (matches(value, ["gemini pro", "google ai pro"]) && matches(value, ["一年", "订阅", "cdk"])) return false;
 
+  if (isChatGptTransitOrApiCreditProduct(value)) return true;
+  if (isKiroApiCreditProduct(value)) return true;
+  if (isModelApiCreditProduct(value)) return true;
+  if (isModelPoolCreditProduct(value)) return true;
+  if (isClaudeCodeCreditProduct(value)) return true;
+  if (matches(value, ["额度"]) && matches(value, ["claude", "gemini", "gpt", "codex", "openai", "ai 平台"])) return true;
+
+  return false;
+}
+
+function hasExplicitApiProductSignal(value: string): boolean {
   if (matches(value, ["apikey", "api key", "api-key"])) return true;
-  if (matches(value, ["claude/gpt/gemini中转站", "中转站", "中转余额", "中转 gpt", "api中转", "api 中转"])) return true;
+  if (matches(value, ["claude/gpt/gemini中转站", "中转余额", "中转 gpt", "api中转", "api 中转"])) return true;
+  if (
+    matches(value, ["中转"]) &&
+    (matches(value, ["号池", "余额", "api", "额度"]) || hasMoneyAmount(value)) &&
+    !hasAccountOrSubscriptionDeliverySignal(value)
+  ) {
+    return true;
+  }
+  if (matches(value, ["中转站"]) && !hasAccountOrSubscriptionDeliverySignal(value)) return true;
+  if (matches(value, ["号池"]) && (matches(value, ["api", "codex", "额度", "余额", "中转"]) || hasMoneyAmount(value))) return true;
+  if (
+    /(?:总共|共)\s*\d+\s*(?:刀|美元|美金)/.test(value) &&
+    matches(value, ["plus渠道", "plus 渠道", "plus号池", "plus 号池", "老plus渠道", "老 plus 渠道", "30天有效期"])
+  ) {
+    return true;
+  }
   if (matches(value, ["中转api", "中转 api"])) return true;
   if (matches(value, ["兑换码"]) && matches(value, ["api", "额度", "100刀", "200刀", "300刀", "1000刀", "2100刀", "官方1:1"])) return true;
   if (matches(value, ["codexapi", "codex api", "codex 授权", "codex 授權"])) return true;
@@ -1706,7 +1737,6 @@ function isApiProduct(value: string): boolean {
   if (matches(value, ["api 额度", "api额度", "api 100刀", "api 50刀", "api 300刀"])) return true;
   if (matches(value, ["余额兑换", "余额 兑换", "倍率"])) return true;
   if (matches(value, ["余额充值", "充值余额", "美元额度", "美金额度", "刀额度"])) return true;
-  if (matches(value, ["额度"]) && matches(value, ["claude", "gemini", "gpt", "codex", "openai", "ai 平台"])) return true;
 
   return false;
 }
@@ -1720,6 +1750,35 @@ function isKiroApiCreditProduct(value: string): boolean {
   if (matches(value, ["刀额度", "美元额度", "美金额度"])) return true;
 
   return /(?:\d+\s*(?:刀|美元|美金)|\d+\s*\$)\s*额度/.test(value);
+}
+
+function hasAccountOrSubscriptionDeliverySignal(value: string): boolean {
+  return matches(value, [
+    "成品号",
+    "库存号",
+    "账号",
+    "账户",
+    "账密",
+    "首登",
+    "直登",
+    "质保首登",
+    "老邮箱",
+    "已验证",
+    "月卡",
+    "年卡",
+    "会员",
+    "订阅",
+    "直充",
+    "代充",
+    "卡密",
+    "自助开通",
+    "自动发货",
+    "接码",
+    "带rt",
+    "带 rt",
+    "导入中转站",
+    "直接导入",
+  ]);
 }
 
 function isCodexPhoneVerification(value: string): boolean {
@@ -2589,7 +2648,7 @@ function isChatGptAccountOrSubscriptionDominant(value: string): boolean {
   if (!matches(value, ["chatgpt", "gpt", "openai", "plus"])) return false;
   if (matches(value, ["codex api", "api cdk", "api 额度", "api额度", "api中转", "api 中转", "充值余额", "余额充值", "中转余额", "美元额度", "美金额度", "刀额度"])) return false;
 
-  return isChatGptPlus(value) || isChatGptFreeAccount(value) || isChatGptAccountTitle(value);
+  return isChatGptPlus(value) || isChatGptPro20(value) || isChatGptPro5(value) || isChatGptFreeAccount(value) || isChatGptAccountTitle(value);
 }
 
 function isChatGptPro20(value: string): boolean {

@@ -125,7 +125,7 @@ export function apiCdkPublicVisibleForClient(): boolean {
 }
 
 export function isApiCdkProductLike(product: { id?: string | null; platform?: string | null } | null | undefined): boolean {
-  return product?.id === API_CDK_PRODUCT_ID || product?.platform === API_CDK_PLATFORM;
+  return product?.platform === API_CDK_PLATFORM;
 }
 
 export function isPublicCatalogProduct(
