@@ -14,8 +14,8 @@ export function merchantCollectorLabel(group: MerchantCollectorFilter): string {
   if (group === "all") return "全部来源";
   if (group === "shopApi") return "链动小铺";
   if (group === "dujiao") return "独角数卡";
-  if (group === "kami") return "Kami";
-  return "其他";
+  if (group === "kami") return "异次元";
+  return "自研";
 }
 
 export function parseMerchantCollectorFilter(value: string | null | undefined): MerchantCollectorFilter {
