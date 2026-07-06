@@ -1,99 +1,148 @@
 "use client";
 
-import type { TransitAvailabilitySample } from "@/data/api-transit/types";
-
 export function TransitAvailabilityStrip({
   rate,
   samples,
-  recentSamples = [],
+  firstCheckedAt = null,
   lastCheckedAt = null,
   className = "",
-  showLabels = false,
 }: {
   rate: number | null;
   samples: number;
-  recentSamples?: TransitAvailabilitySample[];
   firstCheckedAt?: string | null;
   lastCheckedAt?: string | null;
   className?: string;
-  showLabels?: boolean;
 }) {
-  const samplesForTrend = recentSamples.slice(-TRANSIT_RECENT_SAMPLE_LIMIT);
-  const bars = samplesForTrend.map(sampleTone);
-  const hasTrend = bars.length > 0;
+  const bars = buildAvailabilityBars({
+    rate,
+    samples,
+    firstCheckedAt,
+    lastCheckedAt,
+  });
+  const emptyCount = bars.filter((tone) => tone === "empty").length;
 
   return (
-    <div className={className}>
-      {showLabels ? (
-        <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-semibold text-[#8a9394]">
-          <span>{hasTrend ? `近 ${bars.length} 次记录` : availabilityEmptyLabel(rate, samples)}</span>
-          {lastCheckedAt ? <span>{formatShortTime(lastCheckedAt)}</span> : null}
-        </div>
-      ) : null}
-      <div
-        className="flex h-4 items-end gap-[2px]"
-        aria-label={availabilityAriaLabel(rate, samples, bars.length, hasTrend)}
-        title={hasTrend
-          ? "近 60 次真实监测记录，按时间从左到右：绿色为成功，黄色为部分异常或延迟偏高，红色为失败。"
-          : "暂无逐次监测记录，仅展示 7 天可用性汇总。"}
-      >
-        {hasTrend ? bars.map((tone, index) => (
-          <span
-            key={`${tone}-${samplesForTrend[index]?.checkedAt || "sample"}-${index}`}
-            className={`block w-[4px] rounded-full ${availabilityBarClass(tone)}`}
-            style={{ height: `${index % 5 === 0 ? 13 : 16}px` }}
-          />
-        )) : (
-          <span className="rounded-full bg-[#f2f4f4] px-2 py-0.5 text-[10px] font-semibold text-[#7f8889]">
-            {availabilityEmptyLabel(rate, samples)}
-          </span>
-        )}
-      </div>
-      {showLabels && hasTrend ? (
-        <div className="mt-1 flex items-center justify-between text-[9px] font-semibold tracking-[0.08em] text-[#a2abad]">
-          <span>PAST</span>
-          <span>NOW</span>
-        </div>
-      ) : null}
+    <div
+      className={`flex h-4 items-end gap-[2px] ${className}`}
+      aria-label={availabilityAriaLabel(rate, samples, emptyCount)}
+      title="近 7 日滚动样本比例概览，非时间顺序：绿色为成功，黄色/红色为异常或失败，浅灰为空白未检测。"
+    >
+      {bars.map((tone, index) => (
+        <span
+          key={`${tone}-${index}`}
+          className={`block w-[4px] rounded-full ${availabilityBarClass(tone)}`}
+          style={{ height: `${index % 4 === 0 ? 12 : 15}px` }}
+        />
+      ))}
     </div>
   );
 }
 
-function sampleTone(sample: TransitAvailabilitySample): "good" | "warn" | "bad" {
-  if (sample.ok === false) return "bad";
-  if (sample.ok === null) return "warn";
-  const latency = sample.latencyMs ?? null;
-  if (latency !== null && latency >= HIGH_LATENCY_MS) return "warn";
-  return "good";
+function buildAvailabilityBars({
+  rate,
+  samples,
+  firstCheckedAt,
+  lastCheckedAt,
+}: {
+  rate: number | null;
+  samples: number;
+  firstCheckedAt: string | null;
+  lastCheckedAt: string | null;
+}): Array<"good" | "warn" | "bad" | "empty"> {
+  const total = 16;
+  if (rate === null || samples <= 0) return Array(total).fill("empty");
+  const monitoredBars = observedBarCount({
+    samples,
+    firstCheckedAt,
+    lastCheckedAt,
+    total,
+  });
+  if (monitoredBars <= 0) return Array(total).fill("empty");
+
+  const clamped = Math.max(0, Math.min(1, rate));
+  return Array.from({ length: total }, (_, index) => {
+    if (index >= monitoredBars) return "empty";
+    const expectedGoodCount = Math.round(clamped * (index + 1));
+    const previousGoodCount = Math.round(clamped * index);
+    if (expectedGoodCount > previousGoodCount) return "good";
+    return clamped >= 0.75 ? "warn" : "bad";
+  });
 }
 
-function availabilityAriaLabel(rate: number | null, samples: number, trendCount: number, hasTrend: boolean): string {
+function observedBarCount({
+  samples,
+  firstCheckedAt,
+  lastCheckedAt,
+  total,
+}: {
+  samples: number;
+  firstCheckedAt: string | null;
+  lastCheckedAt: string | null;
+  total: number;
+}) {
+  const sampleBars = Math.max(0, Math.min(total, samples));
+  const lastCheckedMs = parseTimestamp(lastCheckedAt);
+  if (!lastCheckedMs) return sampleBars;
+
+  const nowMs = roundedNowMs();
+  const trailingBlankBars = trailingUnmonitoredBars({
+    lastCheckedMs,
+    nowMs,
+    total,
+  });
+  const activeWindowBars = Math.max(0, total - trailingBlankBars);
+  const firstCheckedMs = parseTimestamp(firstCheckedAt);
+
+  if (!firstCheckedMs) return Math.min(sampleBars, activeWindowBars);
+
+  const windowMs = TRANSIT_AVAILABILITY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const monitoringSpanMs = Math.max(0, Math.min(nowMs, lastCheckedMs) - Math.max(nowMs - windowMs, firstCheckedMs));
+  const spanBars = Math.max(1, Math.ceil((monitoringSpanMs / windowMs) * total));
+
+  return Math.min(sampleBars, activeWindowBars, spanBars);
+}
+
+function trailingUnmonitoredBars({
+  lastCheckedMs,
+  nowMs,
+  total,
+}: {
+  lastCheckedMs: number;
+  nowMs: number;
+  total: number;
+}) {
+  const windowMs = TRANSIT_AVAILABILITY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const graceMs = TRANSIT_EXPECTED_PROBE_INTERVAL_MINUTES * 60 * 1000;
+  const staleMs = Math.max(0, nowMs - lastCheckedMs - graceMs);
+  if (staleMs <= 0) return 0;
+  return Math.max(0, Math.min(total, Math.ceil((staleMs / windowMs) * total)));
+}
+
+function roundedNowMs() {
+  const bucketMs = TRANSIT_EXPECTED_PROBE_INTERVAL_MINUTES * 60 * 1000;
+  return Math.floor(Date.now() / bucketMs) * bucketMs;
+}
+
+function parseTimestamp(value: string | null): number | null {
+  if (!value) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2} /.test(value) ? value.replace(" ", "T") : value;
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function availabilityAriaLabel(rate: number | null, samples: number, emptyCount: number): string {
   if (rate === null || samples <= 0) return "稳定性样本不足，暂无可用性监测样本";
-  const rateText = `7天可用性 ${(rate * 100).toFixed(1)}%，样本 ${samples}`;
-  if (!hasTrend) return `${rateText}，仅有汇总数据，暂无逐次明细`;
-  return `${rateText}，展示最近 ${trendCount} 次逐次记录`;
+  const rateText = `稳定性样本比例概览 ${(rate * 100).toFixed(1)}%，样本 ${samples}，非时间顺序`;
+  if (emptyCount <= 0) return rateText;
+  return `${rateText}，${emptyCount} 段未检测`;
 }
 
-function availabilityEmptyLabel(rate: number | null, samples: number): string {
-  if (rate === null || samples <= 0) return "样本不足";
-  return "仅汇总";
-}
-
-function formatShortTime(value: string): string {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return value;
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hour = String(date.getHours()).padStart(2, "0");
-  const minute = String(date.getMinutes()).padStart(2, "0");
-  return `${month}-${day} ${hour}:${minute}`;
-}
-
-function availabilityBarClass(tone: "good" | "warn" | "bad"): string {
+function availabilityBarClass(tone: "good" | "warn" | "bad" | "empty"): string {
   if (tone === "good") return "bg-[#45bf78]";
   if (tone === "warn") return "bg-[#d99a2b]";
-  return "bg-[#d95745]";
+  if (tone === "bad") return "bg-[#d95745]";
+  return "bg-[#e5eaea]";
 }
 
-const TRANSIT_RECENT_SAMPLE_LIMIT = 60;
-const HIGH_LATENCY_MS = 5_000;
+const TRANSIT_AVAILABILITY_WINDOW_DAYS = 7;
+const TRANSIT_EXPECTED_PROBE_INTERVAL_MINUTES = 60;

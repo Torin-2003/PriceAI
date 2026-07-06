@@ -48,21 +48,10 @@ export interface TransitAvailability {
   lastCheckedAt: string | null;
   latestLatencyMs?: number | null;
   avgLatency7dMs?: number | null;
-  recentSamples?: TransitAvailabilitySample[];
   note?: string;
   sourceType: TransitAvailabilitySourceType;
   sourceLabel: string | null;
   sourceUrl: string | null;
-}
-
-export interface TransitAvailabilitySample {
-  ok: boolean | null;
-  checkedAt: string;
-  latencyMs?: number | null;
-  pingLatencyMs?: number | null;
-  sourceType?: TransitAvailabilitySourceType;
-  sourceLabel?: string | null;
-  sourceUrl?: string | null;
 }
 
 export interface TransitCacheUsage {

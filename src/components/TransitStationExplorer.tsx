@@ -730,7 +730,7 @@ function AvailabilityCell({
     ? `${activeStandardModel} 近 7 日可用性样本；样本不足时不回退展示站点整体。`
     : scopedSummary
       ? `${scopedSummary.familyLabel} 分组近 7 日可用性样本；样本不足时不回退展示站点整体。`
-    : "站点整体近 7 日可用性；逐次记录优先使用模型分组明细，没有明细时展示站点级监测记录。";
+    : "按当前公开模型分组汇总的近 7 日可用性样本；不直接使用历史原始站点探测样本。";
 
   return (
     <div className={compact ? "" : "min-w-[118px]"} title={sourceTitle}>
@@ -747,7 +747,6 @@ function AvailabilityCell({
       <TransitAvailabilityStrip
         rate={availability.sevenDayRate}
         samples={availability.sevenDaySamples}
-        recentSamples={availability.recentSamples}
         firstCheckedAt={availability.firstCheckedAt}
         lastCheckedAt={availability.lastCheckedAt}
         className="mt-1"
