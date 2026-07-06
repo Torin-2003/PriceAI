@@ -126,12 +126,6 @@ export function buildPriceAiDetectorReportHref(jobId: string): string {
   return `/api-transit/detector/reports/${encodeURIComponent(jobId)}`;
 }
 
-export function buildDetectorReportAssetUrl(serviceUrl: string, path: string): string {
-  if (!path) return "";
-  if (path.startsWith("http://") || path.startsWith("https://")) return path;
-  return `${serviceUrl}${path.startsWith("/") ? path : `/${path}`}`;
-}
-
 export async function fetchDetectorReport(jobId: string, serviceUrl = getDetectorServiceUrl()): Promise<DetectorReportRaw> {
   if (!serviceUrl) throw new Error("检测服务未配置。");
 
@@ -167,9 +161,9 @@ export function toDetectorReportView(jobId: string, report: DetectorReportRaw): 
     scoreLabel: `${Math.round(score)}%`,
     verdictLabel: getVerdictLabel(verdict, score, Boolean(report.run_error)),
     verdictTone,
-    summary: normalizeText(report.summary, report.run_error ? "检测未完成" : "暂无摘要"),
-    tierTitle: normalizeText(report.tier_title, protocolLabels[protocol] ?? "检测级别"),
-    tierMessage: normalizeText(report.tier_message, "这份报告用于整理协议、能力、来源和计费证据，不等同于商家担保。"),
+    summary: getReportSummary(verdict, score, Boolean(report.run_error)),
+    tierTitle: getTierTitle(protocol),
+    tierMessage: getTierMessage(protocol),
     runError: report.run_error || undefined,
     metrics: toReportMetrics(report),
     checks,
@@ -315,6 +309,15 @@ function getVerdictTone(verdict: string, score: number): DetectorReportTone {
   return "muted";
 }
 
+function getReportSummary(verdict: string, score: number, hasRunError: boolean): string {
+  if (hasRunError) return "检测未完成，当前报告只保留已返回的错误和上下文。";
+  if (verdict === "passed" && score >= 95) return "本次检测未发现明显异常，可作为一次高可信样本记录。";
+  if (verdict === "passed") return "主要检测项通过，仍建议结合站点来源和后续样本判断。";
+  if (verdict === "marginal") return "检测中出现需要复核的信号，建议不要只凭单次结果决策。";
+  if (verdict === "failed") return "检测发现关键异常，需要回到证据项核验具体原因。";
+  return "检测服务已返回结果，但当前结论口径不足，需要结合证据项复核。";
+}
+
 function getVerdictLabel(verdict: string, score: number, hasRunError: boolean): string {
   if (hasRunError) return "检测无效";
   if (verdict === "passed" && score >= 95) return "通过";
@@ -340,6 +343,27 @@ function getResultStatusLabel(status: string, score: number): string {
   if (score >= 90) return "通过";
   if (score >= 70) return "需复核";
   return "未通过";
+}
+
+function getTierTitle(protocol: string): string {
+  if (protocol === "anthropic" || protocol === "claude") return "Claude 协议检测";
+  if (protocol === "openai_responses" || protocol === "responses") return "OpenAI Responses 检测";
+  if (protocol === "gemini") return "Gemini 协议检测";
+  if (protocol === "openai" || protocol === "openai_chat") return "Chat Completions 检测";
+  return "协议能力检测";
+}
+
+function getTierMessage(protocol: string): string {
+  if (protocol === "anthropic" || protocol === "claude") {
+    return "Claude 检测会结合协议行为、签名相关信号、用量返回和长上下文样本；不同中转线路仍可能因账号池或限流策略产生波动。";
+  }
+  if (protocol === "openai_responses" || protocol === "responses") {
+    return "Responses 检测会关注工具调用、结构化输出、流式一致性和用量返回，适合核验兼容 OpenAI Responses 的中转线路。";
+  }
+  if (protocol === "gemini") {
+    return "Gemini 检测会关注协议兼容、模型返回、结构化能力和用量表现，单次结果仍不能替代持续样本。";
+  }
+  return "这份报告用于整理协议、能力、来源和计费证据，不等同于 PriceAI 对商家做担保。";
 }
 
 function getLatencyTone(value: number | null | undefined, warnThreshold: number): DetectorReportTone | undefined {

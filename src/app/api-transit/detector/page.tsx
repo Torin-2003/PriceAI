@@ -13,7 +13,7 @@ import { JsonLd } from "@/components/JsonLd";
 export const metadata: Metadata = {
   title: "API 中转模型检测",
   description:
-    "PriceAI API 中转模型检测工作台 — 为 OpenAI Chat Completions、OpenAI Responses、Claude、Gemini 兼容接口整理协议、能力、来源和计费证据链。检测后端独立部署，PriceAI 主站不保存 API Key。",
+    "PriceAI API 中转模型检测工作台 — 为 OpenAI Chat Completions、OpenAI Responses、Claude、Gemini 兼容接口整理协议、能力、来源和计费证据链。检测服务独立部署，PriceAI 主站不保存 API Key。",
   alternates: { canonical: "/api-transit/detector" },
   openGraph: {
     title: "API 中转模型检测 | PriceAI",
@@ -85,7 +85,7 @@ export default async function ApiTransitDetectorPage() {
             API 中转模型检测
           </h1>
           <p className="mt-3 max-w-[860px] text-sm leading-[1.8] text-[#5a6061]">
-            输入中转接口、模型名和临时 Key，PriceAI 会把请求交给独立检测后端执行。检测结果用于判断协议外观、模型能力、来源线路和计费口径，主站不保存你的 API Key。
+            输入中转接口、模型名和临时 Key，PriceAI 会把请求交给独立检测服务执行。检测结果用于判断协议外观、模型能力、来源线路和计费口径，主站不保存你的 API Key。
           </p>
           <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-[#5a6061]">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 ring-1 ring-[#adb3b4]/15">

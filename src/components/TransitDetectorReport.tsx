@@ -5,22 +5,19 @@ import {
   CheckCircle2,
   Clock3,
   Copy,
-  Download,
-  FileJson,
   Gauge,
   RotateCcw,
   ShieldAlert,
   XCircle,
 } from "lucide-react";
+import { TransitDetectorReportDownloadButtons } from "@/components/TransitDetectorReportImageButton";
 import type { DetectorReportCheck, DetectorReportMetric, DetectorReportTone, DetectorReportView } from "@/lib/transit-detector-report";
 
 interface TransitDetectorReportProps {
   report: DetectorReportView;
-  jsonUrl: string;
-  imageUrl: string;
 }
 
-export function TransitDetectorReport({ report, jsonUrl, imageUrl }: TransitDetectorReportProps) {
+export function TransitDetectorReport({ report }: TransitDetectorReportProps) {
   const toneClass = getToneClass(report.verdictTone);
 
   return (
@@ -55,28 +52,7 @@ export function TransitDetectorReport({ report, jsonUrl, imageUrl }: TransitDete
             <RotateCcw className="h-4 w-4" />
             重新检测
           </Link>
-          {jsonUrl ? (
-            <a
-              href={jsonUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-white px-4 text-sm font-semibold text-[#202829] ring-1 ring-[#adb3b4]/18 transition hover:bg-[#f5f7f7]"
-            >
-              <FileJson className="h-4 w-4" />
-              JSON
-            </a>
-          ) : null}
-          {imageUrl ? (
-            <a
-              href={imageUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[#202829] px-4 text-sm font-semibold text-white transition hover:bg-[#2d3435]"
-            >
-              <Download className="h-4 w-4" />
-              JPG
-            </a>
-          ) : null}
+          <TransitDetectorReportDownloadButtons report={report} />
         </div>
       </div>
 

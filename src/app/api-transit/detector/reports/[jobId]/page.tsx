@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { getTransitModelFamilyOptions } from "@/lib/api-transit";
 import {
-  buildDetectorReportAssetUrl,
   fetchDetectorReport,
   getDetectorServiceUrl,
   toDetectorReportView,
@@ -41,7 +40,7 @@ export default async function ApiTransitDetectorReportPage({ params }: DetectorR
       <DetectorReportShell familyOptions={familyOptions}>
         <TransitDetectorReportUnavailable
           title="检测服务未配置"
-          message="当前 PriceAI 前端没有配置检测服务地址，暂时无法读取这份报告。请先配置检测后端地址，再重新打开报告。"
+          message="当前 PriceAI 前端没有配置检测服务地址，暂时无法读取这份报告。请先配置检测服务地址，再重新打开报告。"
         />
       </DetectorReportShell>
     );
@@ -60,8 +59,6 @@ export default async function ApiTransitDetectorReportPage({ params }: DetectorR
   }
 
   const report = toDetectorReportView(jobId, reportResult.rawReport);
-  const jsonUrl = buildDetectorReportAssetUrl(serviceUrl, `/api/result/${encodeURIComponent(jobId)}.json`);
-  const imageUrl = buildDetectorReportAssetUrl(serviceUrl, `/r/${encodeURIComponent(jobId)}.jpg`);
   const jsonLdData = {
     "@context": "https://schema.org",
     "@type": "Report",
@@ -80,7 +77,7 @@ export default async function ApiTransitDetectorReportPage({ params }: DetectorR
 
   return (
     <DetectorReportShell familyOptions={familyOptions} jsonLdData={jsonLdData}>
-      <TransitDetectorReport report={report} jsonUrl={jsonUrl} imageUrl={imageUrl} />
+      <TransitDetectorReport report={report} />
     </DetectorReportShell>
   );
 }

@@ -6,7 +6,6 @@ import {
   Clock3,
   Eye,
   EyeOff,
-  FileJson,
   KeyRound,
   Link2,
   Network,
@@ -17,7 +16,7 @@ import {
 import type { TransitStandardModel } from "@/data/api-transit/types";
 import { getOfficialTransitModelPrice } from "@/lib/api-transit";
 import { readSessionCache, writeSessionCache } from "@/lib/client-cache";
-import { buildDetectorReportAssetUrl, buildPriceAiDetectorReportHref } from "@/lib/transit-detector-report";
+import { buildPriceAiDetectorReportHref } from "@/lib/transit-detector-report";
 
 type DetectorProtocol = "openai_chat" | "openai_responses" | "claude" | "gemini";
 type DetectorIntensity = "quick" | "standard" | "deep";
@@ -52,8 +51,6 @@ interface DetectorStatusPayload {
   status?: "queued" | "running" | "done" | "error";
   status_url?: string;
   result_url?: string;
-  image_url?: string;
-  json_url?: string;
   error?: string | DetectorErrorDetail;
   detail?: string | DetectorErrorDetail | DetectorValidationError[];
 }
@@ -87,8 +84,6 @@ interface DetectionResult {
   costEstimateLabel: string;
   jobId?: string;
   resultUrl?: string;
-  jsonUrl?: string;
-  imageUrl?: string;
   errorCode?: string;
   canForceSubmit?: boolean;
 }
@@ -483,7 +478,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
         throw buildDetectorClientError(data, response.status);
       }
       if (!data.job_id || !data.status_url) {
-        throw new Error("检测后端没有返回任务编号。");
+        throw new Error("检测服务没有返回任务编号。");
       }
       if (runIdRef.current !== nextRunId) return;
 
@@ -527,14 +522,10 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
 
       if (data.status === "done") {
         const nextResultUrl = data.job_id ? buildPriceAiDetectorReportHref(data.job_id) : "";
-        const nextJsonUrl = data.json_url ? buildDetectorReportAssetUrl(normalizedServiceUrl, data.json_url) : "";
-        const nextImageUrl = data.image_url ? buildDetectorReportAssetUrl(normalizedServiceUrl, data.image_url) : "";
         if (runIdRef.current !== runId) return;
         setTaskStatus("done");
         updateResult(localId, {
           resultUrl: nextResultUrl,
-          jsonUrl: nextJsonUrl,
-          imageUrl: nextImageUrl,
           status: "done",
           message: "检测完成，已生成报告。",
         });
@@ -864,7 +855,7 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
         <div className="flex flex-col gap-2 border-b border-[#edf0f1] px-5 py-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-[#202829]">检测结果</h2>
-            <p className="mt-1 text-sm leading-6 text-[#5a6061]">每次检测会生成一行记录，完成后可打开独立报告查看完整证据。</p>
+            <p className="mt-1 text-sm leading-6 text-[#5a6061]">每次检测会生成一行记录，完成后可打开 PriceAI 报告查看完整证据。</p>
           </div>
           <StatusPill tone={taskTone(taskStatus)}>{statusLabel(taskStatus)}</StatusPill>
         </div>
@@ -915,18 +906,6 @@ export function TransitDetectorClient({ serviceUrl = "", stations = [], turnstil
                     <td className="px-5 py-4 text-right">
                       {item.resultUrl ? (
                         <div className="flex items-center justify-end gap-2">
-                          {item.jsonUrl ? (
-                            <a
-                              href={item.jsonUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#5a6061] ring-1 ring-[#adb3b4]/18 transition hover:bg-[#f5f7f7] hover:text-[#202829]"
-                              aria-label="打开报告 JSON"
-                              title="打开报告 JSON"
-                            >
-                              <FileJson className="h-4 w-4" />
-                            </a>
-                          ) : null}
                           <a
                             href={item.resultUrl}
                             className="inline-flex h-9 items-center justify-center rounded-full bg-[#202829] px-4 text-xs font-semibold text-white transition hover:bg-[#2d3435]"
@@ -1021,8 +1000,6 @@ function parseCachedDetectionResult(value: unknown): DetectionResult | null {
     costEstimateLabel,
     jobId: stringValue(value.jobId) || undefined,
     resultUrl: stringValue(value.resultUrl) || undefined,
-    jsonUrl: stringValue(value.jsonUrl) || undefined,
-    imageUrl: stringValue(value.imageUrl) || undefined,
     errorCode: stringValue(value.errorCode) || undefined,
     canForceSubmit: typeof value.canForceSubmit === "boolean" ? value.canForceSubmit : undefined,
   };
@@ -1042,8 +1019,6 @@ function sanitizeDetectionResultForCache(result: DetectionResult): DetectionResu
     costEstimateLabel: result.costEstimateLabel,
     jobId: result.jobId,
     resultUrl: result.resultUrl,
-    jsonUrl: result.jsonUrl,
-    imageUrl: result.imageUrl,
     errorCode: result.errorCode,
     canForceSubmit: result.canForceSubmit,
   };
@@ -1082,7 +1057,7 @@ class DetectorClientError extends Error {
 function normalizeDetectorError(error: unknown): DetectorErrorView {
   if (!(error instanceof Error)) return { message: "检测提交失败，请稍后再试。" };
   if (error.message === "Failed to fetch") {
-    return { message: "无法连接检测后端。请确认检测服务可访问，并允许来自当前页面的跨域请求。" };
+    return { message: "无法连接检测服务。请确认检测服务可访问，并允许来自当前页面的跨域请求。" };
   }
   if (error instanceof DetectorClientError) {
     return {
@@ -1134,7 +1109,7 @@ function buildDetectorClientError(data: DetectorStatusPayload, status: number): 
     return new DetectorClientError("人机校验服务暂时不可用，请稍后再试。", { code: "turnstile_unavailable" });
   }
 
-  return new DetectorClientError(message || `检测后端拒绝了这次请求（HTTP ${status}）。`);
+  return new DetectorClientError(message || `检测服务拒绝了这次请求（HTTP ${status}）。`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
