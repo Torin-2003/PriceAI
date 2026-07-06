@@ -16,6 +16,22 @@ const DEFAULT_TIMEOUT_MS = 20000;
 const DEFAULT_TARGET_LIMIT = 4;
 const MAX_MODELS_SNAPSHOT = 200;
 const AVAILABILITY_SAMPLE_LOOKBACK_LIMIT = 2000;
+const HIGH_COST_AVAILABILITY_PROBE_MODELS = new Set(["Claude Fable 5"]);
+const AVAILABILITY_PROBE_MODEL_COSTS = {
+  "Claude Sonnet 5": 2,
+  "Claude Sonnet 4.6": 3,
+  "Claude Opus 4.6": 5,
+  "Claude Opus 4.7": 5,
+  "Claude Opus 4.8": 5,
+  "GPT 5.4": 2.5,
+  "GPT 5.5": 5,
+  "Gemini 3.5 Flash": 1.5,
+  "Gemini 3.1 Pro": 4,
+  "GLM-5.1": 0.2,
+  "GLM-5.2": 0.3,
+  "DeepSeek V4 Flash": 0.05,
+  "DeepSeek V4 Pro": 0.28,
+};
 const PRICEAI_PROBE_AVAILABILITY_SOURCE = {
   type: "priceai_probe",
   label: "PriceAI 实测",
@@ -24,17 +40,6 @@ const userAgent = "Mozilla/5.0 PriceAI/1.0 APITransitProbe";
 let cachedFileEnv = null;
 
 const defaultTargets = [
-  {
-    family: "claude",
-    standardModel: "Claude Fable 5",
-    candidates: [
-      "claude-fable-5",
-      "claude-fable-5-0",
-      "claude-5-fable",
-      "anthropic/claude-fable-5",
-    ],
-    keywords: ["claude", "fable", "5"],
-  },
   {
     family: "claude",
     standardModel: "Claude Sonnet 5",
@@ -439,13 +444,11 @@ function selectProbeTargets(input) {
   const configuredTargets = normalizeConfiguredTargets(input.configuredTargets);
   const profileFamily = normalizeFamily(input.profileFamily);
   const targetPriority = stringValue(input.targetPriority);
-  const priorityTargets =
-    targetPriority === "latest_highest_available" || targetPriority === "last_available"
-      ? configuredTargets.toReversed()
-      : configuredTargets;
+  const priorityTargets = orderConfiguredTargetsForProbe(configuredTargets, targetPriority);
   const dbTargets = normalizeDbTargets(input.offerModels);
-  const merged = [...priorityTargets, ...dbTargets, ...defaultTargets].filter(
-    (target) => !profileFamily || target.family === profileFamily,
+  const baseTargets = priorityTargets.length ? priorityTargets : [...dbTargets, ...defaultTargets];
+  const merged = baseTargets.filter(
+    (target) => (!profileFamily || target.family === profileFamily) && !isHighCostAvailabilityProbeTarget(target),
   );
   const byTargetKey = new Map();
 
@@ -465,11 +468,19 @@ function selectProbeTargets(input) {
   }
 
   const targets = Array.from(byTargetKey.values());
-  const orderedTargets = input.availableModels?.length
-    ? [...targets.filter((target) => target.modelId), ...targets.filter((target) => !target.modelId)]
-    : targets;
+  const orderedTargets = orderMatchedTargetsForProbe(targets, targetPriority, input.availableModels);
 
   return orderedTargets.slice(0, input.targetLimit || DEFAULT_TARGET_LIMIT);
+}
+
+function orderConfiguredTargetsForProbe(configuredTargets, targetPriority) {
+  if (targetPriority === "latest_highest_available" || targetPriority === "last_available") {
+    return configuredTargets.toReversed();
+  }
+  if (targetPriority === "lowest_cost_available") {
+    return configuredTargets.toSorted(compareProbeTargetCost);
+  }
+  return configuredTargets;
 }
 
 function normalizeConfiguredTargets(targets) {
@@ -516,6 +527,38 @@ function probeTargetKey(target) {
     normalizeLooseToken(target.standardModel),
     normalizeLooseToken(target.groupName || target.accountPool || target.channelType || "default"),
   ].join("|");
+}
+
+function isHighCostAvailabilityProbeTarget(target) {
+  return isHighCostAvailabilityProbeModel(target?.standardModel);
+}
+
+function isHighCostAvailabilityProbeModel(model) {
+  return HIGH_COST_AVAILABILITY_PROBE_MODELS.has(String(model || ""));
+}
+
+function orderMatchedTargetsForProbe(targets, targetPriority, availableModels) {
+  const hasAvailableModels = Array.isArray(availableModels) && availableModels.length > 0;
+  if (targetPriority === "lowest_cost_available") {
+    const byCost = targets.toSorted(compareProbeTargetCost);
+    if (!hasAvailableModels) return byCost;
+    return [...byCost.filter((target) => target.modelId), ...byCost.filter((target) => !target.modelId)];
+  }
+  return hasAvailableModels
+    ? [...targets.filter((target) => target.modelId), ...targets.filter((target) => !target.modelId)]
+    : targets;
+}
+
+function compareProbeTargetCost(left, right) {
+  return probeTargetCost(left) - probeTargetCost(right) ||
+    normalizeLooseToken(left.standardModel).localeCompare(normalizeLooseToken(right.standardModel));
+}
+
+function probeTargetCost(target) {
+  const model = String(target?.standardModel || "");
+  return Number.isFinite(AVAILABILITY_PROBE_MODEL_COSTS[model])
+    ? AVAILABILITY_PROBE_MODEL_COSTS[model]
+    : Number.POSITIVE_INFINITY;
 }
 
 function matchAvailableModel(availableModels, target) {
@@ -868,6 +911,7 @@ async function pruneAvailabilitySamples(supabase, stationId) {
 
 function availabilitySamplesFromProbe({ runId, stationId, modelList, targetResults, checkedAt }) {
   const normalizedCheckedAt = stringValue(checkedAt) || new Date().toISOString();
+  const hasTargetResults = Array.isArray(targetResults) && targetResults.length > 0;
   const targetSamples = Array.isArray(targetResults)
     ? targetResults.filter(isAvailabilitySample)
     : [];
@@ -905,7 +949,7 @@ function availabilitySamplesFromProbe({ runId, stationId, modelList, targetResul
     return samples;
   }
 
-  if (modelList && typeof modelList.ok === "boolean") {
+  if (!hasTargetResults && modelList && typeof modelList.ok === "boolean") {
     samples.push(availabilitySampleRow({
       runId,
       stationId,
@@ -955,7 +999,11 @@ function availabilitySampleRow(input) {
 }
 
 function isAvailabilitySample(item) {
-  return item && typeof item === "object" && typeof item.ok === "boolean" && item.countsTowardAvailability !== false;
+  return item &&
+    typeof item === "object" &&
+    typeof item.ok === "boolean" &&
+    item.countsTowardAvailability !== false &&
+    !isHighCostAvailabilityProbeModel(item.standardModel);
 }
 
 function availabilityNote(label, availability) {
@@ -989,6 +1037,7 @@ function buildActiveOfferScope(offerRows) {
 
 function availabilitySampleMatchesActiveOfferScope(row, activeOfferScope) {
   const standardModel = stringValue(row.standard_model);
+  if (isHighCostAvailabilityProbeModel(standardModel)) return false;
   if (!standardModel) return true;
   const groupName = stringValue(row.group_name);
   if (groupName) return activeOfferScope.offerKeys.has(offerAvailabilityKey(standardModel, groupName));

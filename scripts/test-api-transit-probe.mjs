@@ -8,6 +8,11 @@ import { __test as sub2ApiTest } from "./import-sub2api-api-transit.mjs";
 const probeProfiles = JSON.parse(
   readFileSync(new URL("../config/api-transit-probes.json", import.meta.url), "utf8"),
 );
+const claudeProbeModels = {
+  "Claude Sonnet 5": "claude-sonnet-5",
+  "Claude Sonnet 4.6": "claude-sonnet-4-6",
+  "Claude Opus 4.8": "claude-opus-4-8",
+};
 
 assert.equal(__test.normalizeFamily("google/gemini-3.5-flash"), "gemini");
 assert.equal(__test.normalizeFamily("zhipu/glm-5.2"), "glm");
@@ -28,7 +33,7 @@ const claudeTargets = __test.selectProbeTargets({
   profileFamily: "claude",
   configuredTargets: [],
   offerModels: [],
-  availableModels: ["claude-sonnet-5", "claude-opus-4-8"],
+  availableModels: ["claude-fable-5", "claude-sonnet-5", "claude-opus-4-8"],
   targetLimit: 2,
 });
 assert.deepEqual(
@@ -37,12 +42,19 @@ assert.deepEqual(
     ["claude", "Claude Sonnet 5", "claude-sonnet-5"],
     ["claude", "Claude Opus 4.8", "claude-opus-4-8"],
   ],
+  "Default Claude probes should not use Fable 5 as a high-frequency availability target.",
 );
 
-const latestPriorityClaudeTargets = __test.selectProbeTargets({
+const lowestCostClaudeTargets = __test.selectProbeTargets({
   profileFamily: "claude",
-  targetPriority: "latest_highest_available",
+  targetPriority: "lowest_cost_available",
   configuredTargets: [
+    {
+      family: "claude",
+      standardModel: "Claude Opus 4.8",
+      candidates: ["claude-opus-4-8"],
+      keywords: ["claude", "opus", "4.8"],
+    },
     {
       family: "claude",
       standardModel: "Claude Sonnet 4.6",
@@ -63,31 +75,97 @@ const latestPriorityClaudeTargets = __test.selectProbeTargets({
     },
   ],
   offerModels: [],
-  availableModels: ["claude-fable-5", "claude-sonnet-5", "claude-sonnet-4-6"],
+  availableModels: ["claude-fable-5", "claude-sonnet-5", "claude-sonnet-4-6", "claude-opus-4-8"],
   targetLimit: 1,
 });
 assert.deepEqual(
-  latestPriorityClaudeTargets.map((target) => [target.standardModel, target.modelId]),
-  [["Claude Fable 5", "claude-fable-5"]],
+  lowestCostClaudeTargets.map((target) => [target.standardModel, target.modelId]),
+  [["Claude Sonnet 5", "claude-sonnet-5"]],
+  "Lowest-cost availability probes should skip Fable 5 and choose the cheapest configured available model.",
 );
-
-const mfapiOfficialTransferProfile = probeProfiles.find(
-  (profile) => profile.profileId === "mfttai-com-official-transfer",
-);
-assert.ok(mfapiOfficialTransferProfile, "MFAPI official-transfer probe profile must exist.");
-const mfapiOfficialTransferTargets = __test.selectProbeTargets({
+const dbFableClaudeTargets = __test.selectProbeTargets({
   profileFamily: "claude",
-  targetPriority: mfapiOfficialTransferProfile.targetPriority,
-  configuredTargets: mfapiOfficialTransferProfile.targets,
-  offerModels: [],
-  availableModels: ["claude-fable-5", "claude-sonnet-5", "claude-opus-4-8", "claude-sonnet-4-6"],
-  targetLimit: mfapiOfficialTransferProfile.targetLimit,
+  targetPriority: "lowest_cost_available",
+  configuredTargets: [],
+  offerModels: [
+    {
+      family: "claude",
+      standard_model: "Claude Fable 5",
+      raw_model_name: "claude-fable-5",
+    },
+  ],
+  availableModels: ["claude-fable-5", "claude-sonnet-5"],
+  targetLimit: 1,
 });
 assert.deepEqual(
-  mfapiOfficialTransferTargets.map((target) => [target.standardModel, target.modelId]),
+  dbFableClaudeTargets.map((target) => [target.standardModel, target.modelId]),
   [["Claude Sonnet 5", "claude-sonnet-5"]],
-  "MFAPI official-transfer monitoring should use Sonnet 5 instead of higher-cost Fable 5.",
+  "DB-discovered Fable 5 offers should not become high-frequency availability probe targets.",
 );
+
+const enabledFableProbeProfiles = probeProfiles.filter(
+  (profile) =>
+    profile.enabled !== false &&
+    (profile.targets || []).some((target) =>
+      [target.standardModel, ...(target.candidates || []), ...(target.keywords || [])]
+        .join(" ")
+        .toLowerCase()
+        .includes("fable"),
+    ),
+);
+assert.deepEqual(
+  enabledFableProbeProfiles.map((profile) => profile.profileId || profile.stationId),
+  [],
+  "Enabled high-frequency PriceAI probe profiles must not include Fable 5 targets.",
+);
+
+const enabledClaudeProbeProfiles = probeProfiles.filter(
+  (profile) =>
+    profile.enabled !== false &&
+    (profile.targets || []).some((target) => target.family === "claude"),
+);
+assert.ok(enabledClaudeProbeProfiles.length > 0, "Claude probe profiles should exist.");
+for (const profile of enabledClaudeProbeProfiles) {
+  const selectedTargets = __test.selectProbeTargets({
+    profileFamily: "claude",
+    targetPriority: profile.targetPriority,
+    configuredTargets: profile.targets,
+    offerModels: [],
+    availableModels: ["claude-fable-5", "claude-sonnet-5", "claude-opus-4-8", "claude-sonnet-4-6"],
+    targetLimit: profile.targetLimit,
+  });
+  const expectedStandardModel = ["Claude Sonnet 5", "Claude Sonnet 4.6", "Claude Opus 4.8"].find((standardModel) =>
+    (profile.targets || []).some((target) => target.standardModel === standardModel),
+  );
+  assert.deepEqual(
+    selectedTargets.map((target) => [target.standardModel, target.modelId]),
+    [[expectedStandardModel, claudeProbeModels[expectedStandardModel]]],
+    `${profile.profileId || profile.stationId} monitoring should use the lowest-cost configured Claude model.`,
+  );
+}
+
+const enabledGptProbeProfiles = probeProfiles.filter(
+  (profile) =>
+    profile.enabled !== false &&
+    profile.targetPriority === "lowest_cost_available" &&
+    (profile.targets || []).some((target) => target.family === "gpt"),
+);
+assert.ok(enabledGptProbeProfiles.length > 0, "GPT lowest-cost probe profiles should exist.");
+for (const profile of enabledGptProbeProfiles) {
+  const selectedTargets = __test.selectProbeTargets({
+    profileFamily: "gpt",
+    targetPriority: profile.targetPriority,
+    configuredTargets: profile.targets,
+    offerModels: [],
+    availableModels: ["gpt-5.5", "gpt-5.4"],
+    targetLimit: profile.targetLimit,
+  });
+  assert.deepEqual(
+    selectedTargets.map((target) => [target.standardModel, target.modelId]),
+    [["GPT 5.4", "gpt-5.4"]],
+    `${profile.profileId || profile.stationId} monitoring should use the lowest-cost configured GPT model.`,
+  );
+}
 
 assert.deepEqual(
   sub2ApiTest.representativeModelForGroup({ name: "Claude Fable 5 池", platform: "anthropic" }),
@@ -330,6 +408,13 @@ assert.deepEqual(__test.completionBody({ protocol: "anthropic_compatible" }, "cl
   max_tokens: 1,
   messages: [{ role: "user", content: "ping" }],
 });
+const lightweightClaudeProbeBody = __test.completionBody({ protocol: "openai_compatible" }, "claude-sonnet-5");
+assert.equal(JSON.stringify(lightweightClaudeProbeBody).includes("cache_control"), false);
+assert.equal(JSON.stringify(lightweightClaudeProbeBody).includes("cache"), false);
+assert.ok(
+  JSON.stringify(lightweightClaudeProbeBody).length < 140,
+  "Availability probe bodies must stay tiny; large prompt/cache creation belongs outside high-frequency monitoring.",
+);
 assert.deepEqual(__test.completionBody({ protocol: "openai_compatible" }, "gpt-5.5"), {
   model: "gpt-5.5",
   messages: [{ role: "user", content: "ping" }],
@@ -384,6 +469,25 @@ const probeSamples = __test.availabilitySamplesFromProbe({
 assert.equal(probeSamples.length, 2);
 assert.equal(probeSamples[0].source_type, "priceai_probe");
 assert.equal(probeSamples[0].source_label, "PriceAI 实测");
+const fableProbeSamples = __test.availabilitySamplesFromProbe({
+  runId: "run-fable",
+  stationId: "station-1",
+  checkedAt: "2026-07-07T08:00:00.000Z",
+  modelList: { ok: true },
+  targetResults: [
+    {
+      standardModel: "Claude Fable 5",
+      groupName: "CC MAX官转",
+      ok: true,
+      checkedAt: "2026-07-07T08:00:00.000Z",
+    },
+  ],
+});
+assert.equal(
+  fableProbeSamples.length,
+  0,
+  "Fable 5 probe results should not create high-frequency availability samples.",
+);
 
 const diagnosticOnlyProbeSamples = __test.availabilitySamplesFromProbe({
   runId: "run-parameter-diagnostic",

@@ -77,7 +77,7 @@
     "protocol": "openai_compatible",
     "enabled": true,
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "gpt",
@@ -110,17 +110,12 @@
       },
       {
         "family": "claude",
-        "standardModel": "Claude Fable 5",
-        "candidates": ["claude-fable-5", "claude-fable-5-0", "claude-5-fable"],
-        "keywords": ["claude", "fable", "5"]
-      },
-      {
-        "family": "claude",
         "standardModel": "Claude Opus 4.8",
         "candidates": ["claude-opus-4-8", "claude-opus-4.8"],
         "keywords": ["claude", "opus", "4.8"]
       }
-    ]
+    ],
+    "targetPriority": "lowest_cost_available"
   },
   {
     "profileId": "wawazz-xyz-gpt",
@@ -131,7 +126,7 @@
     "enabled": true,
     "groupName": "gpt-plus",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "gpt",
@@ -166,7 +161,8 @@
         "candidates": ["claude-opus-4-8", "claude-opus-4.8"],
         "keywords": ["claude", "opus", "4.8"]
       }
-    ]
+    ],
+    "targetPriority": "lowest_cost_available"
   },
   {
     "profileId": "sub-callai-one-gpt-pro",
@@ -177,7 +173,7 @@
     "enabled": true,
     "groupName": "gpt-pro号池",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "gpt",
@@ -204,7 +200,7 @@
     "enabled": true,
     "groupName": "kiro",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "claude",
@@ -238,13 +234,8 @@
         "family": "claude",
         "standardModel": "Claude Sonnet 5",
         "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
-        "keywords": ["claude", "sonnet", "5"]
-      },
-      {
-        "family": "claude",
-        "standardModel": "Claude Fable 5",
-        "candidates": ["claude-fable-5", "claude-fable-5-0", "claude-5-fable"],
-        "keywords": ["claude", "fable", "5"]
+        "keywords": ["claude", "sonnet", "5"],
+        "groupName": "kiro"
       }
     ]
   },
@@ -259,7 +250,7 @@
     "groupId": "3",
     "accountPool": "pro",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "gpt",
@@ -290,7 +281,7 @@
     "groupId": "6",
     "accountPool": "max",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "claude",
@@ -320,13 +311,9 @@
         "family": "claude",
         "standardModel": "Claude Sonnet 5",
         "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
-        "keywords": ["claude", "sonnet", "5"]
-      },
-      {
-        "family": "claude",
-        "standardModel": "Claude Fable 5",
-        "candidates": ["claude-fable-5", "claude-fable-5-0", "claude-5-fable"],
-        "keywords": ["claude", "fable", "5"]
+        "keywords": ["claude", "sonnet", "5"],
+        "groupName": "CC MAX官转",
+        "accountPool": "max"
       }
     ]
   },
@@ -341,7 +328,7 @@
     "groupId": "2",
     "accountPool": "pro",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "gpt",
@@ -372,7 +359,7 @@
     "groupId": "5",
     "accountPool": "plus",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "gpt",
@@ -403,7 +390,7 @@
     "groupId": "40",
     "accountPool": "max",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "claude",
@@ -433,13 +420,9 @@
         "family": "claude",
         "standardModel": "Claude Sonnet 5",
         "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
-        "keywords": ["claude", "sonnet", "5"]
-      },
-      {
-        "family": "claude",
-        "standardModel": "Claude Fable 5",
-        "candidates": ["claude-fable-5", "claude-fable-5-0", "claude-5-fable"],
-        "keywords": ["claude", "fable", "5"]
+        "keywords": ["claude", "sonnet", "5"],
+        "groupName": "claude-max-纯血 1.3 元/ 刀",
+        "accountPool": "max"
       }
     ]
   },
@@ -454,7 +437,7 @@
     "groupId": "68",
     "accountPool": "reverse",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "claude",
@@ -484,13 +467,9 @@
         "family": "claude",
         "standardModel": "Claude Sonnet 5",
         "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
-        "keywords": ["claude", "sonnet", "5"]
-      },
-      {
-        "family": "claude",
-        "standardModel": "Claude Fable 5",
-        "candidates": ["claude-fable-5", "claude-fable-5-0", "claude-5-fable"],
-        "keywords": ["claude", "fable", "5"]
+        "keywords": ["claude", "sonnet", "5"],
+        "groupName": "claude-逆向-特惠 0.5 元/刀",
+        "accountPool": "reverse"
       }
     ]
   },
@@ -505,7 +484,7 @@
     "groupId": "72",
     "accountPool": "kiro",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "claude",
@@ -535,13 +514,9 @@
         "family": "claude",
         "standardModel": "Claude Sonnet 5",
         "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
-        "keywords": ["claude", "sonnet", "5"]
-      },
-      {
-        "family": "claude",
-        "standardModel": "Claude Fable 5",
-        "candidates": ["claude-fable-5", "claude-fable-5-0", "claude-5-fable"],
-        "keywords": ["claude", "fable", "5"]
+        "keywords": ["claude", "sonnet", "5"],
+        "groupName": "claude-kiro-超绝性价比0.26 元/ 刀",
+        "accountPool": "kiro"
       }
     ]
   },
@@ -556,7 +531,7 @@
     "groupId": "2",
     "accountPool": "gpt",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "gpt",
@@ -587,7 +562,7 @@
     "groupId": "38",
     "accountPool": "kiro",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "claude",
@@ -617,13 +592,9 @@
         "family": "claude",
         "standardModel": "Claude Sonnet 5",
         "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
-        "keywords": ["claude", "sonnet", "5"]
-      },
-      {
-        "family": "claude",
-        "standardModel": "Claude Fable 5",
-        "candidates": ["claude-fable-5", "claude-fable-5-0", "claude-5-fable"],
-        "keywords": ["claude", "fable", "5"]
+        "keywords": ["claude", "sonnet", "5"],
+        "groupName": "Kiro",
+        "accountPool": "kiro"
       }
     ]
   },
@@ -638,7 +609,7 @@
     "groupId": "36",
     "accountPool": "aws",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "claude",
@@ -668,13 +639,9 @@
         "family": "claude",
         "standardModel": "Claude Sonnet 5",
         "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
-        "keywords": ["claude", "sonnet", "5"]
-      },
-      {
-        "family": "claude",
-        "standardModel": "Claude Fable 5",
-        "candidates": ["claude-fable-5", "claude-fable-5-0", "claude-5-fable"],
-        "keywords": ["claude", "fable", "5"]
+        "keywords": ["claude", "sonnet", "5"],
+        "groupName": "AWS",
+        "accountPool": "aws"
       }
     ]
   },
@@ -689,7 +656,7 @@
     "groupId": "28",
     "accountPool": "official_transfer",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "claude",
@@ -712,7 +679,7 @@
     "groupId": "37",
     "accountPool": "gpt",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "gpt",
@@ -743,7 +710,7 @@
     "groupId": "1",
     "accountPool": "official_transfer",
     "targetLimit": 1,
-    "targetPriority": "latest_highest_available",
+    "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "claude",
@@ -773,13 +740,9 @@
         "family": "claude",
         "standardModel": "Claude Sonnet 5",
         "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
-        "keywords": ["claude", "sonnet", "5"]
-      },
-      {
-        "family": "claude",
-        "standardModel": "Claude Fable 5",
-        "candidates": ["claude-fable-5", "claude-fable-5-0", "claude-5-fable"],
-        "keywords": ["claude", "fable", "5"]
+        "keywords": ["claude", "sonnet", "5"],
+        "groupName": "CC MAX官转",
+        "accountPool": "official_transfer"
       }
     ]
   }
