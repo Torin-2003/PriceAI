@@ -83,6 +83,9 @@ const cases = [
   ["ChatGPT Go-独享-年卡", "chatgpt-go"],
   ["Steam白号", "other-product"],
   ["Super Grok 激活码 月卡", "super-grok"],
+  ["Grok Heavy 官方订阅月卡", "super-grok-heavy"],
+  ["Grok Super Heavy 年卡 高阶会员", "super-grok-heavy"],
+  ["X Premium+SuperGrok Heavy 一个月会员", "super-grok-heavy"],
   ["Grok 普号 体验号", "grok-account"],
   ["Grok白号账号密码Token", "grok-account"],
   ["【普号 SSO】 Grok AI > 长效微软邮箱 > 账号 SSO > 适合Super(30刀)，API等各类业务 > 取邮件API", "grok-account"],
@@ -378,6 +381,7 @@ for (const [title, expected] of warrantyFilterCases) {
 const tagCases = [
   ["Super Grok 独享成品号 3天会员", ["duration_trial"]],
   ["Super Grok 成品号-1个月（质保）", ["duration_month"]],
+  ["Grok Heavy 官方订阅年卡", ["duration_year"]],
   ["3个月-X-推特 Premium（自带Super Grok）", ["duration_quarter"]],
   ["6个月-X-推特 Premium（自带Super Grok）", ["duration_half_year"]],
   ["12个月-X-推特 Premium（自带Super Grok）", ["duration_year"]],
@@ -420,6 +424,7 @@ for (const [title, unexpectedTag] of geminiConditionNegativeCases) {
 const productFacetCases = buildOfferFilterFacets([
   { sourceTitle: "ChatGPT Plus 月卡 30天质保 拼车" },
   { sourceTitle: "Super Grok 独享成品号 3天会员" },
+  { sourceTitle: "Grok Heavy 官方订阅年卡" },
   { sourceTitle: "OpenAI Codex 单次接码 1次验证" },
   { sourceTitle: "Telegram账号|+1美国|1月注册" },
   { sourceTitle: "【印度+91】1~3年 精养老号 | 高权重 | 抗风控强" },
@@ -442,6 +447,10 @@ assert.ok(chatGptFacetIds.includes("warranty_long"), "ChatGPT Plus should keep w
 const superGrokFacetIds = filterOfferFilterFacetsForProduct("super-grok", productFacetCases).map((facet) => facet.id);
 assert.ok(superGrokFacetIds.includes("duration_trial"), "Super Grok should show duration filters.");
 assert.ok(!superGrokFacetIds.includes("verification_single"), "Super Grok must not show verification filters.");
+
+const superGrokHeavyFacetIds = filterOfferFilterFacetsForProduct("super-grok-heavy", productFacetCases).map((facet) => facet.id);
+assert.ok(superGrokHeavyFacetIds.includes("duration_year"), "Super Grok Heavy should show duration filters.");
+assert.ok(!superGrokHeavyFacetIds.includes("verification_single"), "Super Grok Heavy must not show verification filters.");
 
 const xTwitterPremiumFacetIds = filterOfferFilterFacetsForProduct("x-twitter-premium", productFacetCases).map((facet) => facet.id);
 assert.ok(xTwitterPremiumFacetIds.includes("duration_quarter"), "X/Twitter Premium should show duration filters.");
@@ -467,6 +476,11 @@ assert.deepEqual(
   parseOfferFilterTagsForProduct("super-grok", "duration_month,warranty_long"),
   ["duration_month", "warranty_long"],
   "Super Grok should accept duration filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("super-grok-heavy", "duration_year,warranty_long"),
+  ["duration_year", "warranty_long"],
+  "Super Grok Heavy should accept duration filters.",
 );
 assert.deepEqual(
   parseOfferFilterTagsForProduct("grok-account", "duration_trial"),

@@ -116,6 +116,7 @@ function buildSuspiciousChecks(items) {
     "gemini-pro-recharge",
     "gemini-ultra",
     "super-grok",
+    "super-grok-heavy",
     "grok-account",
   ]);
   const checks = [

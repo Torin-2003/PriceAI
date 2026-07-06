@@ -181,6 +181,7 @@ const officialPlanByProductId: Record<string, { appSlug: "chatgpt" | "claude" | 
   "gemini-pro-recharge": { appSlug: "gemini", planSlug: "ai-pro" },
   "gemini-ultra": { appSlug: "gemini", planSlug: "ai-ultra" },
   "super-grok": { appSlug: "grok", planSlug: "supergrok" },
+  "super-grok-heavy": { appSlug: "grok", planSlug: "supergrok-heavy" },
 };
 
 function buildOfficialPriceReference(

@@ -95,6 +95,10 @@ const productSeoProfiles: Record<string, ProductSeoProfile> = {
     metadataTitle: "Super Grok 价格对比：Grok 会员、激活码、月卡和渠道报价",
     metadataDescription: "查看 Super Grok 有货最低价、Grok 会员、激活码、月卡、年卡、渠道报价和官方地区价。",
   }),
+  "super-grok-heavy": profile({
+    metadataTitle: "SuperGrok Heavy 价格对比：Grok Heavy、高阶会员和渠道报价",
+    metadataDescription: "查看 SuperGrok Heavy / Grok Heavy 有货最低价、高阶会员、月卡、年卡、渠道报价和官方地区价。",
+  }),
   "grok-account": profile({
     metadataTitle: "Grok 普号价格对比：体验号、成品账号和渠道报价",
     metadataDescription: "查看 Grok 普号、体验号、X / Grok 账号的有货最低价、渠道报价、库存和更新时间。",

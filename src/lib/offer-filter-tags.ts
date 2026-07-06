@@ -210,6 +210,7 @@ const GEMINI_PRO_ACCOUNT_FILTER_TAG_IDS = new Set<OfferFilterTagId>([
 const DURATION_FILTER_PRODUCT_IDS = new Set<string>([
   "grok-account",
   "super-grok",
+  "super-grok-heavy",
   "x-twitter-premium",
 ]);
 const VERIFICATION_FILTER_PRODUCT_IDS = new Set<string>([

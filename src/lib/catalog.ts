@@ -263,6 +263,16 @@ export const canonicalCatalog: CanonicalProduct[] = [
     aliases: ["super grok", "supergrok", "grok super", "grok 激活码"],
   },
   {
+    id: "super-grok-heavy",
+    slug: "super-grok-heavy",
+    displayName: "SuperGrok Heavy / Grok Heavy",
+    platform: "Grok",
+    productType: "订阅/会员",
+    spec: "Heavy",
+    summary: "SuperGrok Heavy、Grok Heavy 高阶订阅、代充、成品号、月卡或年卡。",
+    aliases: ["super grok heavy", "supergrok heavy", "grok heavy", "heavy grok", "grok super heavy", "grok heavy 会员"],
+  },
+  {
     id: "grok-account",
     slug: "grok-account",
     displayName: "Grok 普号 / 体验号",
@@ -644,6 +654,10 @@ function classifyOfferByTitle(
     return getCanonicalProduct("other-product");
   }
 
+  if (isGrokHeavyProduct(value)) {
+    return getCanonicalProduct("super-grok-heavy");
+  }
+
   if (isXTwitterPremiumProduct(value)) {
     return getCanonicalProduct("x-twitter-premium");
   }
@@ -725,7 +739,11 @@ function classifyOfferByTitle(
       return getCanonicalProduct("grok-account");
     }
 
-    if (matches(value, ["super", "supergrok", "heavy", "月卡", "年卡", "激活码", "卡密", "直充", "充值"])) {
+    if (isGrokHeavyProduct(value)) {
+      return getCanonicalProduct("super-grok-heavy");
+    }
+
+    if (matches(value, ["super", "supergrok", "月卡", "年卡", "激活码", "卡密", "直充", "充值"])) {
       return getCanonicalProduct("super-grok");
     }
 
@@ -2213,6 +2231,13 @@ function isGeminiProAccount(value: string): boolean {
 
 function isGrokProduct(value: string): boolean {
   return matches(value, ["grok", "supergrok"]);
+}
+
+function isGrokHeavyProduct(value: string): boolean {
+  if (!isGrokProduct(value)) return false;
+  if (matches(value, ["非heavy", "非 heavy", "不是heavy", "不是 heavy", "不含heavy", "不含 heavy", "not heavy"])) return false;
+
+  return matches(value, ["heavy", "grok heavy", "heavy grok", "grok super heavy", "super grok heavy", "supergrok heavy"]);
 }
 
 function isGrokFitForSuperInfrastructure(value: string): boolean {
