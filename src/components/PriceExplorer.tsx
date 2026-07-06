@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ArrowUpDown,
   CheckCircle2,
   ChevronRight,
   X,
@@ -50,16 +49,20 @@ import type {
 } from "@/lib/types";
 import { formatCurrency, formatDateDay, formatRelativeTime } from "@/lib/utils";
 
-type SortMode = "available_price" | "price" | "updated" | "channels";
 type ViewMode = "cards" | "table";
 type ScopeMode = "products" | "offers" | "merchants";
+type FilterScope = {
+  showProductType: boolean;
+  showStock: boolean;
+  showPrice: boolean;
+  showMerchantFilters: boolean;
+};
 
 export type ExplorerInitialState = {
   query?: string;
   platform?: string;
   productType?: string;
   stock?: string;
-  sort?: SortMode;
   minPrice?: string;
   maxPrice?: string;
   viewMode?: ViewMode;
@@ -121,7 +124,6 @@ const MERCHANT_LIST_CACHE_TTL_MS = PRICE_DATA_CACHE_TTL_MS;
 const OFFER_LIST_MEMORY_CACHE_LIMIT = 40;
 const MERCHANT_LIST_MEMORY_CACHE_LIMIT = 40;
 const stockOptions = ["all", "available", "out_of_stock"] as const;
-const sortOptions = ["available_price", "price", "updated", "channels"] as const;
 const viewOptions = ["cards", "table"] as const;
 const scopeOptions = ["products", "offers", "merchants"] as const;
 const merchantCollectorOptions = MERCHANT_COLLECTOR_FILTERS;
@@ -166,7 +168,6 @@ export function PriceExplorer({
   const [platform, setPlatform] = useState(initialState.platform ?? "全部");
   const [productType, setProductType] = useState(initialState.productType ?? "全部");
   const [stock, setStock] = useState(initialState.stock ?? "all");
-  const [sort, setSort] = useState<SortMode>(initialState.sort ?? "available_price");
   const [minPrice, setMinPrice] = useState(initialState.minPrice ?? "");
   const [maxPrice, setMaxPrice] = useState(initialState.maxPrice ?? "");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -211,7 +212,6 @@ export function PriceExplorer({
       setPlatform(nextState.platform ?? "全部");
       setProductType(nextState.productType ?? "全部");
       setStock(nextState.stock ?? "all");
-      setSort(nextState.sort ?? "available_price");
       setMinPrice(nextState.minPrice ?? "");
       setMaxPrice(nextState.maxPrice ?? "");
       setScopeMode(nextState.scopeMode ?? "products");
@@ -229,8 +229,6 @@ export function PriceExplorer({
 
   const products = useMemo(() => {
     const normalizedQuery = effectiveQuery.trim().toLowerCase();
-    const min = minPrice ? Number(minPrice) : null;
-    const max = maxPrice ? Number(maxPrice) : null;
 
     const filtered = explorerData.products.filter((product) => {
       const haystack = [
@@ -251,36 +249,12 @@ export function PriceExplorer({
       if (stock === "available" && product.inStockCount === 0) return false;
       if (stock === "out_of_stock" && product.outOfStockCount === 0) return false;
 
-      if (min !== null || max !== null) {
-        if (product.lowestPrice === null) return false;
-        if (min !== null && product.lowestPrice < min) return false;
-        if (max !== null && product.lowestPrice > max) return false;
-      }
-
       return true;
     });
 
     return filtered.sort((a, b) => {
       const platformDelta = comparePlatformOrder(a.platform, b.platform);
       if (platformDelta !== 0) return platformDelta;
-
-      if (sort === "channels") {
-        const channelDelta = b.offerCount - a.offerCount;
-        if (channelDelta !== 0) return channelDelta;
-        return compareProductFallback(a, b);
-      }
-
-      if (sort === "updated") {
-        const updatedDelta = (b.latestSeenAt || "").localeCompare(a.latestSeenAt || "");
-        if (updatedDelta !== 0) return updatedDelta;
-        return compareProductFallback(a, b);
-      }
-
-      if (sort === "price") {
-        const priceDelta = compareProductPrice(a, b);
-        if (priceDelta !== 0) return priceDelta;
-        return compareProductFallback(a, b);
-      }
 
       const stockDelta = Number(b.inStockCount > 0) - Number(a.inStockCount > 0);
       if (stockDelta !== 0) return stockDelta;
@@ -293,15 +267,31 @@ export function PriceExplorer({
 
       return compareProductFallback(a, b);
     });
-  }, [effectiveQuery, explorerData.products, maxPrice, minPrice, platform, productType, sort, stock]);
+  }, [effectiveQuery, explorerData.products, platform, productType, stock]);
 
   const totalAvailable = explorerData.products.reduce((sum, product) => sum + product.inStockCount, 0);
   const totalOutOfStock = explorerData.products.reduce((sum, product) => sum + product.outOfStockCount, 0);
   const showingOffers = scopeMode === "offers";
   const showingMerchants = scopeMode === "merchants";
-  const title = buildTitle(platform, productType, scopeMode);
+  const filterScope = filterScopeForMode(scopeMode);
+  const scopedProductType = filterScope.showProductType ? productType : "全部";
+  const scopedStock = filterScope.showStock ? stock : "all";
+  const scopedMinPrice = filterScope.showPrice ? minPrice : "";
+  const scopedMaxPrice = filterScope.showPrice ? maxPrice : "";
+  const scopedMerchantCollector = filterScope.showMerchantFilters ? merchantCollector : "all";
+  const scopedMerchantSignal = filterScope.showMerchantFilters ? merchantSignal : "all";
+  const title = buildTitle(platform, scopedProductType, scopeMode);
   const searchPlaceholder = searchPlaceholderForScope(scopeMode);
-  const activeFilterChips = buildActiveFilterChips({ productType, stock, minPrice, maxPrice, merchantCollector, merchantSignal, showingMerchants });
+  const activeFilterChips = buildActiveFilterChips({
+    productType: scopedProductType,
+    stock: scopedStock,
+    minPrice: scopedMinPrice,
+    maxPrice: scopedMaxPrice,
+    merchantCollector: scopedMerchantCollector,
+    merchantSignal: scopedMerchantSignal,
+    showingMerchants,
+  });
+  const activeFilterCount = activeFilterChips.length;
   const renderMobileProductList = isDesktopViewport !== true;
   const renderDesktopProductTable = viewMode === "table" && isDesktopViewport !== false;
   const renderDesktopProductCards = viewMode === "cards" && isDesktopViewport !== false;
@@ -310,45 +300,62 @@ export function PriceExplorer({
       buildExplorerSearchParams({
         query,
         platform,
-        productType,
-        stock,
-        sort,
-        minPrice,
-        maxPrice,
+        productType: scopedProductType,
+        stock: scopedStock,
+        minPrice: scopedMinPrice,
+        maxPrice: scopedMaxPrice,
         viewMode,
         scopeMode,
-        merchantCollector,
-        merchantSignal,
+        merchantCollector: scopedMerchantCollector,
+        merchantSignal: scopedMerchantSignal,
       }).toString(),
-    [maxPrice, merchantCollector, merchantSignal, minPrice, platform, productType, query, scopeMode, sort, stock, viewMode],
+    [
+      platform,
+      query,
+      scopeMode,
+      scopedMaxPrice,
+      scopedMerchantCollector,
+      scopedMerchantSignal,
+      scopedMinPrice,
+      scopedProductType,
+      scopedStock,
+      viewMode,
+    ],
   );
   const offerQueryString = useMemo(
     () =>
       buildPublicListSearchParams({
         query: effectiveQuery,
         platform,
-        productType,
-        stock,
-        sort,
-        minPrice,
-        maxPrice,
+        productType: scopedProductType,
+        stock: scopedStock,
+        minPrice: scopedMinPrice,
+        maxPrice: scopedMaxPrice,
       }).toString(),
-    [effectiveQuery, maxPrice, minPrice, platform, productType, sort, stock],
+    [effectiveQuery, platform, scopedMaxPrice, scopedMinPrice, scopedProductType, scopedStock],
   );
   const merchantQueryString = useMemo(
     () =>
       buildPublicListSearchParams({
         query: effectiveQuery,
         platform,
-        productType,
-        stock,
-        sort,
-        minPrice,
-        maxPrice,
-        collector: merchantCollector,
-        signal: merchantSignal,
+        productType: scopedProductType,
+        stock: scopedStock,
+        minPrice: scopedMinPrice,
+        maxPrice: scopedMaxPrice,
+        collector: scopedMerchantCollector,
+        signal: scopedMerchantSignal,
       }).toString(),
-    [effectiveQuery, maxPrice, merchantCollector, merchantSignal, minPrice, platform, productType, sort, stock],
+    [
+      effectiveQuery,
+      platform,
+      scopedMaxPrice,
+      scopedMerchantCollector,
+      scopedMerchantSignal,
+      scopedMinPrice,
+      scopedProductType,
+      scopedStock,
+    ],
   );
   const visibleOfferResponse = showingOffers && offerQueryString === "" ? offerResponse ?? initialOffers : offerResponse;
   const platformOffers = visibleOfferResponse?.rows ?? [];
@@ -476,21 +483,6 @@ export function PriceExplorer({
     window.dispatchEvent(new Event("open-submission-floater"));
   }
 
-  function resetFilters() {
-    setQuery("");
-    setPlatform("全部");
-    setProductType("全部");
-    setStock("all");
-    setSort("available_price");
-    setMinPrice("");
-    setMaxPrice("");
-    setViewMode("table");
-    setScopeMode("products");
-    setMerchantCollector("all");
-    setMerchantSignal("all");
-    trackAnalyticsEvent("filters_reset");
-  }
-
   function closeFilters() {
     setFiltersOpen(false);
   }
@@ -507,10 +499,11 @@ export function PriceExplorer({
 
   useEffect(() => {
     if (!urlStateReady) return;
-    if (window.location.pathname !== "/") return;
+    const currentPath = window.location.pathname;
+    if (currentPath !== "/" && currentPath !== "/channels") return;
 
-    const nextUrl = explorerQueryString ? `/?${explorerQueryString}` : "/";
-    const currentUrl = `${window.location.pathname}${window.location.search}`;
+    const nextUrl = explorerQueryString ? `${currentPath}?${explorerQueryString}` : currentPath;
+    const currentUrl = `${currentPath}${window.location.search}`;
 
     if (currentUrl !== nextUrl) {
       window.history.replaceState(null, "", nextUrl);
@@ -842,31 +835,14 @@ export function PriceExplorer({
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="relative inline-flex h-11 min-w-0 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full bg-[#e4e9ea] px-4 text-sm font-semibold text-[#2d3435]">
-                  <ArrowUpDown size={16} className="shrink-0" />
-                  <span className="truncate">{mobileSortLabel(sort, scopeMode)}</span>
-                  <select
-                    aria-label="排序"
-                    value={sort}
-                    onChange={(event) => setSort(event.target.value as SortMode)}
-                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                  >
-                    <option value="available_price">{showingMerchants ? "综合观察" : "有货 + 低价"}</option>
-                    <option value="price">价格从低到高</option>
-                    <option value="updated">最近更新</option>
-                    <option value="channels">{showingMerchants ? "覆盖最多" : showingOffers ? "渠道名称" : "渠道数量"}</option>
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setFiltersOpen(true)}
-                  className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-[#e4e9ea] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#dde4e5]"
-                >
-                  <Filter size={16} className="shrink-0" />
-                  筛选{advancedFilterCount({ productType, stock, minPrice, maxPrice, merchantCollector, merchantSignal, showingMerchants }) ? ` ${advancedFilterCount({ productType, stock, minPrice, maxPrice, merchantCollector, merchantSignal, showingMerchants })}` : ""}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setFiltersOpen(true)}
+                className="inline-flex h-11 w-full min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-[#e4e9ea] px-4 text-sm font-semibold text-[#2d3435] transition hover:bg-[#dde4e5]"
+              >
+                <Filter size={16} className="shrink-0" />
+                筛选{activeFilterCount ? ` ${activeFilterCount}` : ""}
+              </button>
             </div>
           </div>
 
@@ -924,19 +900,6 @@ export function PriceExplorer({
                 />
               </div>
             ) : null}
-            <label className="inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-[#e4e9ea] px-5 text-sm font-semibold text-[#2d3435]">
-              <ArrowUpDown size={17} />
-              <select
-                value={sort}
-                onChange={(event) => setSort(event.target.value as SortMode)}
-                className="bg-transparent text-sm outline-none"
-              >
-                <option value="available_price">{showingMerchants ? "综合观察" : "有货 + 低价"}</option>
-                <option value="price">价格从低到高</option>
-                <option value="updated">最近更新</option>
-                <option value="channels">{showingMerchants ? "覆盖最多" : showingOffers ? "渠道名称" : "渠道数量"}</option>
-              </select>
-            </label>
             <button
               type="button"
               onClick={openSubmission}
@@ -971,27 +934,35 @@ export function PriceExplorer({
                 options={["全部", ...visiblePlatformOptions]}
               />
             </div>
-            <div className="sm:col-span-2 lg:col-span-1">
+            {filterScope.showProductType ? (
+              <div className="sm:col-span-2 lg:col-span-1">
+                <FilterSelect
+                  label="商品类型"
+                  value={productType}
+                  onChange={setProductType}
+                  options={["全部", ...productTypeOptions].map((item) => [item, productTypeLabels[item] || item] as [string, string])}
+                />
+              </div>
+            ) : null}
+            {filterScope.showStock ? (
               <FilterSelect
-                label="商品类型"
-                value={productType}
-                onChange={setProductType}
-                options={["全部", ...productTypeOptions].map((item) => [item, productTypeLabels[item] || item] as [string, string])}
+                label="库存"
+                value={stock}
+                onChange={setStock}
+                options={[
+                  ["all", "全部库存"],
+                  ["available", "有货"],
+                  ["out_of_stock", "缺货"],
+                ]}
               />
-            </div>
-            <FilterSelect
-              label="库存"
-              value={stock}
-              onChange={setStock}
-              options={[
-                ["all", "全部库存"],
-                ["available", "有货"],
-                ["out_of_stock", "缺货"],
-              ]}
-            />
-            <PriceInput label="最低价" value={minPrice} onChange={setMinPrice} />
-            <PriceInput label="最高价" value={maxPrice} onChange={setMaxPrice} />
-            {showingMerchants ? (
+            ) : null}
+            {filterScope.showPrice ? (
+              <>
+                <PriceInput label="最低价" value={minPrice} onChange={setMinPrice} />
+                <PriceInput label="最高价" value={maxPrice} onChange={setMaxPrice} />
+              </>
+            ) : null}
+            {filterScope.showMerchantFilters ? (
               <>
                 <FilterSelect
                   label="采集来源"
@@ -1009,7 +980,7 @@ export function PriceExplorer({
             ) : null}
             <button
               type="button"
-              onClick={resetFilters}
+              onClick={resetAdvancedFilters}
               className="h-12 self-end rounded-full bg-white px-4 text-sm font-semibold text-[#2d3435] shadow-[0_12px_35px_rgba(45,52,53,0.04)] ring-1 ring-[#adb3b4]/15 transition hover:bg-[#dde4e5]"
             >
               重置筛选
@@ -1023,7 +994,7 @@ export function PriceExplorer({
           stock={stock}
           minPrice={minPrice}
           maxPrice={maxPrice}
-          showingMerchants={showingMerchants}
+          filterScope={filterScope}
           merchantCollector={merchantCollector}
           merchantSignal={merchantSignal}
           onProductTypeChange={setProductType}
@@ -2160,7 +2131,7 @@ function MobileFilterSheet({
   stock,
   minPrice,
   maxPrice,
-  showingMerchants,
+  filterScope,
   merchantCollector,
   merchantSignal,
   onProductTypeChange,
@@ -2177,7 +2148,7 @@ function MobileFilterSheet({
   stock: string;
   minPrice: string;
   maxPrice: string;
-  showingMerchants: boolean;
+  filterScope: FilterScope;
   merchantCollector: MerchantCollectorFilter;
   merchantSignal: MerchantSignalFilter;
   onProductTypeChange: (value: string) => void;
@@ -2203,8 +2174,8 @@ function MobileFilterSheet({
         <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-[#c8ced0]" />
         <div className="mb-5 flex items-center justify-between gap-4">
           <div>
-            <p className="text-lg font-bold text-[#202829]">高级筛选</p>
-            <p className="mt-1 text-xs text-[#5a6061]">平台、搜索和排序已放在首页常驻区</p>
+            <p className="text-lg font-bold text-[#202829]">筛选</p>
+            <p className="mt-1 text-xs text-[#5a6061]">{mobileFilterHint(filterScope)}</p>
           </div>
           <button
             type="button"
@@ -2217,27 +2188,33 @@ function MobileFilterSheet({
         </div>
 
         <div className="space-y-4 rounded-lg bg-[#f2f4f4] p-4">
-          <FilterSelect
-            label="商品类型"
-            value={productType}
-            onChange={onProductTypeChange}
-            options={["全部", ...productTypeOptions].map((item) => [item, productTypeLabels[item] || item] as [string, string])}
-          />
-          <FilterSelect
-            label="库存"
-            value={stock}
-            onChange={onStockChange}
-            options={[
-              ["all", "全部库存"],
-              ["available", "有货"],
-              ["out_of_stock", "缺货"],
-            ]}
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <PriceInput label="最低价" value={minPrice} onChange={onMinPriceChange} />
-            <PriceInput label="最高价" value={maxPrice} onChange={onMaxPriceChange} />
-          </div>
-          {showingMerchants ? (
+          {filterScope.showProductType ? (
+            <FilterSelect
+              label="商品类型"
+              value={productType}
+              onChange={onProductTypeChange}
+              options={["全部", ...productTypeOptions].map((item) => [item, productTypeLabels[item] || item] as [string, string])}
+            />
+          ) : null}
+          {filterScope.showStock ? (
+            <FilterSelect
+              label="库存"
+              value={stock}
+              onChange={onStockChange}
+              options={[
+                ["all", "全部库存"],
+                ["available", "有货"],
+                ["out_of_stock", "缺货"],
+              ]}
+            />
+          ) : null}
+          {filterScope.showPrice ? (
+            <div className="grid grid-cols-2 gap-3">
+              <PriceInput label="最低价" value={minPrice} onChange={onMinPriceChange} />
+              <PriceInput label="最高价" value={maxPrice} onChange={onMaxPriceChange} />
+            </div>
+          ) : null}
+          {filterScope.showMerchantFilters ? (
             <>
               <FilterSelect
                 label="采集来源"
@@ -2504,20 +2481,11 @@ function metricValue(value: number, loading: boolean): string {
   return loading ? "--" : value.toString();
 }
 
-function mobileSortLabel(sort: SortMode, scope: ScopeMode): string {
-  if (sort === "available_price") return scope === "merchants" ? "综合" : "低价";
-  if (sort === "price") return "价格";
-  if (sort === "updated") return "最新";
-  if (scope === "merchants") return "覆盖";
-  return scope === "offers" ? "渠道" : "数量";
-}
-
 function buildExplorerSearchParams({
   query,
   platform,
   productType,
   stock,
-  sort,
   minPrice,
   maxPrice,
   viewMode,
@@ -2532,7 +2500,6 @@ function buildExplorerSearchParams({
   if (platform !== "全部") params.set("platform", platform);
   if (productType !== "全部") params.set("type", productType);
   if (stock !== "all") params.set("stock", stock);
-  if (sort !== "available_price") params.set("sort", sort);
   if (minPrice) params.set("min", minPrice);
   if (maxPrice) params.set("max", maxPrice);
   if (viewMode !== "table") params.set("view", viewMode);
@@ -2548,7 +2515,6 @@ function buildPublicListSearchParams({
   platform,
   productType,
   stock,
-  sort,
   minPrice,
   maxPrice,
   collector,
@@ -2558,7 +2524,6 @@ function buildPublicListSearchParams({
   platform: string;
   productType: string;
   stock: string;
-  sort: SortMode;
   minPrice: string;
   maxPrice: string;
   collector?: MerchantCollectorFilter;
@@ -2571,7 +2536,6 @@ function buildPublicListSearchParams({
   if (platform !== "全部") params.set("platform", platform);
   if (productType !== "全部") params.set("type", productType);
   if (stock !== "all") params.set("stock", stock);
-  if (sort !== "available_price") params.set("sort", sort);
   if (minPrice) params.set("min", minPrice);
   if (maxPrice) params.set("max", maxPrice);
   if (collector && collector !== "all") params.set("collector", collector);
@@ -2589,7 +2553,6 @@ function parseExplorerInitialState(params: URLSearchParams): ExplorerInitialStat
     platform: pickParam(params.get("platform") || "", ["全部", ...visiblePlatformOptions], "全部"),
     productType: pickParam(params.get("type") || "", ["全部", ...productTypeOptions], "全部"),
     stock: pickParam(params.get("stock") || "", stockOptions, "all"),
-    sort: pickParam(params.get("sort") || "", sortOptions, "available_price"),
     minPrice: numericParam(params.get("min") || ""),
     maxPrice: numericParam(params.get("max") || ""),
     viewMode: pickParam(params.get("view") || "", viewOptions, defaultViewMode),
@@ -2685,30 +2648,37 @@ function buildActiveFilterChips({
   return filters;
 }
 
-function advancedFilterCount({
-  productType,
-  stock,
-  minPrice,
-  maxPrice,
-  merchantCollector,
-  merchantSignal,
-  showingMerchants,
-}: {
-  productType: string;
-  stock: string;
-  minPrice: string;
-  maxPrice: string;
-  merchantCollector: MerchantCollectorFilter;
-  merchantSignal: MerchantSignalFilter;
-  showingMerchants: boolean;
-}): number {
-  let count = 0;
-  if (productType !== "全部") count += 1;
-  if (stock !== "all") count += 1;
-  if (minPrice || maxPrice) count += 1;
-  if (showingMerchants && merchantCollector !== "all") count += 1;
-  if (showingMerchants && merchantSignal !== "all") count += 1;
-  return count;
+function filterScopeForMode(scopeMode: ScopeMode): FilterScope {
+  if (scopeMode === "offers") {
+    return {
+      showProductType: true,
+      showStock: true,
+      showPrice: true,
+      showMerchantFilters: false,
+    };
+  }
+
+  if (scopeMode === "merchants") {
+    return {
+      showProductType: false,
+      showStock: true,
+      showPrice: false,
+      showMerchantFilters: true,
+    };
+  }
+
+  return {
+    showProductType: true,
+    showStock: true,
+    showPrice: false,
+    showMerchantFilters: false,
+  };
+}
+
+function mobileFilterHint(scope: FilterScope): string {
+  if (scope.showPrice) return "按商品类型、库存和报价价格收窄结果";
+  if (scope.showMerchantFilters) return "按库存、采集来源和商家信号筛选";
+  return "按商品类型和库存快速收窄标准商品";
 }
 
 function buildTitle(platform: string, productType: string, scopeMode: ScopeMode): string {
