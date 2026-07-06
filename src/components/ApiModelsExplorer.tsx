@@ -446,6 +446,8 @@ export function ApiModelsExplorer({
         </div>
       </div>
 
+      <SponsoredPlacementPreview kind="apiModels" settings={sponsorSettings} className="mb-5" />
+
       {submitOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-[#202829]/35 px-4 py-6 backdrop-blur-sm"
@@ -614,10 +616,6 @@ export function ApiModelsExplorer({
       ) : (
         <EmptyState text="没有符合条件的渠道或订阅计划" />
       )}
-
-      <div className="mt-6">
-        <SponsoredPlacementPreview kind="apiModels" settings={sponsorSettings} />
-      </div>
 
       <section className="mt-6 rounded-lg bg-[#fff7e8] p-5 text-sm leading-7 text-[#7a541b] ring-1 ring-[#efdfbd]">
         <p className="font-semibold text-[#7a541b]">订阅额度折算提示</p>
