@@ -132,6 +132,14 @@ assert(/create table if not exists public_api_snapshots/.test(publicApiSnapshots
 assert(/primary key \(kind, cache_key\)/.test(publicApiSnapshotsMigrationText), "public API snapshots migration must key snapshots by kind and cache key.");
 assert(/grant select, insert, update, delete on table public_api_snapshots to service_role/.test(publicApiSnapshotsMigrationText), "public API snapshots migration must grant service_role access only.");
 
+const latestFacetMigration = latestMigrationDefining("list_public_product_offer_filter_facets");
+assert(Boolean(latestFacetMigration), "supabase/migrations: list_public_product_offer_filter_facets must be defined by a migration.");
+if (latestFacetMigration) {
+  const latestFacetMigrationText = read(latestFacetMigration);
+  assert(/unnest\(raw_offers\.public_filter_tags\)/.test(latestFacetMigrationText), `${latestFacetMigration}: public filter facets must use stored raw_offers.public_filter_tags.`);
+  assert(!/priceai_public_offer_filter_tags\(raw_offers\.source_title,\s*raw_offers\.tags\)[\s\S]{0,250}as tag_id/.test(latestFacetMigrationText), `${latestFacetMigration}: public filter facets must not derive tags during public reads.`);
+}
+
 const publicCachePolicyText = read("src/lib/public-cache-policy.ts");
 assert(/PRICE_DATA_EDGE_SECONDS\s*=\s*300/.test(publicCachePolicyText), "src/lib/public-cache-policy.ts: price data edge TTL must stay at 300s unless the cost plan is updated.");
 assert(/PRICE_DATA_STALE_SECONDS\s*=\s*1800/.test(publicCachePolicyText), "src/lib/public-cache-policy.ts: price data stale window must stay at 1800s unless the cost plan is updated.");
@@ -258,6 +266,20 @@ function listSourceFiles(roots) {
   const files = [];
   for (const root of roots) walk(path.join(repoRoot, root), files);
   return files.map((file) => path.relative(repoRoot, file).split(path.sep).join("/"));
+}
+
+function latestMigrationDefining(functionName) {
+  return listMigrationFiles()
+    .filter((file) => file.endsWith(".sql"))
+    .sort()
+    .filter((file) => read(file).includes(`create or replace function ${functionName}`))
+    .at(-1);
+}
+
+function listMigrationFiles() {
+  return readdirSync(path.join(repoRoot, "supabase/migrations"))
+    .filter((entry) => entry.endsWith(".sql"))
+    .map((entry) => `supabase/migrations/${entry}`);
 }
 
 function walk(directory, files) {
