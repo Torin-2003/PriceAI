@@ -793,7 +793,7 @@ function OfferFilterBar({
 
       {filterOpen ? (
         <form onSubmit={onSearchSubmit} className="mt-3 rounded-lg bg-white p-3 ring-1 ring-[#adb3b4]/15">
-          <div className="grid gap-4 xl:grid-cols-[minmax(260px,1.2fr)_minmax(260px,0.9fr)_minmax(320px,1.1fr)_auto] xl:items-end">
+          <div className="space-y-4">
             <fieldset className="min-w-0">
               <legend className="text-xs font-semibold text-[#5a6061]">渠道来源</legend>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -819,29 +819,31 @@ function OfferFilterBar({
               </div>
             </fieldset>
 
-            <fieldset className="min-w-0">
-              <legend className="text-xs font-semibold text-[#5a6061]">价格区间</legend>
-              <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-                <PriceFilterInput value={minPriceInput} onChange={onMinPriceInputChange} label="最低价" />
-                <span className="text-xs font-semibold text-[#7a8587]">至</span>
-                <PriceFilterInput value={maxPriceInput} onChange={onMaxPriceInputChange} label="最高价" />
-              </div>
-            </fieldset>
+            <div className="grid gap-4 border-t border-[#edf0f1] pt-3 lg:grid-cols-[minmax(260px,0.8fr)_minmax(360px,1.15fr)_auto] lg:items-end">
+              <fieldset className="min-w-0">
+                <legend className="text-xs font-semibold text-[#5a6061]">价格区间</legend>
+                <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                  <PriceFilterInput value={minPriceInput} onChange={onMinPriceInputChange} label="最低价" />
+                  <span className="text-xs font-semibold text-[#7a8587]">至</span>
+                  <PriceFilterInput value={maxPriceInput} onChange={onMaxPriceInputChange} label="最高价" />
+                </div>
+              </fieldset>
 
-            <fieldset className="min-w-0">
-              <legend className="text-xs font-semibold text-[#5a6061]">报价关键词</legend>
-              <div className="mt-2 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
-                <TextFilterInput label="包含" value={queryInput} onChange={onSearchInputChange} placeholder="关键词、渠道、商品名" />
-                <TextFilterInput label="排除" value={excludeInput} onChange={onExcludeInputChange} placeholder="网页、无质保、日抛" danger />
-              </div>
-            </fieldset>
+              <fieldset className="min-w-0">
+                <legend className="text-xs font-semibold text-[#5a6061]">报价关键词</legend>
+                <div className="mt-2 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
+                  <TextFilterInput label="包含" value={queryInput} onChange={onSearchInputChange} placeholder="关键词、渠道、商品名" />
+                  <TextFilterInput label="排除" value={excludeInput} onChange={onExcludeInputChange} placeholder="网页、无质保、日抛" danger />
+                </div>
+              </fieldset>
 
-            <button
-              type="submit"
-              className="inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-[#202829] px-4 text-sm font-semibold text-white transition hover:opacity-90"
-            >
-              应用筛选
-            </button>
+              <button
+                type="submit"
+                className="inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-[#202829] px-4 text-sm font-semibold text-white transition hover:opacity-90"
+              >
+                应用筛选
+              </button>
+            </div>
           </div>
         </form>
       ) : null}
@@ -1117,16 +1119,16 @@ function OfferListItem({
         </div>
         <OfferStatusBadge available={available} />
       </div>
-      <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className={`text-2xl font-bold tracking-normal ${available ? "text-[#202829]" : "text-[#9b3328]"}`}>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-[112px] flex-1 flex-wrap items-baseline gap-x-2 gap-y-1">
+          <p className={`text-2xl font-bold leading-none tracking-normal ${available ? "text-[#202829]" : "text-[#9b3328]"}`}>
             {formatCurrency(offer.price, offer.currency)}
           </p>
-          <p className="mt-1 text-xs text-[#5a6061]">
+          <p className="text-xs font-medium text-[#5a6061]">
             <OfferRelativeTime value={offerTimestamp(offer)} />
           </p>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           <OfferRiskButton offer={offer} compact />
           <OfferActions offer={offer} available={available} onFeedback={onFeedback} onRequestPurchase={onRequestPurchase} />
         </div>
