@@ -10,6 +10,12 @@ export type ApiPriceValue =
       usdPerMTokens?: number;
       cnyPerMTokens?: number;
       label?: string;
+      unitLabel?: string;
+      minUsd?: number;
+      maxUsd?: number;
+      minCny?: number;
+      maxCny?: number;
+      suffix?: string;
     }
   | {
       kind: "text";
@@ -2645,14 +2651,36 @@ export function formatApiPrice(
     currency === "CNY"
       ? price.cnyPerMTokens ?? (typeof price.usdPerMTokens === "number" ? price.usdPerMTokens * apiModelFxSummary.usdToCny : undefined)
       : price.usdPerMTokens ?? (typeof price.cnyPerMTokens === "number" ? price.cnyPerMTokens / apiModelFxSummary.usdToCny : undefined);
-  if (typeof value !== "number") return price.label ?? "待确认";
+  const minValue =
+    currency === "CNY"
+      ? price.minCny ?? (typeof price.minUsd === "number" ? price.minUsd * apiModelFxSummary.usdToCny : undefined)
+      : price.minUsd ?? (typeof price.minCny === "number" ? price.minCny / apiModelFxSummary.usdToCny : undefined);
+  const maxValue =
+    currency === "CNY"
+      ? price.maxCny ?? (typeof price.maxUsd === "number" ? price.maxUsd * apiModelFxSummary.usdToCny : undefined)
+      : price.maxUsd ?? (typeof price.maxCny === "number" ? price.maxCny / apiModelFxSummary.usdToCny : undefined);
+  const unitLabel = price.unitLabel ?? "1M tokens";
+
+  if (typeof value !== "number" && typeof minValue !== "number") return price.label ?? "待确认";
 
   const prefix = currency === "CNY" ? "¥" : "$";
   const maximumFractionDigits = options.maximumFractionDigits ?? 2;
-  return `${prefix}${value.toLocaleString("zh-CN", {
+  const formatNumber = (amount: number) => `${prefix}${amount.toLocaleString("zh-CN", {
     minimumFractionDigits: 0,
     maximumFractionDigits,
-  })} / 1M tokens`;
+  })}`;
+  let priceLabel: string;
+  if (typeof value === "number") {
+    priceLabel = formatNumber(value);
+  } else if (typeof minValue === "number" && typeof maxValue === "number" && maxValue !== minValue) {
+    priceLabel = `${formatNumber(minValue)}-${formatNumber(maxValue).replace(prefix, "")}`;
+  } else if (typeof minValue === "number") {
+    priceLabel = formatNumber(minValue);
+  } else {
+    return price.label ?? "待确认";
+  }
+
+  return `${priceLabel} / ${unitLabel}${price.suffix ?? ""}`;
 }
 
 export function formatUsdAmount(value: number, currency: ApiCurrency) {
@@ -3044,7 +3072,7 @@ function officialMediaGenerationOffers(): ApiModelOffer[] {
     offer("openai-gpt-image-2", "gpt-image-2", "openai-official", {
       routeModelId: "gpt-image-2",
       inputPrice: usd(8),
-      outputPrice: textPrice("$30 / 1M image tokens"),
+      outputPrice: usdUnit(30, "1M image tokens"),
       cacheReadPrice: usd(2),
       freeOrPlan: "OpenAI 官方按量计费，生成图片价格作为该模型的主要价格基准。",
       limitSummary: "图片提示/参考图 $8、图片 cached input $2、生成图片 $30 / 1M image tokens。",
@@ -3058,7 +3086,7 @@ function officialMediaGenerationOffers(): ApiModelOffer[] {
     offer("google-nano-banana-pro", "nano-banana-pro", "google-gemini-api", {
       routeModelId: "gemini-3-pro-image",
       inputPrice: usd(2),
-      outputPrice: textPrice("$0.134-$0.24 / image"),
+      outputPrice: usdRangeUnit(0.134, 0.24, "image"),
       freeOrPlan: "Google Gemini API 付费层按量计费，生成图片按 image tokens 折算。",
       limitSummary: "提示/参考图 $2/1M tokens；生成图片 $120/1M tokens，约 $0.134/张 1K/2K 或 $0.24/张 4K。",
       limitations: "标准模型表展示生成图片折算价；同页文本/思考输出为 $12/1M tokens，Batch/Flex/Priority 另有价格。",
@@ -3071,7 +3099,7 @@ function officialMediaGenerationOffers(): ApiModelOffer[] {
     offer("google-nano-banana-2", "nano-banana-2", "google-gemini-api", {
       routeModelId: "gemini-3.1-flash-image",
       inputPrice: usd(0.5),
-      outputPrice: textPrice("$0.045-$0.151 / image"),
+      outputPrice: usdRangeUnit(0.045, 0.151, "image"),
       freeOrPlan: "Google Gemini API 付费层按量计费，生成图片按 image tokens 折算。",
       limitSummary: "提示/参考图 $0.50/1M tokens；生成图片 $60/1M tokens，约 $0.045-$0.151/张。",
       limitations: "标准模型表展示生成图片折算价；同页文本/思考输出为 $3/1M tokens，Batch 约半价。",
@@ -3084,7 +3112,7 @@ function officialMediaGenerationOffers(): ApiModelOffer[] {
     offer("google-nano-banana", "nano-banana", "google-gemini-api", {
       routeModelId: "gemini-2.5-flash-image",
       inputPrice: usd(0.3),
-      outputPrice: textPrice("$0.039 / image"),
+      outputPrice: usdUnit(0.039, "image"),
       freeOrPlan: "Google Gemini API 付费层按量计费，生成图片也可按单张价格理解。",
       limitSummary: "提示/参考图 $0.30/1M tokens；生成图片约 $0.039/张，Batch/Flex 约 $0.0195/张。",
       limitations: "官方说明生成图片等效 $30/1M image tokens，每张 1024x1024 图片约消耗 1290 image output tokens。",
@@ -3097,7 +3125,7 @@ function officialMediaGenerationOffers(): ApiModelOffer[] {
     offer("google-nano-banana-lite", "nano-banana-lite", "google-gemini-api", {
       routeModelId: "gemini-3.1-flash-lite-image",
       inputPrice: usd(0.25),
-      outputPrice: textPrice("$0.0336 / image"),
+      outputPrice: usdUnit(0.0336, "image"),
       freeOrPlan: "Google Gemini API 付费层按量计费，生成图片按 image tokens 折算。",
       limitSummary: "提示/参考图 $0.25/1M tokens；生成图片 $30/1M tokens，约 $0.0336/张 1K 图。",
       limitations: "标准模型表展示生成图片折算价；同页文本/思考输出为 $1.50/1M tokens。",
@@ -3110,7 +3138,7 @@ function officialMediaGenerationOffers(): ApiModelOffer[] {
     offer("openai-sora-2", "sora-2", "openai-official", {
       routeModelId: "sora-2",
       inputPrice: textPrice("-"),
-      outputPrice: textPrice("$0.10 / 秒"),
+      outputPrice: usdUnit(0.10, "秒"),
       cacheReadPrice: textPrice("-"),
       freeOrPlan: "OpenAI 官方按生成视频秒数计费。",
       limitSummary: "720p $0.10/秒；Batch 约 $0.05/秒。",
@@ -3124,7 +3152,7 @@ function officialMediaGenerationOffers(): ApiModelOffer[] {
     offer("openai-sora-2-pro", "sora-2-pro", "openai-official", {
       routeModelId: "sora-2-pro",
       inputPrice: textPrice("-"),
-      outputPrice: textPrice("$0.30-$0.70 / 秒"),
+      outputPrice: usdRangeUnit(0.30, 0.70, "秒"),
       cacheReadPrice: textPrice("-"),
       freeOrPlan: "OpenAI 官方按生成视频秒数和分辨率计费。",
       limitSummary: "720p $0.30/秒，1024p $0.50/秒，1080p $0.70/秒；Batch 约半价。",
@@ -3138,7 +3166,7 @@ function officialMediaGenerationOffers(): ApiModelOffer[] {
     offer("google-veo-3-1", "veo-3-1", "google-gemini-api", {
       routeModelId: "veo-3.1-generate-preview",
       inputPrice: textPrice("-"),
-      outputPrice: textPrice("$0.40 / 秒起"),
+      outputPrice: usdUnit(0.40, "秒", "起"),
       cacheReadPrice: textPrice("-"),
       freeOrPlan: "Google Gemini API 付费层按生成视频秒数计费。",
       limitSummary: "Standard 720p/1080p $0.40/秒，4K $0.60/秒；Fast 720p $0.10/秒起。",
@@ -3152,7 +3180,7 @@ function officialMediaGenerationOffers(): ApiModelOffer[] {
     offer("google-veo-3-1-lite", "veo-3-1-lite", "google-gemini-api", {
       routeModelId: "veo-3.1-lite-generate-preview",
       inputPrice: textPrice("-"),
-      outputPrice: textPrice("$0.05-$0.08 / 秒"),
+      outputPrice: usdRangeUnit(0.05, 0.08, "秒"),
       cacheReadPrice: textPrice("-"),
       freeOrPlan: "Google Gemini API 付费层按生成视频秒数计费。",
       limitSummary: "Lite 720p $0.05/秒，1080p $0.08/秒；4K 不支持。",
@@ -3172,7 +3200,7 @@ function officialMediaGenerationOffers(): ApiModelOffer[] {
     offer("byteplus-seedance-2-0", "seedance-2-0", "byteplus-modelark", {
       routeModelId: "seedance-2.0",
       inputPrice: textPrice("-"),
-      outputPrice: textPrice("$0.0035-$0.0077 / 1K video tokens"),
+      outputPrice: usdRangeUnit(0.0035, 0.0077, "1K video tokens"),
       cacheReadPrice: textPrice("-"),
       freeOrPlan: "BytePlus ModelArk 按 Seedance 2.0 video tokens 消耗计费，资源包和后付费均按 token 扣减。",
       limitSummary: "Seedance 2.0 resource pack：1M tokens $4.3；480p/720p 与 1080p 按是否包含视频输入有不同 token 单价。",
@@ -3186,7 +3214,7 @@ function officialMediaGenerationOffers(): ApiModelOffer[] {
     offer("kling-2-5-turbo", "kling-2-5-turbo", "kling-api", {
       routeModelId: "kling-2.5-turbo",
       inputPrice: textPrice("-"),
-      outputPrice: textPrice("$0.042-$0.07 / 秒"),
+      outputPrice: usdRangeUnit(0.042, 0.07, "秒"),
       cacheReadPrice: textPrice("-"),
       freeOrPlan: "Kling API 按资源包 Units 扣减，标准价 1 Unit = $0.14。",
       limitSummary: "Kling 2.5 Turbo：std 5s $0.21、std 10s $0.42；pro 5s $0.35、pro 10s $0.70。",
@@ -3826,10 +3854,28 @@ function cny(cnyPerMTokens: number): ApiPriceValue {
   return { kind: "numeric", cnyPerMTokens };
 }
 
-function dualPrice(values: { usdPerMTokens?: number; cnyPerMTokens?: number; label?: string }): ApiPriceValue {
+function dualPrice(values: {
+  usdPerMTokens?: number;
+  cnyPerMTokens?: number;
+  label?: string;
+  unitLabel?: string;
+  minUsd?: number;
+  maxUsd?: number;
+  minCny?: number;
+  maxCny?: number;
+  suffix?: string;
+}): ApiPriceValue {
   return { kind: "numeric", ...values };
 }
 
 function textPrice(text: string): ApiPriceValue {
   return { kind: "text", text };
+}
+
+function usdUnit(usdAmount: number, unitLabel: string, suffix?: string): ApiPriceValue {
+  return dualPrice({ usdPerMTokens: usdAmount, unitLabel, suffix });
+}
+
+function usdRangeUnit(minUsd: number, maxUsd: number, unitLabel: string, suffix?: string): ApiPriceValue {
+  return dualPrice({ minUsd, maxUsd, unitLabel, suffix });
 }

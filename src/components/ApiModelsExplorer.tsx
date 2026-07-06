@@ -1711,7 +1711,8 @@ function StandardPriceCell({ value }: { value: string }) {
 
 function formatBenchmarkApiPrice(price: ApiModelOfferWithRelations["inputPrice"], currency: ApiCurrency) {
   if (price.kind === "text") return price.text.trim() || "-";
-  return formatApiPrice(price, currency, { maximumFractionDigits: 3 }).replace(" / 1M tokens", "");
+  const formatted = formatApiPrice(price, currency, { maximumFractionDigits: 3 });
+  return price.unitLabel === undefined || price.unitLabel === "1M tokens" ? formatted.replace(" / 1M tokens", "") : formatted;
 }
 
 function formatBenchmarkOptionalApiPrice(price: ApiModelOfferWithRelations["cacheReadPrice"], currency: ApiCurrency) {
