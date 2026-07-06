@@ -713,6 +713,7 @@ async function collectShopApi(target, options = {}) {
     const shopInfo = await postJson(`${base}/shopApi/Shop/info`, { token, category_key: "" }, `${base}/shop/${token}`);
     if (shopInfo.code !== 1 || !shopInfo.data) continue;
 
+    const shopAvailability = shopApiShopAvailability(shopInfo.data);
     const storeName = cleanText(shopInfo.data.nickname || target.sourceStoreName || target.sourceName);
     const sourceUrl = shopInfo.data.link || `${base}/shop/${token}`;
     const shopCreatedAt = timestampFromShopApiValue(shopInfo.data.create_time);
@@ -781,6 +782,8 @@ async function collectShopApi(target, options = {}) {
                 feeAmount: effectivePrice.feeAmount,
                 priceBasis: effectivePrice.priceBasis,
                 status,
+                effectiveStatus: shopAvailability.closed ? "unavailable" : null,
+                failureReason: shopAvailability.closed ? shopAvailability.reason : null,
                 stockCount,
                 url: item.link || `${base}/item/${item.goods_key}`,
                 tags: compact([
@@ -1821,10 +1824,26 @@ function makeOffer(target, input) {
     priceBasis: input.priceBasis ?? null,
     currency: "CNY",
     status: input.status || "unknown",
+    effectiveStatus: input.effectiveStatus || null,
+    freshnessStatus: input.freshnessStatus || null,
+    failureReason: input.failureReason || null,
     url: input.url,
     tags: input.tags || [],
     stockCount: input.stockCount,
   };
+}
+
+function shopApiShopAvailability(data) {
+  const customStatus = numberOrNull(data?.custom_status);
+  if (customStatus === 0) {
+    const message = cleanText(data?.custom_status_msg || data?.status_msg || data?.message || "");
+    return {
+      closed: true,
+      reason: `店铺已打烊${message ? `：${message}` : ""}`,
+    };
+  }
+
+  return { closed: false, reason: null };
 }
 
 function crawlLogPayloadFor(target, offers, status, message, options = {}, details = {}) {

@@ -43,7 +43,15 @@ import type {
   Source,
   SubmissionStatus,
 } from "./types";
-import { normalizeStatus, parseTags, slugify, stableId, stableOfferInputId } from "./utils";
+import {
+  normalizeEffectiveStatus,
+  normalizeFreshnessStatus,
+  normalizeStatus,
+  parseTags,
+  slugify,
+  stableId,
+  stableOfferInputId,
+} from "./utils";
 
 export const ADMIN_SOURCE_HIDE_REASON_PREFIX = "管理员手动下架渠道";
 export const ADMIN_OFFER_HIDE_REASON_PREFIX = "管理员手动下架报价";
@@ -420,6 +428,9 @@ export async function upsertRawOffers(
     const tags = parseTags(offer.tags || "");
     const canonical = classifyOffer(offer.sourceTitle, { tags, price: offer.price ?? null });
     const trustFields = freshnessFields({ method: collectionMethod, status, verifiedAt: checkedAt });
+    const effectiveStatus = normalizeEffectiveStatus(offer.effectiveStatus || null) || trustFields.effective_status;
+    const freshnessStatus = normalizeFreshnessStatus(offer.freshnessStatus || null) || trustFields.freshness_status;
+    const failureReason = normalizeFailureReason(offer.failureReason);
 
     const row = toRawOfferRow({
       id: rawOfferInputId(normalizedOffer),
@@ -446,8 +457,10 @@ export async function upsertRawOffers(
       expiresAt: trustFields.expires_at,
       sourcePriority: trustFields.source_priority,
       confidence: trustFields.confidence,
-      effectiveStatus: trustFields.effective_status,
-      freshnessStatus: trustFields.freshness_status,
+      effectiveStatus,
+      freshnessStatus,
+      failureReason,
+      lastFailedAt: null,
     });
     row.updated_at = checkedAt;
     collectedRows.push(row);
@@ -537,6 +550,11 @@ function isRawOfferRowUnchanged(next: Record<string, unknown>, existing?: Record
   ];
 
   return keys.every((key) => comparableValue(next[key]) === comparableValue(existing[key]));
+}
+
+function normalizeFailureReason(value: string | null | undefined): string | null {
+  const text = String(value || "").trim();
+  return text || null;
 }
 
 function dedupeRawOfferRowsById(rows: Array<Record<string, unknown>>): Array<Record<string, unknown>> {

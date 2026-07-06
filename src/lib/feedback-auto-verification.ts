@@ -300,6 +300,14 @@ async function probeShopApiOffer(parsed: URL, checkedAt: string): Promise<ProbeR
   }
 
   if (!data) {
+    if (isShopClosedMessage(message)) {
+      return {
+        result: "out_of_stock",
+        message: message || "源站返回店铺已打烊，当前不可购买。",
+        checkedAt,
+        details,
+      };
+    }
     if (isRemovedMessage(message)) {
       return {
         result: "item_removed",
@@ -351,6 +359,10 @@ async function probeShopApiOffer(parsed: URL, checkedAt: string): Promise<ProbeR
     checkedAt,
     details: { ...details, itemStatus: status, stock },
   };
+}
+
+function isShopClosedMessage(value: string | null | undefined): boolean {
+  return /店铺已打烊|店铺打烊|已打烊|暂停营业|停止营业|暂不营业/.test(String(value || ""));
 }
 
 async function probeKamiOffer(parsed: URL, checkedAt: string): Promise<ProbeResult> {

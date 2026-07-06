@@ -724,6 +724,9 @@ export type OfferInput = {
   priceBasis?: "settled" | "listed" | "listed_fallback" | null;
   currency?: string;
   status?: OfferStatus;
+  effectiveStatus?: EffectiveOfferStatus | null;
+  freshnessStatus?: FreshnessStatus | null;
+  failureReason?: string | null;
   url: string;
   tags?: string[];
   stockCount?: number | null;

@@ -1,4 +1,4 @@
-import type { OfferStatus } from "./types";
+import type { EffectiveOfferStatus, FreshnessStatus, OfferStatus } from "./types";
 
 export function slugify(value: string): string {
   return value
@@ -137,6 +137,32 @@ export function normalizeStatus(value: string | null | undefined): OfferStatus {
   }
 
   return "unknown";
+}
+
+export function normalizeEffectiveStatus(value: string | null | undefined): EffectiveOfferStatus | null {
+  const text = (value || "").trim().toLowerCase();
+  if (!text) return null;
+
+  if (text === "available") return "available";
+  if (text === "low_confidence") return "low_confidence";
+  if (text === "unavailable") return "unavailable";
+  if (text === "stale") return "stale";
+  if (text === "failed") return "failed";
+
+  return null;
+}
+
+export function normalizeFreshnessStatus(value: string | null | undefined): FreshnessStatus | null {
+  const text = (value || "").trim().toLowerCase();
+  if (!text) return null;
+
+  if (text === "fresh") return "fresh";
+  if (text === "aging") return "aging";
+  if (text === "stale") return "stale";
+  if (text === "expired") return "expired";
+  if (text === "failed") return "failed";
+
+  return null;
 }
 
 export function formatCurrency(value: number | null, currency = "CNY"): string {
