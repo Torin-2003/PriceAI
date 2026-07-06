@@ -716,8 +716,8 @@ function OfferFilterBar({
   const facetById = new Map(facets.map((facet) => [facet.id, facet]));
   const visibleFacets = Array.from(OFFER_FILTER_TAG_BY_ID.values())
     .filter((definition) => facetById.has(definition.id));
-  const activeChips = buildOfferActiveFilterChips({
-    selectedTags,
+  const activeAdvancedChips = buildOfferActiveFilterChips({
+    selectedTags: [],
     selectedCollector,
     queryInput: activeQuery,
     excludeInput: activeExcludeQuery,
@@ -728,26 +728,56 @@ function OfferFilterBar({
   return (
     <section className="mt-5 border-y border-[#e5eaea] py-3">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onFilterOpenChange(!filterOpen)}
-            aria-expanded={filterOpen}
-            className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-sm font-semibold transition ${
-              filterOpen || active
-                ? "bg-[#202829] text-white"
-                : "bg-[#eef1f1] text-[#4d5657] hover:bg-[#e3e9e9] hover:text-[#202829]"
-            }`}
-          >
-            <Filter size={15} />
-            筛选{activeChips.length ? ` ${activeChips.length}` : ""}
-          </button>
-          <span className="text-xs text-[#7a8587]">{pending ? "正在加载" : active ? `当前 ${total} 条` : `${total} 条报价`}</span>
-          {activeChips.map((chip) => (
-            <span key={chip} className="inline-flex h-7 max-w-[190px] items-center rounded-full bg-[#eef1f1] px-2.5 text-xs font-semibold text-[#4d5657]">
-              <span className="truncate">{chip}</span>
-            </span>
-          ))}
+        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onFilterOpenChange(!filterOpen)}
+              aria-expanded={filterOpen}
+              className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-sm font-semibold transition ${
+                filterOpen || activeAdvancedChips.length > 0
+                  ? "bg-[#202829] text-white"
+                  : "bg-[#eef1f1] text-[#4d5657] hover:bg-[#e3e9e9] hover:text-[#202829]"
+              }`}
+            >
+              <Filter size={15} />
+              筛选{activeAdvancedChips.length ? ` ${activeAdvancedChips.length}` : ""}
+            </button>
+            <span className="text-xs text-[#7a8587]">{pending ? "正在加载" : active ? `当前 ${total} 条` : `${total} 条报价`}</span>
+          </div>
+          {visibleFacets.length ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-2" aria-label="商品特征">
+              {visibleFacets.map((facet) => {
+                const selected = selectedTags.includes(facet.id);
+
+                return (
+                  <button
+                    key={facet.id}
+                    type="button"
+                    onClick={() => onToggle(facet.id)}
+                    aria-pressed={selected}
+                    title={facet.description}
+                    className={`inline-flex h-8 shrink-0 items-center justify-center rounded-full px-3 text-sm font-semibold transition ${
+                      selected
+                        ? "bg-[#202829] text-white"
+                        : "bg-[#eef1f1] text-[#4d5657] hover:bg-[#e3e9e9] hover:text-[#202829]"
+                    }`}
+                  >
+                    {facet.label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          {activeAdvancedChips.length ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-2" aria-label="当前筛选条件">
+              {activeAdvancedChips.map((chip) => (
+                <span key={chip} className="inline-flex h-7 max-w-[190px] items-center rounded-full bg-[#eef1f1] px-2.5 text-xs font-semibold text-[#4d5657]">
+                  <span className="truncate">{chip}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
         {active ? (
           <button
@@ -813,33 +843,6 @@ function OfferFilterBar({
               应用筛选
             </button>
           </div>
-
-          {visibleFacets.length ? (
-            <fieldset className="mt-4 min-w-0 border-t border-[#edf0f1] pt-3">
-              <legend className="text-xs font-semibold text-[#5a6061]">商品特征</legend>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {visibleFacets.map((facet) => {
-                  const selected = selectedTags.includes(facet.id);
-
-                  return (
-                    <button
-                      key={facet.id}
-                      type="button"
-                      onClick={() => onToggle(facet.id)}
-                      title={facet.description}
-                      className={`inline-flex h-8 shrink-0 items-center justify-center rounded-full px-3 text-sm font-semibold transition ${
-                        selected
-                          ? "bg-[#202829] text-white"
-                          : "bg-[#eef1f1] text-[#4d5657] hover:bg-[#e3e9e9] hover:text-[#202829]"
-                      }`}
-                    >
-                      {facet.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </fieldset>
-          ) : null}
         </form>
       ) : null}
     </section>
