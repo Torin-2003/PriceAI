@@ -120,6 +120,42 @@
     ]
   },
   {
+    "id": "mfttai-com",
+    "name": "MFAPI",
+    "websiteUrl": "https://mfttai.com/register?aff=PRICEAI",
+    "apiBaseUrl": "https://mfttai.com/v1",
+    "pricingUrl": "https://mfttai.com/public/transit",
+    "pricingEndpointUrl": "https://mfttai.com/api/public/transit/v1/snapshot",
+    "monitorUrl": "https://mfttai.com/public/transit?view=monitoring",
+    "collectorKind": "ai_transit_snapshot",
+    "stationSystem": "sub_to_api",
+    "rechargeRatio": "1:1",
+    "autoPublish": true,
+    "channelTypes": ["official_api", "cloud", "first_party_pool", "reverse_engineered", "mixed", "undisclosed"],
+    "accountPools": ["official_api", "kiro", "mixed", "undisclosed"],
+    "supportChannels": ["VX：lyw2465885900"],
+    "riskLabels": ["mixed_pool", "insufficient_samples", "pending_feedback"],
+    "summary": "MFAPI 使用 Sub2API 系统，公开 ai-transit.v1 快照可读取 AWS、Kiro、官转、GPT、Gemini、CNV 和图像分组的倍率、模型价格、7 日缓存命中率和公开监测时间线；可用率来自站点公开监测，不等同 PriceAI API Key 实测。",
+    "strengths": [
+      "公开 /.well-known/ai-transit.json 可发现结构化快照，/api/public/transit/v1/snapshot 返回分组、模型价格、缓存命中率和监控时间线。",
+      "快照无需登录即可读取，可在原有 PriceAI 实测 Key 监测之外补充站方公开价格、7 日缓存命中率和 7 日可用率。"
+    ],
+    "cautions": [
+      "公开监测样本来自 MFAPI 页面，不等同 PriceAI 使用测试 Key 的真实扣费和可用性检测。",
+      "公开披露为混合上游并包含逆向渠道，首次使用仍建议小额测试。"
+    ],
+    "verificationEvents": [
+      {
+        "id": "mfttai-ai-transit-v1-2026-07-08",
+        "source": "priceai",
+        "status": "success",
+        "title": "ai-transit.v1 公开快照可读取",
+        "description": "2026-07-08 检查 https://mfttai.com/.well-known/ai-transit.json 可发现 snapshot_url，/api/public/transit/v1/snapshot 返回分组、模型价格、7 日缓存命中率和公开监控时间线。",
+        "happenedAt": "2026-07-08T00:35:00.000Z"
+      }
+    ]
+  },
+  {
     "id": "apinode-ltd",
     "name": "APINode",
     "websiteUrl": "https://apinode.ltd/",

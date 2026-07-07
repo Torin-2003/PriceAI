@@ -48,6 +48,16 @@ assert.deepEqual(configuredAliuapiSource.groupAliases, {
   Plus: "T0 - GPT Plus",
   Pro: "T1 - GPT Pro",
 });
+const configuredMfttaiSource = transitSourceConfig.find((source) => source.id === "mfttai-com");
+assert.ok(configuredMfttaiSource, "MFAPI must stay in API transit public collection sources.");
+assert.equal(configuredMfttaiSource.collectorKind, "ai_transit_snapshot");
+assert.equal(configuredMfttaiSource.websiteUrl, "https://mfttai.com/register?aff=PRICEAI");
+assert.equal(configuredMfttaiSource.pricingUrl, "https://mfttai.com/public/transit");
+assert.equal(configuredMfttaiSource.pricingEndpointUrl, "https://mfttai.com/api/public/transit/v1/snapshot");
+assert.equal(configuredMfttaiSource.monitorUrl, "https://mfttai.com/public/transit?view=monitoring");
+assert.equal(configuredMfttaiSource.stationSystem, "sub_to_api");
+assert.equal(configuredMfttaiSource.rechargeRatio, "1:1");
+assert.equal(configuredMfttaiSource.autoPublish, true);
 const configuredMaofeiSource = transitSourceConfig.find((source) => source.id === "999555999-com");
 assert.ok(configuredMaofeiSource, "猫肥NekoAPI public snapshot must stay attached to the existing station source.");
 assert.ok(
@@ -948,6 +958,137 @@ const aliuapiProGpt55 = aliuapiAiTransitSnapshot.offers.find((offer) => offer.st
 assert.equal(aliuapiProGpt55.model_multiplier, 0.12);
 assert.equal(aliuapiProGpt55.cache_hit_rate, 0.916735);
 assert.equal(aliuapiProGpt55.cache_hit_sample_tokens, 41494453);
+
+const mfttaiAiTransitSnapshot = __test.parsePricingPayload(
+  configuredMfttaiSource,
+  {
+    schema_version: "ai-transit.v1",
+    system: "sub2api",
+    generated_at: "2026-07-08T00:35:00.000Z",
+    station: {
+      name: "MFAPI",
+      homepage_url: "https://mfttai.com/home",
+      price_url: "https://mfttai.com/public/transit",
+      monitor_url: "https://mfttai.com/public/transit?view=monitoring",
+      support_url: "VX：lyw2465885900",
+      system_type: "sub2api",
+    },
+    billing: {
+      recharge_ratio: "1 CNY = 1 USD balance",
+      recharge_multiplier: 1,
+      minimum_top_up: 1,
+    },
+    groups: [
+      {
+        name: "Kiro",
+        platform: "anthropic",
+        rate_multiplier: 0.2,
+        cache_usage: {
+          last_7d: {
+            input_tokens: 636_300_000,
+            cache_creation_tokens: 1_907_100_000,
+            cache_read_tokens: 637_200_000,
+            cache_hit_rate: 79.48679152473383,
+          },
+        },
+        models: [
+          {
+            standard_model: "claude-opus-4-8",
+            raw_model: "claude-opus-4-8",
+            price: {
+              input_usd_per_token: 0.000005,
+              output_usd_per_token: 0.000025,
+              cache_read_usd_per_token: 0.0000005,
+              cache_write_usd_per_token: 0.00000625,
+            },
+          },
+        ],
+      },
+      {
+        name: "GPT",
+        platform: "openai",
+        rate_multiplier: 0.3,
+        cache_usage: {
+          last_7d: {
+            input_tokens: 3_249_918_852,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 36_521_068_824,
+            cache_hit_rate: 91.84133357579094,
+          },
+        },
+        models: [
+          {
+            standard_model: "gpt-5.5",
+            raw_model: "gpt-5.5",
+            price: {
+              input_usd_per_token: 0.000005,
+              output_usd_per_token: 0.00003,
+              cache_read_usd_per_token: 0.0000005,
+              cache_write_usd_per_token: 0.0000005,
+            },
+          },
+        ],
+      },
+    ],
+    monitoring: [
+      {
+        name: "Kiro",
+        primary_model: "claude-opus-4-8",
+        primary_status: "operational",
+        availability_7d: 97.83251231527093,
+        latest_latency_ms: 1953,
+        last_checked_at: "2026-07-08T00:34:41.000Z",
+        models: [
+          {
+            model: "claude-opus-4-8",
+            latest_status: "operational",
+            availability_7d: 97.83251231527093,
+            latest_latency_ms: 1953,
+          },
+        ],
+        timeline: [
+          { status: "operational", latency_ms: 1953, checked_at: "2026-07-08T00:34:41.000Z" },
+        ],
+      },
+      {
+        name: "GPT&Image",
+        primary_model: "gpt-5.5",
+        primary_status: "operational",
+        availability_7d: 99.90138067061145,
+        latest_latency_ms: 2106,
+        last_checked_at: "2026-07-08T00:34:41.000Z",
+        models: [
+          {
+            model: "gpt-5.5",
+            latest_status: "operational",
+            availability_7d: 99.90138067061145,
+            latest_latency_ms: 2106,
+          },
+        ],
+        timeline: [
+          { status: "operational", latency_ms: 2106, checked_at: "2026-07-08T00:34:41.000Z" },
+        ],
+      },
+    ],
+  },
+  "2026-07-08T00:35:00.000Z",
+);
+assert.equal(mfttaiAiTransitSnapshot.station.published, true);
+assert.equal(mfttaiAiTransitSnapshot.station.minimum_top_up, 1);
+assert.equal(mfttaiAiTransitSnapshot.station.availability_source_type, "public_status");
+const mfttaiKiroClaude = mfttaiAiTransitSnapshot.offers.find((offer) => offer.standard_model === "Claude Opus 4.8" && offer.group_name === "Kiro");
+assert.equal(mfttaiKiroClaude.model_multiplier, 0.2);
+assert.equal(mfttaiKiroClaude.cache_hit_rate, 0.794868);
+assert.equal(mfttaiKiroClaude.cache_hit_sample_tokens, 3_180_600_000);
+assert.equal(mfttaiKiroClaude.availability_seven_day_rate, 0.978325);
+assert.equal(mfttaiKiroClaude.availability_latest_latency_ms, 1953);
+const mfttaiGpt55 = mfttaiAiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.5" && offer.group_name === "GPT");
+assert.equal(mfttaiGpt55.model_multiplier, 0.3);
+assert.equal(mfttaiGpt55.cache_hit_rate, 0.918413);
+assert.equal(mfttaiGpt55.cache_hit_sample_tokens, 39_770_987_676);
+assert.equal(mfttaiGpt55.availability_seven_day_rate, 0.999014);
+assert.equal(mfttaiGpt55.availability_seven_day_samples, 1);
+assert.equal(mfttaiGpt55.availability_latest_latency_ms, 2106);
 
 const onehopSource = {
   id: "onehop-ai",
