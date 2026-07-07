@@ -717,6 +717,26 @@ const callaiAiTransitSnapshot = __test.parsePricingPayload(
         name: "claude-kiro",
         platform: "anthropic",
         rate_multiplier: 0.3,
+        cache_usage: {
+          last_24h: {
+            input_tokens: 6_353_524,
+            cache_creation_tokens: 36_899_982,
+            cache_read_tokens: 508_098_145,
+            cache_hit_rate: 92.15500562634573,
+          },
+          last_7d: {
+            input_tokens: 212_504_843,
+            cache_creation_tokens: 406_339_026,
+            cache_read_tokens: 2_545_453_770,
+            cache_hit_rate: 80.44293111454678,
+          },
+          total: {
+            input_tokens: 0,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 0,
+            cache_hit_rate: 0,
+          },
+        },
         models: [
           {
             standard_model: "claude-opus-4-8",
@@ -734,6 +754,26 @@ const callaiAiTransitSnapshot = __test.parsePricingPayload(
         name: "gpt",
         platform: "openai",
         rate_multiplier: 0.1,
+        cache_usage: {
+          last_24h: {
+            input_tokens: 550_673_960,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 4_635_624_448,
+            cache_hit_rate: 89.38213892300197,
+          },
+          last_7d: {
+            input_tokens: 2_441_272_235,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 22_916_770_246,
+            cache_hit_rate: 90.37278907932593,
+          },
+          total: {
+            input_tokens: 0,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 0,
+            cache_hit_rate: 0,
+          },
+        },
         models: [
           {
             standard_model: "gpt-5.5",
@@ -750,8 +790,14 @@ const callaiAiTransitSnapshot = __test.parsePricingPayload(
   },
   "2026-07-07T09:20:00.000Z",
 );
-assert.equal(callaiAiTransitSnapshot.offers.find((offer) => offer.standard_model === "Claude Opus 4.8").group_name, "kiro");
-assert.equal(callaiAiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.5").group_name, "gpt-pro号池");
+const callaiClaudeOffer = callaiAiTransitSnapshot.offers.find((offer) => offer.standard_model === "Claude Opus 4.8");
+assert.equal(callaiClaudeOffer.group_name, "kiro");
+assert.equal(callaiClaudeOffer.cache_hit_rate, 0.804429);
+assert.equal(callaiClaudeOffer.cache_hit_sample_tokens, 3_164_297_639);
+const callaiGptOffer = callaiAiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.5");
+assert.equal(callaiGptOffer.group_name, "gpt-pro号池");
+assert.equal(callaiGptOffer.cache_hit_rate, 0.903728);
+assert.equal(callaiGptOffer.cache_hit_sample_tokens, 25_358_042_481);
 
 const aliuapiAiTransitSnapshot = __test.parsePricingPayload(
   configuredAliuapiSource,

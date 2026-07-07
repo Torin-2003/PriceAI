@@ -871,19 +871,43 @@ function compactAiTransitGroupPayload(group) {
 }
 
 function cacheHitUsageFromGroup(group) {
-  const total = group?.cache_usage?.total;
-  const hitRate = normalizedCacheHitRate(numberValue(total?.cache_hit_rate));
+  const usage = selectCacheHitUsageWindow(group?.cache_usage);
+  const hitRate = normalizedCacheHitRate(numberValue(usage?.cache_hit_rate));
   const sampleTokens = Math.max(
     0,
-    (numberValue(total?.input_tokens) || 0) +
-      (numberValue(total?.cache_creation_tokens) || 0) +
-      (numberValue(total?.cache_read_tokens) || 0)
+    (numberValue(usage?.input_tokens) || 0) +
+      (numberValue(usage?.cache_creation_tokens) || 0) +
+      (numberValue(usage?.cache_read_tokens) || 0)
   );
 
   return {
     hitRate,
     sampleTokens: Math.trunc(sampleTokens),
   };
+}
+
+function selectCacheHitUsageWindow(cacheUsage) {
+  if (!cacheUsage || typeof cacheUsage !== "object") return null;
+  const candidates = [
+    cacheUsage.last_7d,
+    cacheUsage.last7d,
+    cacheUsage["7d"],
+    cacheUsage.last_24h,
+    cacheUsage.last24h,
+    cacheUsage["24h"],
+    cacheUsage.total,
+  ];
+  const parsed = candidates
+    .filter((candidate) => candidate && typeof candidate === "object")
+    .map((candidate) => ({
+      candidate,
+      hitRate: normalizedCacheHitRate(numberValue(candidate.cache_hit_rate)),
+      sampleTokens:
+        (numberValue(candidate.input_tokens) || 0) +
+        (numberValue(candidate.cache_creation_tokens) || 0) +
+        (numberValue(candidate.cache_read_tokens) || 0),
+    }));
+  return parsed.find((item) => item.hitRate !== null && item.sampleTokens > 0)?.candidate || parsed[0]?.candidate || null;
 }
 
 function normalizedCacheHitRate(value) {
