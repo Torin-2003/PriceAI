@@ -137,12 +137,13 @@ export async function collectApiTransitPrices(options = {}) {
   for (const source of selectedSources) {
     const runStartedAt = new Date().toISOString();
     try {
-      const payload = await fetchPricingJson(source, options);
+      const sourceOptions = withSourceOptions(options, source);
+      const payload = await fetchPricingJson(source, sourceOptions);
       const parsed = parsePricingPayload(source, payload, runStartedAt);
       let availabilityPayload = null;
       let availabilityError = null;
       try {
-        availabilityPayload = await fetchAvailabilityPayload(source, options);
+        availabilityPayload = await fetchAvailabilityPayload(source, sourceOptions);
         applyAvailabilityPayloadToParsedRows(source, parsed, availabilityPayload, runStartedAt);
       } catch (error) {
         availabilityError = errorMessage(error);
@@ -245,6 +246,12 @@ export async function collectApiTransitPrices(options = {}) {
   }
 
   return result;
+}
+
+function withSourceOptions(options, source) {
+  const timeoutMs = Number(source.timeoutMs || source.timeout_ms || options.timeoutMs || options["timeout-ms"] || 0);
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return options;
+  return { ...options, timeoutMs };
 }
 
 async function fetchPricingJson(source, options) {
@@ -2679,6 +2686,7 @@ function findStaleRefreshedOfferIds(existingOffers, refreshedOfferKeys) {
   for (const existing of existingOffers.values()) {
     const currentKeys = refreshedOfferKeys.get(existing.station_id);
     if (!currentKeys || existing.status !== "active") continue;
+    if (existing.availability_source_type === "priceai_probe") continue;
     if (!currentKeys.has(offerKey(existing))) ids.push(existing.id);
   }
   return ids;
@@ -2789,6 +2797,7 @@ async function readExistingOffers(supabase, offers) {
           "group_name",
           "status",
           "created_at",
+          "availability_source_type",
           "cache_hit_rate",
           "cache_hit_sample_tokens",
           "availability_seven_day_rate",
@@ -2798,7 +2807,6 @@ async function readExistingOffers(supabase, offers) {
           "availability_latest_latency_ms",
           "availability_avg_latency_7d_ms",
           "availability_note",
-          "availability_source_type",
           "availability_source_label",
           "availability_source_url",
         ].join(","),
@@ -2842,6 +2850,7 @@ async function readExistingOffersWithoutCacheHit(supabase, offers) {
           "group_name",
           "status",
           "created_at",
+          "availability_source_type",
           "availability_seven_day_rate",
           "availability_seven_day_samples",
           "availability_first_checked_at",
@@ -2849,7 +2858,6 @@ async function readExistingOffersWithoutCacheHit(supabase, offers) {
           "availability_latest_latency_ms",
           "availability_avg_latency_7d_ms",
           "availability_note",
-          "availability_source_type",
           "availability_source_label",
           "availability_source_url",
         ].join(","),
@@ -2887,12 +2895,12 @@ async function readExistingOffersWithoutLatency(supabase, offers) {
           "group_name",
           "status",
           "created_at",
+          "availability_source_type",
           "availability_seven_day_rate",
           "availability_seven_day_samples",
           "availability_first_checked_at",
           "availability_last_checked_at",
           "availability_note",
-          "availability_source_type",
           "availability_source_label",
           "availability_source_url",
         ].join(","),

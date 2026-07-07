@@ -48,9 +48,14 @@ assert.deepEqual(configuredAliuapiSource.groupAliases, {
   Plus: "T0 - GPT Plus",
   Pro: "T1 - GPT Pro",
 });
-const configuredMaofeiSource = transitSourceConfig.find((source) => source.id === "api-999555999-com");
-assert.ok(configuredMaofeiSource, "猫肥Neko API must stay in API transit public collection sources.");
+const configuredMaofeiSource = transitSourceConfig.find((source) => source.id === "999555999-com");
+assert.ok(configuredMaofeiSource, "猫肥NekoAPI public snapshot must stay attached to the existing station source.");
+assert.ok(
+  !transitSourceConfig.some((source) => source.id === "api-999555999-com"),
+  "猫肥NekoAPI must not be collected as a duplicate api-999555999-com station.",
+);
 assert.equal(configuredMaofeiSource.collectorKind, "ai_transit_snapshot");
+assert.equal(configuredMaofeiSource.websiteUrl, "https://www.999555999.com/");
 assert.equal(configuredMaofeiSource.pricingUrl, "https://api.999555999.com/public/transit");
 assert.equal(configuredMaofeiSource.pricingEndpointUrl, "https://api.999555999.com/api/public/transit/v1/snapshot");
 assert.equal(configuredMaofeiSource.monitorUrl, "https://api.999555999.com/public/transit?view=monitoring");
@@ -132,6 +137,16 @@ const existingOffers = new Map([
 
 assert.deepEqual(__test.findStaleRefreshedOfferIds(existingOffers, keys), ["deactivate"]);
 
+existingOffers.set("published-new-api|GPT 5.5|priceai-probe", {
+  id: "keep-priceai-probe",
+  station_id: "published-new-api",
+  standard_model: "GPT 5.5",
+  group_name: "priceai-probe",
+  status: "active",
+  availability_source_type: "priceai_probe",
+});
+assert.deepEqual(__test.findStaleRefreshedOfferIds(existingOffers, keys), ["deactivate"]);
+
 assert.equal(
   __test.mergeOfferForRefresh(
     { id: "new", auto_publish: false, status: "needs_review", created_at: "new" },
@@ -140,6 +155,32 @@ assert.equal(
   ).status,
   "active",
 );
+
+const preservedPriceaiProbeStation = __test.mergeStationForRefresh(
+  {
+    id: "published-new-api",
+    auto_publish: true,
+    collection_status: "success",
+    availability_seven_day_rate: 0.8,
+    availability_seven_day_samples: 10,
+    availability_source_type: "public_status",
+    availability_source_label: "公开监测页",
+    created_at: "incoming",
+  },
+  {
+    id: "published-new-api",
+    published: true,
+    availability_seven_day_rate: 0.95,
+    availability_seven_day_samples: 50,
+    availability_source_type: "priceai_probe",
+    availability_source_label: "PriceAI 实测",
+    created_at: "existing",
+  },
+  {},
+);
+assert.equal(preservedPriceaiProbeStation.availability_source_type, "priceai_probe");
+assert.equal(preservedPriceaiProbeStation.availability_seven_day_rate, 0.95);
+assert.equal(preservedPriceaiProbeStation.availability_seven_day_samples, 50);
 
 assert.equal(
   __test.mergeOfferForRefresh(

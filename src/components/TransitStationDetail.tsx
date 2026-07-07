@@ -110,6 +110,7 @@ type TransitPriceGroup = {
   availabilitySourceLabel: string;
   availabilitySourceTitle: string;
   availabilitySourceUrl: string | null;
+  availabilitySourceType: TransitModelPrice["availability"]["sourceType"];
   history: TransitMultiplierHistoryPoint[];
 };
 
@@ -972,7 +973,7 @@ function PriceTable({
                       <DataTableHead compact explanation={TRANSIT_COMBINED_RATE_EXPLANATION}>综合倍率</DataTableHead>
                       <DataTableHead compact explanation="缓存命中率来自站点公开分组累计用量，会影响实际成本，但取决于请求是否复用上下文，不计入默认综合倍率。">缓存命中率</DataTableHead>
                       <DataTableHead compact explanation={TRANSIT_MONITORED_PRICE_EXPLANATION}>监测模型价格</DataTableHead>
-                      <DataTableHead compact explanation="展示该分组的可用性探测、来源披露和最近监测确认时间。">监测 / 确认</DataTableHead>
+                      <DataTableHead compact explanation="展示该分组的可用性探测、来源披露和最近来源更新时间。PriceAI 实测与站方公开状态会分开标注。">监测 / 来源</DataTableHead>
                     </tr>
                   </thead>
                   <tbody>
@@ -1555,7 +1556,7 @@ function PriceGroupRow({
           <div className="mt-1 break-words text-[11px] font-semibold leading-5 text-[#5a6061]">{latencySummary}</div>
         ) : null}
         <div className="mt-1 whitespace-nowrap text-[11px] text-[#5a6061]">
-          监测确认 {formatDateShortMinute(group.lastCheckedAt || group.latestVerifiedAt)}
+          {availabilityTimestampLabel(group.availabilitySourceType)} {formatDateShortMinute(group.lastCheckedAt || group.latestVerifiedAt)}
         </div>
       </td>
     </tr>
@@ -1638,8 +1639,17 @@ function buildPriceGroup(
     availabilitySourceLabel: sourceMeta.label,
     availabilitySourceTitle: sourceMeta.title,
     availabilitySourceUrl: sourceMeta.url,
+    availabilitySourceType: primaryPrice.availability.sourceType,
     history: normalizedGroupHistory(station, primaryPrice),
   };
+}
+
+function availabilityTimestampLabel(sourceType: TransitModelPrice["availability"]["sourceType"]): string {
+  if (sourceType === "priceai_probe") return "实测确认";
+  if (sourceType === "public_status") return "站方更新";
+  if (sourceType === "public_model_catalog") return "快照更新";
+  if (sourceType === "partner_api") return "接口更新";
+  return "资料更新";
 }
 
 function comparePricePriority(left: TransitModelPrice, right: TransitModelPrice): number {

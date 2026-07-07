@@ -1439,7 +1439,7 @@ export function getAvailabilitySourceMeta(
       };
     case "public_status":
       return {
-        label: "公开来源",
+        label: "站方公开",
         tone: "info",
         title: explicitLabel
           ? `来自站点公开状态页或公开监测接口，非 PriceAI API Key 实测。原始来源：${explicitLabel}`
@@ -1448,7 +1448,7 @@ export function getAvailabilitySourceMeta(
       };
     case "public_model_catalog":
       return {
-        label: "公开来源",
+        label: "公开模型页",
         tone: "info",
         title: explicitLabel
           ? `来自站点公开模型目录中的可用性指标，非 PriceAI API Key 实测。原始来源：${explicitLabel}`
@@ -1457,7 +1457,7 @@ export function getAvailabilitySourceMeta(
       };
     case "partner_api":
       return {
-        label: "公开来源",
+        label: "站长接口",
         tone: "info",
         title: explicitLabel
           ? `来自站长提供的公开或合作接口，非 PriceAI API Key 实测。原始来源：${explicitLabel}`
