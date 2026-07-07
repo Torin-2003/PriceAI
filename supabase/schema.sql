@@ -310,6 +310,10 @@ begin
     output := array_append(output, 'shared_access');
   end if;
 
+  if text_value ~ '(国内镜像站|国内镜像|网页镜像|镜像站|镜像|mirror)' then
+    output := array_append(output, 'domestic_mirror_site');
+  end if;
+
   if text_value ~ '(12个月|十二个月|一年|1年|365天|三百六十五天|年卡|年度|全年)' then
     output := array_append(output, 'duration_year');
   end if;
@@ -561,10 +565,10 @@ as $$
         else 1
       end as availability_rank,
       case
-        when coalesce(raw_offers.public_filter_tags, priceai_public_offer_filter_tags(raw_offers.source_title, raw_offers.tags)) @> array['shared_access']::text[]
+        when coalesce(raw_offers.public_filter_tags, priceai_public_offer_filter_tags(raw_offers.source_title, raw_offers.tags)) && array['shared_access', 'domestic_mirror_site']::text[]
         then 1
         else 0
-      end as shared_access_rank,
+      end as special_delivery_rank,
       coalesce(raw_offers.verified_at, raw_offers.last_seen_at, raw_offers.captured_at, raw_offers.source_updated_at) as public_updated_at,
       coalesce(raw_offers.source_store_name, raw_offers.source_name, '') as public_source_label
     from raw_offer_public_state raw_offers
@@ -601,7 +605,7 @@ as $$
   from ranked
   order by
     ranked.availability_rank asc,
-    ranked.shared_access_rank asc,
+    ranked.special_delivery_rank asc,
     ranked.price asc nulls last,
     ranked.public_updated_at desc nulls last,
     ranked.public_source_label asc,
@@ -701,10 +705,10 @@ as $$
         else 1
       end as availability_rank,
       case
-        when coalesce(filtered.public_filter_tags, priceai_public_offer_filter_tags(filtered.source_title, filtered.tags)) @> array['shared_access']::text[]
+        when coalesce(filtered.public_filter_tags, priceai_public_offer_filter_tags(filtered.source_title, filtered.tags)) && array['shared_access', 'domestic_mirror_site']::text[]
         then 1
         else 0
-      end as shared_access_rank,
+      end as special_delivery_rank,
       coalesce(filtered.verified_at, filtered.last_seen_at, filtered.captured_at, filtered.source_updated_at) as public_updated_at,
       coalesce(filtered.source_store_name, filtered.source_name, '') as public_source_label
     from filtered
@@ -754,7 +758,7 @@ as $$
   from ranked
   order by
     ranked.availability_rank asc,
-    ranked.shared_access_rank asc,
+    ranked.special_delivery_rank asc,
     ranked.price asc nulls last,
     ranked.public_updated_at desc nulls last,
     ranked.public_source_label asc,
@@ -837,6 +841,7 @@ as $$
     from offers
     where offers.is_public_available = true
       and not (offers.public_offer_filter_tags @> array['shared_access']::text[])
+      and not (offers.public_offer_filter_tags @> array['domestic_mirror_site']::text[])
   ),
   warranty_lowest_ranked as (
     select
@@ -855,6 +860,7 @@ as $$
     where offers.is_public_available = true
       and offers.public_offer_filter_tags @> array['warranty_long']::text[]
       and not (offers.public_offer_filter_tags @> array['shared_access']::text[])
+      and not (offers.public_offer_filter_tags @> array['domestic_mirror_site']::text[])
   ),
   stats as (
     select
@@ -1452,6 +1458,7 @@ as $$
     from deduped
     where deduped.is_public_available = true
       and not (deduped.public_offer_filter_tags @> array['shared_access']::text[])
+      and not (deduped.public_offer_filter_tags @> array['domestic_mirror_site']::text[])
   ),
   warranty_lowest_ranked as (
     select
@@ -1470,6 +1477,7 @@ as $$
     where deduped.is_public_available = true
       and deduped.public_offer_filter_tags @> array['warranty_long']::text[]
       and not (deduped.public_offer_filter_tags @> array['shared_access']::text[])
+      and not (deduped.public_offer_filter_tags @> array['domestic_mirror_site']::text[])
   ),
   feedback as (
     select

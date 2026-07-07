@@ -4,7 +4,7 @@ import { ADMIN_MANUAL_HIDE_REASON_PREFIX, listOfferFeedback, listSiteFeedback, l
 import { getAdminPasswordStatus } from "./admin-auth";
 import { notifyOperationalIssue } from "./alerts";
 import { getApiTransitAdminData, getEmptyApiTransitAdminData } from "./api-transit-admin";
-import { allPlatformOptions, buildProductGroups, canonicalCatalog, classifyOffer, comparePlatformOrder, isSharedAccessOffer, isTelegramStarsOffer, publicCatalogProducts, resolveOfferProduct } from "./catalog";
+import { allPlatformOptions, buildProductGroups, canonicalCatalog, classifyOffer, comparePlatformOrder, isDomesticMirrorSiteOffer, isSharedAccessOffer, isTelegramStarsOffer, publicCatalogProducts, resolveOfferProduct } from "./catalog";
 import { isSupabaseConfigured } from "./env";
 import { getApiModelAdminData } from "./api-models-db";
 import { normalizeCollectorKind } from "./collector-registry";
@@ -4567,6 +4567,9 @@ function comparePublicOffers(a: RawOffer, b: RawOffer): number {
 
   const sharedAccessDelta = Number(isSharedAccessOffer(a)) - Number(isSharedAccessOffer(b));
   if (isOfferAvailableForPublicList(a) && isOfferAvailableForPublicList(b) && sharedAccessDelta !== 0) return sharedAccessDelta;
+
+  const mirrorSiteDelta = Number(isDomesticMirrorSiteOffer(a)) - Number(isDomesticMirrorSiteOffer(b));
+  if (isOfferAvailableForPublicList(a) && isOfferAvailableForPublicList(b) && mirrorSiteDelta !== 0) return mirrorSiteDelta;
 
   const telegramStarsDelta = Number(isTelegramStarsOffer(a)) - Number(isTelegramStarsOffer(b));
   if (isOfferAvailableForPublicList(a) && isOfferAvailableForPublicList(b) && telegramStarsDelta !== 0) return telegramStarsDelta;

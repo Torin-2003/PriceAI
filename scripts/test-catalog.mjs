@@ -10,7 +10,14 @@ import ts from "typescript";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 
-const { buildProductGroups, classifyOffer, isSharedAccessOffer, isTelegramStarsOffer } = await loadCatalogModule();
+const {
+  buildProductGroups,
+  classifyOffer,
+  compareProductDisplayOrder,
+  isDomesticMirrorSiteOffer,
+  isSharedAccessOffer,
+  isTelegramStarsOffer,
+} = await loadCatalogModule();
 const {
   buildOfferFilterFacets,
   deriveOfferFilterTags,
@@ -46,8 +53,11 @@ const cases = [
   ["GPT Plus试用pix充值【巴西渠道】【官方试用】", "chatgpt-plus"],
   ["ChatGPT PLUS 自助充值卡密 (巴西Pix渠道）", "chatgpt-plus"],
   ["gptplus质保48小时未接码(巴西渠道更稳）", "chatgpt-plus"],
-  ["GPT PLUS镜像站(天卡)", "other-product"],
-  ["GPTPLUS镜像站【周卡】", "other-product"],
+  ["GPT PLUS镜像站(天卡)", "chatgpt-plus"],
+  ["GPTPLUS镜像站【周卡】", "chatgpt-plus"],
+  ["【质保一个月】ChatGPT Plus网页镜像", "chatgpt-plus"],
+  ["【质保一个月】Super Grok网页镜像", "super-grok"],
+  ["【质保一个月】Gemini Pro网页镜像", "gemini-pro-year"],
   ["ChatGPT Pro 20倍 官方充值", "chatgpt-pro-20x"],
   ["Pro 20×正规卡充【带账单】", "chatgpt-pro-20x"],
   ["chatGPT PRO 200美金档 代充 人工交付", "chatgpt-pro-20x"],
@@ -305,7 +315,7 @@ const priceCases = [
   ["Claude Pro 月卡 直充", 39, "other-product"],
   ["Claude Pro 月卡 直充", 40, "claude-pro-month"],
   ["ChatGPT Plus 直充 卡密自助", 3, "chatgpt-plus"],
-  ["GPT PLUS镜像站(天卡)", 3, "other-product"],
+  ["GPT PLUS镜像站(天卡)", 3, "chatgpt-plus"],
   ["GPT Team成品 rt子号 | 质保首次登录 发json cpa格式", 0.3, "chatgpt-team-business"],
   ["Gemini Pro 一年 12个月", 1, "gemini-pro-year"],
   ["Super Grok 成品号-3天（质保）-带sso", 1, "super-grok"],
@@ -410,6 +420,8 @@ const tagCases = [
   ["Gemini 3.1pro 12个月pixel成品号需要绑定手机", ["gemini_phone_required"]],
   ["Gemini pro 一年 pixel成品号（随机地区/美区人机号，22-24年账号）", ["gemini_phone_required"]],
   ["【首登需要申诉】Pixel - Gemini Pro一年成品号", ["gemini_appeal_required"]],
+  ["【质保一个月】ChatGPT Plus网页镜像", ["domestic_mirror_site"]],
+  ["【质保一个月】Super Grok网页镜像", ["domestic_mirror_site"]],
 ];
 
 for (const [title, expectedTags] of tagCases) {
@@ -635,6 +647,57 @@ assert.equal(
   mixedTierGroups.find((group) => group.id === "chatgpt-pro-20x"),
   undefined,
   "Primary ChatGPT Pro 5x titles should be removed from the stored Pro 20x group.",
+);
+
+const domesticMirrorGroups = buildProductGroups([
+  makeOffer({ id: "cheap-mirror", title: "GPT PLUS 镜像站(天卡)", price: 3, status: "in_stock" }),
+  makeOffer({ id: "regular-plus", title: "ChatGPT Plus 成品号 独享账号", price: 88, status: "in_stock" }),
+  makeOffer({ id: "warranty-mirror", title: "【质保一个月】ChatGPT Plus网页镜像", price: 51, status: "in_stock" }),
+  makeOffer({ id: "warranty-regular", title: "ChatGPT Plus 月卡 30天质保", price: 99, status: "in_stock" }),
+]);
+const domesticMirrorPlusGroup = domesticMirrorGroups.find((group) => group.id === "chatgpt-plus");
+assert.ok(domesticMirrorPlusGroup, "ChatGPT Plus group should include domestic mirror site offers.");
+assert.equal(
+  domesticMirrorPlusGroup.lowestOffer?.id,
+  "regular-plus",
+  "Domestic mirror site offers must not drive ChatGPT Plus default lowest price.",
+);
+assert.equal(
+  domesticMirrorPlusGroup.warrantyLowestOffer?.id,
+  "warranty-regular",
+  "Domestic mirror site offers must not drive warranty lowest price.",
+);
+assert.equal(
+  domesticMirrorPlusGroup.offers.at(-1)?.id,
+  "warranty-mirror",
+  "Available domestic mirror site offers should sort behind regular available offers.",
+);
+assert.ok(
+  isDomesticMirrorSiteOffer(domesticMirrorPlusGroup.offers.find((offer) => offer.id === "cheap-mirror")),
+  "Mirror site titles should remain identifiable for the domestic mirror site filter.",
+);
+
+const otherDisplayOrder = [
+  classifyOffer("API 100刀 CDK 额度"),
+  classifyOffer("Cursor Pro 账号"),
+  classifyOffer("X Twitter Premium 会员月卡"),
+  classifyOffer("Twitter 推特老号"),
+  classifyOffer("Telegram Premium会员兑换码 3个月"),
+  classifyOffer("Telegram 老号 成品账号"),
+  classifyOffer("未知资料包"),
+].sort(compareProductDisplayOrder).map((product) => product.id);
+assert.deepEqual(
+  otherDisplayOrder,
+  [
+    "cursor-account",
+    "x-twitter-account",
+    "x-twitter-premium",
+    "telegram-account",
+    "telegram-premium",
+    "other-product",
+    "openai-api-cdk",
+  ],
+  "Other platform products should use family display order and keep API/CDK last.",
 );
 
 console.log(`catalog test passed cases=${cases.length + contextCases.length + priceCases.length}`);

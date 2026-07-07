@@ -24,7 +24,7 @@ import { OfferActions, OfferFeedbackButton, OfferFeedbackDialog, OfferLink } fro
 import { SiteHeader } from "@/components/SiteHeader";
 import { listDetailNavigationHref, shouldHandleListDetailClick } from "@/lib/list-return";
 import {
-  comparePlatformOrder,
+  compareProductDisplayOrder,
   isAvailable,
   platformOptions,
   productTypeOptions,
@@ -261,8 +261,8 @@ export function PriceExplorer({
     });
 
     return filtered.sort((a, b) => {
-      const platformDelta = comparePlatformOrder(a.platform, b.platform);
-      if (platformDelta !== 0) return platformDelta;
+      const displayOrderDelta = compareProductDisplayOrder(a, b);
+      if (displayOrderDelta !== 0) return displayOrderDelta;
 
       const stockDelta = Number(b.inStockCount > 0) - Number(a.inStockCount > 0);
       if (stockDelta !== 0) return stockDelta;

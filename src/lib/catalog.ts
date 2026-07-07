@@ -27,6 +27,41 @@ export function comparePlatformOrder(a: string, b: string): number {
   return a.localeCompare(b, "zh-CN");
 }
 
+const otherProductDisplayRank = new Map<string, number>([
+  ["cursor-account", 10],
+  ["kiro-account", 20],
+  ["kiro-pro-account", 30],
+  ["windsurf-account", 40],
+  ["perplexity-account", 50],
+  ["suno-account", 60],
+  ["dreamina-account", 70],
+  ["apple-id-account", 80],
+  ["x-twitter-account", 90],
+  ["x-twitter-premium", 100],
+  ["telegram-account", 110],
+  ["telegram-premium", 120],
+  ["virtual-card", 130],
+  ["gift-card", 140],
+  ["other-product", 900],
+  ["openai-api-cdk", 990],
+]);
+
+export function compareProductDisplayOrder(
+  a: Pick<CanonicalProduct, "id" | "platform" | "displayName">,
+  b: Pick<CanonicalProduct, "id" | "platform" | "displayName">,
+): number {
+  const platformDelta = comparePlatformOrder(a.platform, b.platform);
+  if (platformDelta !== 0) return platformDelta;
+
+  if (a.platform === "其他" && b.platform === "其他") {
+    const rankA = otherProductDisplayRank.get(a.id) ?? 500;
+    const rankB = otherProductDisplayRank.get(b.id) ?? 500;
+    if (rankA !== rankB) return rankA - rankB;
+  }
+
+  return 0;
+}
+
 export const productTypeOptions = [
   "订阅/会员",
   "成品账号",
@@ -639,7 +674,7 @@ function classifyOfferByTitle(
   }
 
   if (isMirrorSiteProduct(value)) {
-    return getCanonicalProduct("other-product");
+    return getCanonicalProduct(classifyMirrorSiteProduct(value));
   }
 
   if (isGiftCardProduct(value)) {
@@ -903,8 +938,9 @@ export function buildProductGroups(
     product.inStockCount = product.offers.filter(isAvailable).length;
     product.outOfStockCount = Math.max(0, product.offers.length - product.inStockCount);
     const excludeTelegramStars = product.id === "telegram-premium";
-    const displayLowestOffer = getDisplayLowestOffer(product.offers, { excludeSharedAccess: true, excludeTelegramStars });
-    const warrantyLowestOffer = getDisplayLowestOffer(product.offers.filter(isLongWarrantyOffer), { excludeSharedAccess: true, excludeTelegramStars });
+    const lowestOfferOptions = { excludeSharedAccess: true, excludeDomesticMirrorSite: true, excludeTelegramStars };
+    const displayLowestOffer = getDisplayLowestOffer(product.offers, lowestOfferOptions);
+    const warrantyLowestOffer = getDisplayLowestOffer(product.offers.filter(isLongWarrantyOffer), lowestOfferOptions);
     const priceMeta = getOfferPriceMeta(displayLowestOffer);
 
     product.lowestOffer = displayLowestOffer;
@@ -921,8 +957,8 @@ export function buildProductGroups(
   }
 
   return Array.from(map.values()).sort((a, b) => {
-    const platformDelta = comparePlatformOrder(a.platform, b.platform);
-    if (platformDelta !== 0) return platformDelta;
+    const displayOrderDelta = compareProductDisplayOrder(a, b);
+    if (displayOrderDelta !== 0) return displayOrderDelta;
 
     const stockDelta = Number(b.inStockCount > 0) - Number(a.inStockCount > 0);
     if (stockDelta !== 0) return stockDelta;
@@ -944,6 +980,9 @@ export function compareOffers(a: RawOffer, b: RawOffer): number {
 
   const sharedAccessDelta = Number(isSharedAccessOffer(a)) - Number(isSharedAccessOffer(b));
   if (isAvailable(a) && isAvailable(b) && sharedAccessDelta !== 0) return sharedAccessDelta;
+
+  const mirrorSiteDelta = Number(isDomesticMirrorSiteOffer(a)) - Number(isDomesticMirrorSiteOffer(b));
+  if (isAvailable(a) && isAvailable(b) && mirrorSiteDelta !== 0) return mirrorSiteDelta;
 
   const telegramStarsDelta = Number(isTelegramStarsOffer(a)) - Number(isTelegramStarsOffer(b));
   if (isAvailable(a) && isAvailable(b) && telegramStarsDelta !== 0) return telegramStarsDelta;
@@ -982,11 +1021,12 @@ export function getOfferPriceMeta(
 
 function getDisplayLowestOffer(
   offers: RawOffer[],
-  options: { excludeSharedAccess?: boolean; excludeTelegramStars?: boolean } = {},
+  options: { excludeSharedAccess?: boolean; excludeDomesticMirrorSite?: boolean; excludeTelegramStars?: boolean } = {},
 ): RawOffer | null {
   const displayPool = offers.filter((offer) => {
     if (!hasUsablePrice(offer) || !isAvailable(offer)) return false;
     if (options.excludeSharedAccess && isSharedAccessOffer(offer)) return false;
+    if (options.excludeDomesticMirrorSite && isDomesticMirrorSiteOffer(offer)) return false;
     if (options.excludeTelegramStars && isTelegramStarsOffer(offer)) return false;
     return true;
   });
@@ -1010,6 +1050,10 @@ export function isSharedAccessOffer(offer: RawOffer): boolean {
 
 export function isTelegramStarsOffer(offer: RawOffer): boolean {
   return offerMatchesFilterTags(offer, ["telegram_stars"]);
+}
+
+export function isDomesticMirrorSiteOffer(offer: RawOffer): boolean {
+  return offerMatchesFilterTags(offer, ["domestic_mirror_site"]);
 }
 
 function hasUsablePrice(offer: RawOffer): offer is RawOffer & { price: number } {
@@ -1119,9 +1163,28 @@ function isToolSourceCodeProduct(value: string): boolean {
 }
 
 function isMirrorSiteProduct(value: string): boolean {
-  if (!matches(value, ["镜像站", "镜像"])) return false;
+  if (!matches(value, ["镜像站", "镜像", "mirror"])) return false;
 
   return matches(value, ["chatgpt", "gpt", "openai", "plus", "claude", "gemini", "grok"]);
+}
+
+function classifyMirrorSiteProduct(value: string): string {
+  if (isGrokProduct(value)) return isGrokHeavyProduct(value) ? "super-grok-heavy" : "super-grok";
+  if (isGeminiProduct(value)) return isGeminiUltraProduct(value) ? "gemini-ultra" : "gemini-pro-year";
+  if (isClaudeProduct(value)) {
+    if (isClaudeMax20Product(value)) return "claude-max-20x";
+    if (isClaudeMax5Product(value)) return "claude-max-5x";
+    if (isClaudeTeamPremium(value)) return "claude-team-premium";
+    if (isClaudeTeamStandard(value)) return "claude-team-standard";
+    return "claude-pro-month";
+  }
+  if (isChatGptPro20(value)) return "chatgpt-pro-20x";
+  if (isChatGptPro5(value)) return "chatgpt-pro-5x";
+  if (isChatGptGoProduct(value)) return "chatgpt-go";
+  if (isChatGptTeamDominant(value) || isChatGptTeam(value)) return "chatgpt-team-business";
+  if (isChatGptProduct(value)) return "chatgpt-plus";
+
+  return "other-product";
 }
 
 function isGiftCardProduct(value: string): boolean {

@@ -13,6 +13,7 @@ export type OfferFilterTagGroup = keyof typeof OFFER_FILTER_TAG_GROUPS;
 
 export type OfferFilterTagId =
   | "shared_access"
+  | "domestic_mirror_site"
   | "duration_trial"
   | "duration_month"
   | "duration_quarter"
@@ -51,6 +52,12 @@ export const OFFER_FILTER_TAGS: OfferFilterTagDefinition[] = [
     label: "拼车/团购",
     group: "access",
     description: "多人共享、几人车、拼车、团购、车位或合租类报价。",
+  },
+  {
+    id: "domestic_mirror_site",
+    label: "国内镜像站",
+    group: "access",
+    description: "国内镜像、网页镜像、镜像站或 mirror 方式访问的报价。",
   },
   {
     id: "duration_trial",
@@ -279,6 +286,10 @@ export function deriveOfferFilterTags(input: {
     output.add("shared_access");
   }
 
+  if (hasDomesticMirrorSiteSignal(text)) {
+    output.add("domestic_mirror_site");
+  }
+
   if (hasDurationYearSignal(text)) {
     output.add("duration_year");
   }
@@ -396,6 +407,10 @@ function hasSharedAccessNegativeSignal(text: string): boolean {
 
 function hasSharedAccessSignal(text: string): boolean {
   return hasStrongSharedAccessSignal(text) || (!hasExclusiveAccessSignal(text) && hasWeakSharedAccessSignal(text));
+}
+
+function hasDomesticMirrorSiteSignal(text: string): boolean {
+  return /国内镜像站|国内镜像|网页镜像|镜像站|镜像|mirror/.test(text);
 }
 
 function hasStrongSharedAccessSignal(text: string): boolean {
