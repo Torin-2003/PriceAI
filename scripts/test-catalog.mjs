@@ -422,6 +422,12 @@ const tagCases = [
   ["【首登需要申诉】Pixel - Gemini Pro一年成品号", ["gemini_appeal_required"]],
   ["【质保一个月】ChatGPT Plus网页镜像", ["domestic_mirror_site"]],
   ["【质保一个月】Super Grok网页镜像", ["domestic_mirror_site"]],
+  ["ChatGPT Plus 直充 卡密自助", ["delivery_recharge"]],
+  ["GPT Plus 一个月会员 -卡密自助 Pix渠道", ["delivery_recharge"]],
+  ["【推荐】GPT Plus充值CDK - pix 自动充值渠道非成品需自备账号", ["delivery_recharge"]],
+  ["ChatGPT Plus 成品号 独享账号", ["delivery_account"]],
+  ["PLUS-成品-已接码rt-微软邮箱-支持登录网页端", ["delivery_account"]],
+  ["GPT Team K12 成品 JSON 反代 发cpa", ["delivery_account"]],
 ];
 
 for (const [title, expectedTags] of tagCases) {
@@ -442,8 +448,21 @@ for (const [title, unexpectedTag] of geminiConditionNegativeCases) {
   assert.ok(!tags.includes(unexpectedTag), `${title} should not include ${unexpectedTag}. actual=${tags.join(",")}`);
 }
 
+const deliveryNegativeCases = [
+  ["【推荐】GPT Plus充值CDK - pix 自动充值渠道非成品需自备账号", "delivery_account"],
+  ["Claude code MAX20 CDK 代充到自己账号 质保订阅30天", "delivery_account"],
+  ["GPT Team Business 母号 自动拉", "delivery_recharge"],
+];
+
+for (const [title, unexpectedTag] of deliveryNegativeCases) {
+  const tags = deriveOfferFilterTags({ sourceTitle: title });
+  assert.ok(!tags.includes(unexpectedTag), `${title} should not include ${unexpectedTag}. actual=${tags.join(",")}`);
+}
+
 const productFacetCases = buildOfferFilterFacets([
   { sourceTitle: "ChatGPT Plus 月卡 30天质保 拼车" },
+  { sourceTitle: "ChatGPT Plus 直充 卡密自助" },
+  { sourceTitle: "ChatGPT Plus 成品号 独享账号" },
   { sourceTitle: "Super Grok 独享成品号 3天会员" },
   { sourceTitle: "Grok Heavy 官方订阅年卡" },
   { sourceTitle: "OpenAI Codex 单次接码 1次验证" },
@@ -463,11 +482,14 @@ assert.ok(!chatGptFacetIds.includes("duration_trial"), "ChatGPT Plus must not sh
 assert.ok(!chatGptFacetIds.includes("verification_single"), "ChatGPT Plus must not show verification filters.");
 assert.ok(!chatGptFacetIds.includes("gemini_antigravity_gcp"), "ChatGPT Plus must not show Gemini condition filters.");
 assert.ok(chatGptFacetIds.includes("shared_access"), "ChatGPT Plus should keep shared-access filters.");
+assert.ok(chatGptFacetIds.includes("delivery_recharge"), "ChatGPT Plus should show recharge filters.");
+assert.ok(chatGptFacetIds.includes("delivery_account"), "ChatGPT Plus should show account-delivery filters.");
 assert.ok(chatGptFacetIds.includes("warranty_long"), "ChatGPT Plus should keep warranty filters.");
 
 const superGrokFacetIds = filterOfferFilterFacetsForProduct("super-grok", productFacetCases).map((facet) => facet.id);
 assert.ok(superGrokFacetIds.includes("duration_trial"), "Super Grok should show duration filters.");
 assert.ok(!superGrokFacetIds.includes("verification_single"), "Super Grok must not show verification filters.");
+assert.ok(superGrokFacetIds.includes("delivery_account"), "Super Grok should show account-delivery filters.");
 
 const superGrokHeavyFacetIds = filterOfferFilterFacetsForProduct("super-grok-heavy", productFacetCases).map((facet) => facet.id);
 assert.ok(superGrokHeavyFacetIds.includes("duration_year"), "Super Grok Heavy should show duration filters.");
@@ -522,6 +544,71 @@ assert.deepEqual(
   parseOfferFilterTagsForProduct("chatgpt-plus", "gemini_antigravity_gcp,warranty_long"),
   ["warranty_long"],
   "ChatGPT Plus should ignore Gemini condition filters from the URL.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("chatgpt-plus", "delivery_recharge,delivery_account,warranty_long"),
+  ["delivery_recharge", "delivery_account", "warranty_long"],
+  "ChatGPT Plus should accept delivery filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("chatgpt-team-business", "delivery_recharge,delivery_account,warranty_long"),
+  ["delivery_account", "warranty_long"],
+  "ChatGPT Team / Business should accept account-delivery filters but ignore recharge filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("chatgpt-plus-recharge", "delivery_recharge,delivery_account,warranty_long"),
+  ["warranty_long"],
+  "Dedicated ChatGPT Plus recharge product should not show redundant delivery filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("chatgpt-pro-5x", "delivery_recharge,delivery_account,warranty_long"),
+  ["delivery_recharge", "delivery_account", "warranty_long"],
+  "ChatGPT Pro 5x should accept recharge and account-delivery filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("chatgpt-pro-20x", "delivery_recharge,delivery_account,warranty_long"),
+  ["delivery_recharge", "delivery_account", "warranty_long"],
+  "ChatGPT Pro 20x should accept recharge and account-delivery filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("chatgpt-go", "delivery_recharge,delivery_account,warranty_long"),
+  ["delivery_recharge", "delivery_account", "warranty_long"],
+  "ChatGPT Go should accept recharge and account-delivery filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("claude-pro-month", "delivery_recharge,delivery_account,warranty_long"),
+  ["delivery_recharge", "delivery_account", "warranty_long"],
+  "Claude Pro should accept recharge and account-delivery filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("claude-max-20x", "delivery_recharge,delivery_account,warranty_long"),
+  ["delivery_recharge", "delivery_account", "warranty_long"],
+  "Claude Max 20x should accept recharge and account-delivery filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("claude-account", "delivery_recharge,delivery_account,warranty_long"),
+  ["warranty_long"],
+  "Dedicated Claude account product should ignore redundant delivery filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("super-grok", "delivery_recharge,delivery_account,duration_month,warranty_long"),
+  ["delivery_recharge", "delivery_account", "duration_month", "warranty_long"],
+  "Super Grok should accept recharge, account-delivery, and duration filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("super-grok-heavy", "delivery_recharge,delivery_account,duration_year,warranty_long"),
+  ["delivery_recharge", "delivery_account", "duration_year", "warranty_long"],
+  "Super Grok Heavy should accept recharge, account-delivery, and duration filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("grok-account", "delivery_recharge,delivery_account,duration_trial,warranty_long"),
+  ["duration_trial", "warranty_long"],
+  "Dedicated Grok account product should ignore redundant delivery filters.",
+);
+assert.deepEqual(
+  parseOfferFilterTagsForProduct("super-grok", "delivery_account,duration_month,warranty_long"),
+  ["delivery_account", "duration_month", "warranty_long"],
+  "Super Grok should keep account-delivery filters.",
 );
 const telegramAccountFacetIds = filterOfferFilterFacetsForProduct("telegram-account", productFacetCases).map((facet) => facet.id);
 assert.ok(telegramAccountFacetIds.includes("telegram_region_us"), "Telegram account should show US region filters.");

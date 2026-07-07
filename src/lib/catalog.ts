@@ -93,7 +93,7 @@ export const canonicalCatalog: CanonicalProduct[] = [
     platform: "ChatGPT",
     productType: "订阅/会员",
     spec: "Plus",
-    summary: "ChatGPT Plus 月卡、成品号、普通直充、卡密、CDK、Pix 低价试用或自助开通，不含单独拆分的地区充值代充。",
+    summary: "ChatGPT Plus 月卡、成品号、自助充值、普通直充、卡密/CDK、荷兰 iDEAL、欧洲、印度 UPI 或 Pix 渠道报价。",
     aliases: [
       "gpt plus",
       "chatgpt plus",
@@ -154,7 +154,7 @@ export const canonicalCatalog: CanonicalProduct[] = [
     platform: "ChatGPT",
     productType: "订阅/会员",
     spec: "Team / Business",
-    summary: "Team、Business、团队号、母号、邀请或自动拉。",
+    summary: "ChatGPT Team、Business、K12、Bug Team、团队号、母号、邀请、自动拉或 Team 成品号。",
     aliases: ["team", "business", "t5", "t5倍", "k12", "k12 子号", "母号", "自动拉", "直拉", "邀请", "团队号"],
   },
   {

@@ -14,6 +14,8 @@ export type OfferFilterTagGroup = keyof typeof OFFER_FILTER_TAG_GROUPS;
 export type OfferFilterTagId =
   | "shared_access"
   | "domestic_mirror_site"
+  | "delivery_recharge"
+  | "delivery_account"
   | "duration_trial"
   | "duration_month"
   | "duration_quarter"
@@ -58,6 +60,18 @@ export const OFFER_FILTER_TAGS: OfferFilterTagDefinition[] = [
     label: "国内镜像站",
     group: "access",
     description: "国内镜像、网页镜像、镜像站或 mirror 方式访问的报价。",
+  },
+  {
+    id: "delivery_recharge",
+    label: "充值",
+    group: "access",
+    description: "充值、直充、代充、自助开通、卡密、CDK 或兑换码类报价。",
+  },
+  {
+    id: "delivery_account",
+    label: "成品号",
+    group: "access",
+    description: "交付成品号、账号、账密、独享号、首登或接码状态明确的报价。",
   },
   {
     id: "duration_trial",
@@ -214,6 +228,33 @@ const GEMINI_PRO_ACCOUNT_FILTER_TAG_IDS = new Set<OfferFilterTagId>([
   "gemini_phone_required",
   "gemini_appeal_required",
 ]);
+const AI_SUBSCRIPTION_RECHARGE_FILTER_PRODUCT_IDS = new Set<string>([
+  "chatgpt-plus",
+  "chatgpt-go",
+  "chatgpt-pro-5x",
+  "chatgpt-pro-20x",
+  "claude-pro-month",
+  "claude-team-standard",
+  "claude-team-premium",
+  "claude-max-5x",
+  "claude-max-20x",
+  "super-grok",
+  "super-grok-heavy",
+]);
+const AI_SUBSCRIPTION_ACCOUNT_DELIVERY_FILTER_PRODUCT_IDS = new Set<string>([
+  "chatgpt-plus",
+  "chatgpt-go",
+  "chatgpt-pro-5x",
+  "chatgpt-pro-20x",
+  "chatgpt-team-business",
+  "claude-pro-month",
+  "claude-team-standard",
+  "claude-team-premium",
+  "claude-max-5x",
+  "claude-max-20x",
+  "super-grok",
+  "super-grok-heavy",
+]);
 const DURATION_FILTER_PRODUCT_IDS = new Set<string>([
   "grok-account",
   "super-grok",
@@ -263,6 +304,8 @@ export function filterOfferFilterFacetsForProduct(productId: string, facets: Off
 }
 
 export function offerFilterTagAppliesToProduct(productId: string, tagId: OfferFilterTagId): boolean {
+  if (tagId === "delivery_recharge") return AI_SUBSCRIPTION_RECHARGE_FILTER_PRODUCT_IDS.has(productId);
+  if (tagId === "delivery_account") return AI_SUBSCRIPTION_ACCOUNT_DELIVERY_FILTER_PRODUCT_IDS.has(productId);
   if (DURATION_FILTER_TAG_IDS.has(tagId)) return DURATION_FILTER_PRODUCT_IDS.has(productId);
   if (VERIFICATION_FILTER_TAG_IDS.has(tagId)) return VERIFICATION_FILTER_PRODUCT_IDS.has(productId);
   if (TELEGRAM_ACCOUNT_FILTER_TAG_IDS.has(tagId)) return productId === "telegram-account";
@@ -288,6 +331,13 @@ export function deriveOfferFilterTags(input: {
 
   if (hasDomesticMirrorSiteSignal(text)) {
     output.add("domestic_mirror_site");
+  }
+
+  if (hasSelfServiceDeliverySignal(text)) {
+    output.add("delivery_recharge");
+  }
+  if (!hasAccountDeliveryNegativeSignal(text) && hasAccountDeliverySignal(text)) {
+    output.add("delivery_account");
   }
 
   if (hasDurationYearSignal(text)) {
@@ -411,6 +461,18 @@ function hasSharedAccessSignal(text: string): boolean {
 
 function hasDomesticMirrorSiteSignal(text: string): boolean {
   return /国内镜像站|国内镜像|网页镜像|镜像站|镜像|mirror/.test(text);
+}
+
+function hasSelfServiceDeliverySignal(text: string): boolean {
+  return /自助充值|自助开通|自助卡密|卡密自助|自助激活|自动充值|自动开通|自动激活|全自动激活|全自动开通|直充|代充|卡充|充值|续费|代开|内购|激活码|兑换码|cdk|卡密|提链|提取链接|支付二维码|扫码对接|upi扫码|pix渠道|ideal渠道|i deal渠道/.test(text);
+}
+
+function hasAccountDeliveryNegativeSignal(text: string): boolean {
+  return /非成品|不是成品|非账号|不是账号|非账户|不是账户|不交付账号|不发账号|不提供账号|不含账号|无需账号|自备账号|自备号|自己账号|自己的账号|到自己账号|冲自己号|充值自己号|给自己号/.test(text);
+}
+
+function hasAccountDeliverySignal(text: string): boolean {
+  return /成品号|成品账号|成品帐号|成品会员账号|成品|账号购买|账号|帐号|账户|账密|独享号|独享账号|独享账户|库存号|会员号|普通号|普号|白号|网页号|半成品|首登|保首登|质保首登|直登|未接码|已接码|已接|未接|带2fa|带二验|可二验|已绑手机|未绑手机/.test(text);
 }
 
 function hasStrongSharedAccessSignal(text: string): boolean {

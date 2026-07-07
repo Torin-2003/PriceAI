@@ -24,8 +24,8 @@ const productSeoProfiles: Record<string, ProductSeoProfile> = {
     metadataDescription: "查看 ChatGPT 普号、OpenAI 账号、体验号、成品账号的有货最低价、渠道报价、库存和更新时间。",
   }),
   "chatgpt-plus": profile({
-    metadataTitle: "ChatGPT Plus 价格对比：日抛、Codex Plus、代充、成品号和 CDK",
-    metadataDescription: "查看 ChatGPT Plus 有货最低价、日抛、Codex Plus、Plus 代充、成品号、卡密/CDK、库存、来源和更新时间。",
+    metadataTitle: "ChatGPT Plus 价格对比：自助充值、成品号、荷兰 iDEAL、UPI 和 Pix",
+    metadataDescription: "查看 ChatGPT Plus 自助充值/开通、成品号、荷兰 iDEAL、欧洲渠道、印度 UPI、Pix、卡密/CDK 的有货最低价、库存和更新时间。",
   }),
   "chatgpt-plus-recharge": profile({
     metadataTitle: "ChatGPT Plus 充值代充价格对比：直充、代开、卡密和渠道报价",
@@ -36,8 +36,8 @@ const productSeoProfiles: Record<string, ProductSeoProfile> = {
     metadataDescription: "查看 ChatGPT Go 有货最低价、月卡、年卡、激活码、直充、内购渠道报价、库存和更新时间。",
   }),
   "chatgpt-team-business": profile({
-    metadataTitle: "ChatGPT Team / Business 价格对比：Bug Team、团队邀请、母号和渠道报价",
-    metadataDescription: "查看 ChatGPT Team / Business、Bug Team、团队邀请、母号、自动拉的有货最低价、渠道报价、库存和更新时间。",
+    metadataTitle: "ChatGPT Team / Business 价格对比：K12、Bug Team、团队邀请和母号",
+    metadataDescription: "查看 ChatGPT Team / Business、K12 Team、Bug Team、Team 成品号、团队邀请、母号、自动拉的有货最低价、库存和更新时间。",
   }),
   "chatgpt-pro-5x": profile({
     metadataTitle: "ChatGPT Pro 5x 价格对比：Pro 会员、代开和渠道报价",
