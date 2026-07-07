@@ -734,14 +734,14 @@ as $$
         else 1
       end as availability_rank,
       case
-        when coalesce(filtered.public_filter_tags, priceai_public_offer_filter_tags(filtered.source_title, filtered.tags)) && array['shared_access', 'domestic_mirror_site']::text[]
+        when filtered.public_filter_tags && array['shared_access', 'domestic_mirror_site']::text[]
         then 1
         else 0
       end as special_delivery_rank,
       coalesce(filtered.verified_at, filtered.last_seen_at, filtered.captured_at, filtered.source_updated_at) as public_updated_at,
       coalesce(filtered.source_store_name, filtered.source_name, '') as public_source_label
     from filtered
-    where (coalesce(array_length(p_filter_tags, 1), 0) = 0 or coalesce(filtered.public_filter_tags, '{}'::text[]) @> p_filter_tags)
+    where (coalesce(array_length(p_filter_tags, 1), 0) = 0 or filtered.public_filter_tags @> p_filter_tags)
       and (p_query is null or trim(p_query) = '' or filtered.public_haystack ilike ('%' || trim(p_query) || '%'))
       and (
         p_exclude_query is null
@@ -796,6 +796,78 @@ as $$
     ranked.id asc
   limit greatest(least(coalesce(p_limit, 80), 1200), 1)
   offset greatest(coalesce(p_offset, 0), 0);
+$$;
+
+create or replace function list_public_product_offer_filter_facets(
+  p_product_id text
+)
+returns table (
+  tag_id text,
+  offer_count bigint
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with product as (
+    select id
+    from canonical_products
+    where is_active = true
+      and (canonical_products.id = p_product_id or canonical_products.slug = p_product_id)
+    limit 1
+  ),
+  tag_rows as (
+    select distinct
+      priceai_public_offer_dedupe_key(
+        raw_offers.canonical_product_id,
+        raw_offers.url,
+        raw_offers.source_title,
+        raw_offers.price
+      ) as offer_key,
+      unnest(raw_offers.public_filter_tags) as tag_id
+    from raw_offers
+    join product on product.id = raw_offers.canonical_product_id
+    where raw_offers.hidden = false
+      and coalesce(array_length(raw_offers.public_filter_tags, 1), 0) > 0
+  )
+  select
+    tag_rows.tag_id,
+    count(*) as offer_count
+  from tag_rows
+  where tag_rows.tag_id is not null
+    and tag_rows.tag_id <> ''
+  group by tag_rows.tag_id
+  order by array_position(
+    array[
+      'shared_access',
+      'domestic_mirror_site',
+      'delivery_recharge',
+      'delivery_account',
+      'duration_trial',
+      'duration_month',
+      'duration_quarter',
+      'duration_half_year',
+      'duration_year',
+      'verification_single',
+      'verification_short',
+      'verification_long',
+      'verification_monthly',
+      'telegram_region_us',
+      'telegram_region_india',
+      'telegram_premium_quarter',
+      'telegram_premium_half_year',
+      'telegram_premium_year',
+      'telegram_stars',
+      'proxy_supported',
+      'gemini_antigravity_gcp',
+      'gemini_phone_required',
+      'gemini_appeal_required',
+      'warranty_long'
+    ]::text[],
+    tag_rows.tag_id
+  ),
+  tag_rows.tag_id;
 $$;
 
 drop function if exists get_public_product_summary(text);
@@ -1008,11 +1080,13 @@ $$;
 
 revoke execute on function priceai_public_offer_filter_tags(text, text[]) from anon, public;
 revoke execute on function list_public_product_offers_page_v2(text, text[], text, text, text, numeric, numeric, integer, integer) from anon, authenticated, public;
+revoke execute on function list_public_product_offer_filter_facets(text) from anon, authenticated, public;
 revoke execute on function list_public_product_summaries() from anon, public;
 revoke execute on function get_public_product_summary(text) from anon, public;
 
 grant execute on function priceai_public_offer_filter_tags(text, text[]) to service_role;
 grant execute on function list_public_product_offers_page_v2(text, text[], text, text, text, numeric, numeric, integer, integer) to service_role;
+grant execute on function list_public_product_offer_filter_facets(text) to service_role;
 grant execute on function list_public_product_summaries() to service_role;
 grant execute on function get_public_product_summary(text) to service_role;
 

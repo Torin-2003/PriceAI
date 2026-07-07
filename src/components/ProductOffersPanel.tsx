@@ -535,7 +535,7 @@ function productOffersCacheKey(
   minPrice = "",
   maxPrice = "",
 ): string {
-  return `priceai:product-offers:v12-source-price:${productId}:${offset}:${OFFER_PAGE_SIZE}:${filterTags.join(",") || "all"}:${query || "none"}:${excludeQuery || "none"}:${collector}:${minPrice || "none"}:${maxPrice || "none"}`;
+  return `priceai:product-offers:v13-live-tags:${productId}:${offset}:${OFFER_PAGE_SIZE}:${filterTags.join(",") || "all"}:${query || "none"}:${excludeQuery || "none"}:${collector}:${minPrice || "none"}:${maxPrice || "none"}`;
 }
 
 function productOfferFilterFacets(
