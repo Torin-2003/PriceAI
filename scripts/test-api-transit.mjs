@@ -22,6 +22,16 @@ assert.equal(configuredApinodeSource.pricingEndpointUrl, "https://apinode.ltd/ap
 assert.equal(configuredApinodeSource.monitorUrl, "https://apinode.ltd/public/transit?view=monitoring");
 assert.equal(configuredApinodeSource.stationSystem, "sub_to_api");
 assert.equal(configuredApinodeSource.autoPublish, true);
+const configuredCallaiSource = transitSourceConfig.find((source) => source.id === "sub-callai-one");
+assert.ok(configuredCallaiSource, "Sub Callai One must stay in API transit public collection sources.");
+assert.equal(configuredCallaiSource.collectorKind, "ai_transit_snapshot");
+assert.equal(configuredCallaiSource.pricingUrl, "https://sub.callai.one/public/transit");
+assert.equal(configuredCallaiSource.pricingEndpointUrl, "https://sub.callai.one/api/public/transit/v1/snapshot");
+assert.equal(configuredCallaiSource.monitorUrl, "https://sub.callai.one/public/transit?view=monitoring");
+assert.equal(configuredCallaiSource.stationSystem, "sub_to_api");
+assert.equal(configuredCallaiSource.rechargeRatio, "1:1");
+assert.equal(configuredCallaiSource.autoPublish, true);
+assert.equal("partnerTokenEnv" in configuredCallaiSource, false);
 
 const scheduledPublishedRtocSources = __test.selectSources(
   __test.filterSourcesByPublishedStationIds(transitSourceConfig, new Set(["ai-rtoc-cc"])),

@@ -164,17 +164,35 @@
     "name": "Sub Callai One",
     "websiteUrl": "https://sub.callai.one/",
     "apiBaseUrl": "https://sub.callai.one/v1",
-    "pricingUrl": "https://sub.callai.one/partner-api/v1/status",
-    "pricingEndpointUrl": "https://sub.callai.one/partner-api/v1/status",
-    "collectorKind": "sub2api_partner_status",
-    "partnerTokenEnv": "CALLAI_PARTNER_PRICEAI_TOKEN",
+    "pricingUrl": "https://sub.callai.one/public/transit",
+    "pricingEndpointUrl": "https://sub.callai.one/api/public/transit/v1/snapshot",
+    "monitorUrl": "https://sub.callai.one/public/transit?view=monitoring",
+    "collectorKind": "ai_transit_snapshot",
+    "stationSystem": "sub_to_api",
+    "rechargeRatio": "1:1",
     "autoPublish": true,
-    "groupAliases": {
-      "claude-kiro": "kiro"
-    },
-    "channelTypes": ["undisclosed"],
+    "channelTypes": ["mixed", "first_party_pool", "undisclosed"],
     "accountPools": ["kiro", "max", "pro"],
-    "summary": "站长提供 partner API，公开返回 Claude / GPT 分组倍率和最近一次可用性监测；PriceAI 会保留原始快照并继续用长期样本验证稳定性。"
+    "riskLabels": ["mixed_pool", "insufficient_samples", "pending_feedback"],
+    "summary": "Sub Callai One 使用 Sub2API 系统，公开 ai-transit.v1 快照可读取分组倍率、模型价格、缓存价格和公开监测时间线；可用率来自站点公开监测，不等同 PriceAI API Key 实测。",
+    "strengths": [
+      "公开 /.well-known/ai-transit.json 可发现结构化快照，/api/public/transit/v1/snapshot 返回 Kiro/Max/Pro 分组、模型价格和监控时间线。",
+      "快照无需 partner token 即可读取，能作为 Sub Callai One 公开价格、缓存价格和公开监测样本的稳定来源。"
+    ],
+    "cautions": [
+      "公开监测样本来自 Sub Callai One 页面，不等同 PriceAI 使用测试 Key 的真实扣费和可用性检测。",
+      "分组包含混合上游和账号池标签，首次使用仍建议小额测试。"
+    ],
+    "verificationEvents": [
+      {
+        "id": "sub-callai-ai-transit-v1-2026-07-07",
+        "source": "priceai",
+        "status": "success",
+        "title": "ai-transit.v1 公开快照可读取",
+        "description": "2026-07-07 检查 https://sub.callai.one/.well-known/ai-transit.json 可发现 snapshot_url，/api/public/transit/v1/snapshot 返回分组、模型价格、缓存价格和公开监控时间线。",
+        "happenedAt": "2026-07-07T09:15:00.000Z"
+      }
+    ]
   },
   {
     "id": "sudocode-chat",
