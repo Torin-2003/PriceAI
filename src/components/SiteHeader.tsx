@@ -3,13 +3,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ExternalLink, Info, Menu, MessageCircle, X } from "lucide-react";
+import { ExternalLink, HeartHandshake, Info, Menu, MessageCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AppLogo } from "@/components/AppLogo";
-import { FeedbackDialog, FeedbackLink, GitHubLink, QQGroupDialog, QQGroupLink, TelegramLink } from "@/components/FeedbackLink";
+import { FeedbackDialog, FeedbackLink, GitHubLink, QQGroupDialog, QQGroupLink, SupportLink, TelegramLink } from "@/components/FeedbackLink";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { qqGroupNumber, telegramUrl } from "@/lib/community";
+import { supportPagePath } from "@/lib/support";
 
 const navItems = [
   { key: "channels", href: "/channels", label: "卡网订阅", mobileLabel: "卡网", match: (pathname: string) => pathname.startsWith("/channels") || pathname.startsWith("/products") },
@@ -18,7 +19,7 @@ const navItems = [
   { key: "transit", href: "/api-transit", label: "中转 API", mobileLabel: "中转", match: (pathname: string) => pathname.startsWith("/api-transit") },
 ];
 
-type SiteHeaderSection = (typeof navItems)[number]["key"] | "home" | "guides";
+type SiteHeaderSection = (typeof navItems)[number]["key"] | "home" | "guides" | "support";
 const homeHref = "/?home=1";
 const githubUrl = "https://github.com/physics-dimension/PriceAI";
 
@@ -35,6 +36,7 @@ export function SiteHeader({
 }) {
   const pathname = usePathname();
   const aboutActive = pathname.startsWith("/about");
+  const supportActive = pathname.startsWith(supportPagePath);
   const desktopCenterNavClassName = "hidden items-center rounded-full bg-[#e4e9ea] p-1 text-sm font-semibold text-[#5a6061] min-[720px]:flex";
   const actionGroupGapClassName =
     compactActionLabelFrom === "never" ? "gap-1.5" : compactActionLabelFrom === "2xl" ? "gap-1.5 2xl:gap-3" : "gap-1.5 sm:gap-3";
@@ -91,6 +93,7 @@ export function SiteHeader({
           <FeedbackLink compact labelFrom={compactActionLabelFrom} />
           <QQGroupLink compact labelFrom={compactActionLabelFrom} />
           <TelegramLink compact labelFrom={compactActionLabelFrom} />
+          <SupportLink compact labelFrom={compactActionLabelFrom} />
           <GitHubLink compact labelFrom={compactActionLabelFrom} />
         </div>
       </div>
@@ -99,6 +102,7 @@ export function SiteHeader({
         <MobileModuleDrawer
           activeKey={activeNavItem?.key}
           aboutActive={aboutActive}
+          supportActive={supportActive}
           onClose={() => setMobileDrawerOpen(false)}
           onFeedback={() => {
             setMobileDrawerOpen(false);
@@ -119,12 +123,14 @@ export function SiteHeader({
 function MobileModuleDrawer({
   activeKey,
   aboutActive,
+  supportActive,
   onClose,
   onFeedback,
   onQQGroup,
 }: {
   activeKey?: (typeof navItems)[number]["key"];
   aboutActive: boolean;
+  supportActive: boolean;
   onClose: () => void;
   onFeedback: () => void;
   onQQGroup: () => void;
@@ -206,6 +212,22 @@ function MobileModuleDrawer({
                 边界与披露
               </span>
               {aboutActive ? <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-brand)]" aria-hidden="true" /> : null}
+            </Link>
+            <Link
+              href={supportPagePath}
+              onClick={onClose}
+              className={`flex h-11 items-center justify-between rounded-lg px-3 text-sm font-semibold transition ${
+                supportActive
+                  ? "bg-[var(--color-surface-selected)] text-[var(--color-text-primary)]"
+                  : "text-[var(--color-text-body)] hover:bg-[var(--color-surface-hover)]"
+              }`}
+              aria-current={supportActive ? "page" : undefined}
+            >
+              <span className="inline-flex items-center gap-3">
+                <HeartHandshake size={17} />
+                支持维护
+              </span>
+              {supportActive ? <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-brand)]" aria-hidden="true" /> : null}
             </Link>
             <button
               type="button"

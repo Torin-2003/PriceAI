@@ -7,11 +7,13 @@ import type { SponsorSettingsSummary } from "@/lib/sponsor-settings-shared";
 
 const topBannerExcludedPathPrefixes = [
   "/admin",
+  "/support",
 ] as const;
 
 const footerExcludedPathPrefixes = [
   "/admin",
   "/commercial",
+  "/support",
   "/api-transit/submit",
   "/api-transit/detector/reports",
 ] as const;

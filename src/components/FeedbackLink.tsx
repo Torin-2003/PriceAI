@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
+  HeartHandshake,
   Loader2,
   MessageCircle,
   Send,
@@ -14,6 +15,7 @@ import type { FormEvent, ReactNode } from "react";
 import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { qqGroupNumber, qqGroupQrCodeUrl, qqGroupUrl, telegramUrl } from "@/lib/community";
+import { supportPagePath } from "@/lib/support";
 
 const githubUrl = "https://github.com/physics-dimension/PriceAI";
 
@@ -100,6 +102,27 @@ export function FeedbackLink({
       </button>
       {open ? <FeedbackDialog onClose={() => setOpen(false)} /> : null}
     </>
+  );
+}
+
+export function SupportLink({
+  compact = false,
+  labelFrom = "sm",
+}: {
+  compact?: boolean;
+  labelFrom?: HeaderActionLabelFrom;
+}) {
+  return (
+    <a
+      href={supportPagePath}
+      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-white text-sm font-semibold text-[#2d3435] shadow-[0_10px_30px_rgba(45,52,53,0.06)] ring-1 ring-[#adb3b4]/25 transition hover:-translate-y-0.5 hover:bg-[#f5f7f7] hover:text-[#202829] ${
+        compact ? getCompactButtonClassName(labelFrom, "sm:px-3", "2xl:px-3") : "h-10 gap-2 px-3.5"
+      }`}
+      aria-label="支持 PriceAI 继续维护"
+    >
+      <HeartHandshake size={16} />
+      <span className={getLabelClassName(compact, labelFrom)}>支持维护</span>
+    </a>
   );
 }
 

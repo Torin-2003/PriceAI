@@ -5,6 +5,7 @@ import { GlobalSponsorPlacements } from "@/components/GlobalSponsorPlacements";
 import { GoogleAnalytics } from "@/components/GoogleAnalytics";
 import { QQGroupAutoPrompt } from "@/components/QQGroupAutoPrompt";
 import { SiteNoticePrompt } from "@/components/SiteNoticePrompt";
+import { SupportNudgePrompt } from "@/components/SupportNudgePrompt";
 import { UmamiAnalytics } from "@/components/UmamiAnalytics";
 import "./globals.css";
 
@@ -73,6 +74,7 @@ export default function RootLayout({
           {children}
         </GlobalSponsorPlacements>
         <SiteNoticePrompt />
+        <SupportNudgePrompt />
         <Suspense fallback={null}>
           <QQGroupAutoPrompt />
         </Suspense>
