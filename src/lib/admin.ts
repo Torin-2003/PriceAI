@@ -17,6 +17,7 @@ import {
   feedbackRequiresEvidence,
   feedbackRequiresImageEvidence,
   hasFeedbackImageEvidenceReference,
+  HIGH_RISK_FEEDBACK_REASONS,
   inferSuggestedActionForFeedback,
 } from "./trust-risk";
 import {
@@ -2581,6 +2582,10 @@ export async function runOfferFeedbackRiskPrecheck(feedbackId: string): Promise<
   if (!row) throw new Error("反馈记录不存在。");
 
   const feedback = mapOfferFeedbackRow(row);
+  if (!HIGH_RISK_FEEDBACK_REASONS.has(feedback.reason)) {
+    throw new Error("低风险临时数据反馈不运行风险预审，请使用自动复核或创建重采。");
+  }
+
   const result = await reviewRiskFeedback(toRiskFeedbackReviewInput(feedback));
   const nextAiReviewResult = mergeRiskPrecheckResult(feedback.aiReviewResult, result);
   const nextVerificationMessage = result.status === "ready"

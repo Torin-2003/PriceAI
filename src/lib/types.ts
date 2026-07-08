@@ -738,6 +738,7 @@ export type OfferFeedbackStatus = "pending" | "resolved" | "ignored";
 export type SiteFeedbackStatus = OfferFeedbackStatus;
 export const offerFeedbackReasonValues = [
   "wrong_price",
+  "description_mismatch",
   "item_removed",
   "stock_mismatch",
   "wrong_category",

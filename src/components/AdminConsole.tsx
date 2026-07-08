@@ -42,6 +42,7 @@ import { ApiTransitAdminPanel } from "@/components/ApiTransitAdminConsole";
 import { apiProviderTypeLabels } from "@/lib/api-models";
 import { formatBeijingDateTimeLocalValue, parseBeijingDateTimeLocalValue } from "@/lib/beijing-time";
 import { classifyOffer } from "@/lib/catalog";
+import { shouldCreateFeedbackVerification } from "@/lib/trust-risk";
 import {
   collectorKindLabel,
   collectorKindOptions,
@@ -4257,6 +4258,8 @@ function OfferFeedbackList({
         const productName = displayProduct?.displayName || item.productName || "未记录标准商品";
         const isCategoryFeedback = item.reason === "wrong_category";
         const hasEvidence = Boolean(item.evidenceText || item.evidenceUrls.length);
+        const canAutoVerify = shouldCreateFeedbackVerification(item.reason, item.notes, item.evidenceText);
+        const canRunRiskPrecheck = canRunFeedbackRiskPrecheck(item);
         const riskPrecheck = item.riskPrecheck;
 
         return (
@@ -4474,7 +4477,7 @@ function OfferFeedbackList({
                     {hideSourceLoading ? <Loader2 size={14} className="animate-spin" /> : null}
                     临时下架渠道
                   </button>
-                  {item.verificationStatus !== "not_needed" ? (
+                  {canAutoVerify ? (
                     <button
                       type="button"
                       disabled={(!item.offerUrl && !matchedOffer?.url) || autoVerifyLoading}
@@ -4496,16 +4499,18 @@ function OfferFeedbackList({
                       创建重采
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    disabled={!hasEvidence || riskPrecheckLoading}
-                    onClick={() => onRiskPrecheck(item)}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#47657a]/20 bg-white px-3 text-xs font-medium text-[#47657a] transition-colors hover:bg-[#eef3f8] disabled:opacity-60"
-                    title={hasEvidence ? "运行模型风险预审" : "缺少证据，无法运行模型预审"}
-                  >
-                    {riskPrecheckLoading ? <Loader2 size={14} className="animate-spin" /> : <Activity size={14} />}
-                    模型预审
-                  </button>
+                  {canRunRiskPrecheck ? (
+                    <button
+                      type="button"
+                      disabled={!hasEvidence || riskPrecheckLoading}
+                      onClick={() => onRiskPrecheck(item)}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#47657a]/20 bg-white px-3 text-xs font-medium text-[#47657a] transition-colors hover:bg-[#eef3f8] disabled:opacity-60"
+                      title={hasEvidence ? "运行模型风险预审" : "缺少证据，无法运行模型预审"}
+                    >
+                      {riskPrecheckLoading ? <Loader2 size={14} className="animate-spin" /> : <Activity size={14} />}
+                      模型预审
+                    </button>
+                  ) : null}
                   {riskPrecheck?.canShowPublicly && !riskPrecheck.publicHidden ? (
                     <button
                       type="button"
@@ -8585,7 +8590,7 @@ function rowFeedbackClass(value: RowFeedback["type"]): string {
 
 const feedbackWorkFilters: Array<{ value: FeedbackWorkFilter; label: string }> = [
   { value: "all", label: "全部" },
-  { value: "precheck", label: "待预处理" },
+  { value: "precheck", label: "可批量处理" },
   { value: "transient", label: "临时数据" },
   { value: "category", label: "分类问题" },
   { value: "aftersales", label: "售后/发货" },
@@ -8597,10 +8602,21 @@ function getOfferFeedbackBucket(feedback: OfferFeedback): OfferFeedbackBucket {
   if (feedback.reason === "aftersales_shipping") return "aftersales";
   if (feedback.reason === "wrong_category") return "category";
   if (feedback.reason === "fraud" || feedback.reason === "bad_source") return "high_risk";
-  if (feedback.reason === "wrong_price" || feedback.reason === "stock_mismatch" || feedback.reason === "item_removed") {
+  if (
+    feedback.reason === "wrong_price" ||
+    feedback.reason === "description_mismatch" ||
+    feedback.reason === "stock_mismatch" ||
+    feedback.reason === "item_removed"
+  ) {
     return "transient";
   }
   return "other";
+}
+
+function canRunFeedbackRiskPrecheck(feedback: OfferFeedback): boolean {
+  return feedback.reason === "fraud" ||
+    feedback.reason === "bad_source" ||
+    feedback.reason === "aftersales_shipping";
 }
 
 function filterOfferFeedbackByWorkFilter(
@@ -8713,6 +8729,23 @@ function getOfferFeedbackVerdict(feedback: OfferFeedback, currentOffer: RawOffer
     };
   }
 
+  if (feedback.reason === "description_mismatch") {
+    if (feedback.sourceTitle && currentOffer.sourceTitle && feedback.sourceTitle.trim() !== currentOffer.sourceTitle.trim()) {
+      return {
+        label: "描述已更新",
+        description: "当前原始商品名已经不同于用户反馈时的快照，通常表示后续采集已修正，可批量标记已处理。",
+        tone: "success",
+        batchSafe: true,
+      };
+    }
+    return {
+      label: "建议重采",
+      description: "用户反馈商品描述和实际不符，建议先重采或打开原链接确认，不要按错价直接处理。",
+      tone: "warn",
+      batchSafe: false,
+    };
+  }
+
   if (feedback.reason === "item_removed") {
     if (currentOffer.hidden || currentOffer.status === "out_of_stock" || currentOffer.effectiveStatus === "unavailable") {
       return {
@@ -8760,6 +8793,7 @@ function feedbackStatusClass(value: OfferFeedbackStatus): string {
 function feedbackReasonLabel(value: OfferFeedback["reason"]): string {
   const labels: Record<OfferFeedback["reason"], string> = {
     wrong_price: "价格不准",
+    description_mismatch: "描述不符",
     item_removed: "商品已下架",
     stock_mismatch: "库存不准",
     aftersales_shipping: "售后/发货",
@@ -8773,7 +8807,7 @@ function feedbackReasonLabel(value: OfferFeedback["reason"]): string {
 
 function feedbackReasonClass(value: OfferFeedback["reason"]): string {
   if (value === "fraud" || value === "bad_source" || value === "aftersales_shipping") return "bg-[#fbe9e7] text-[#9b3328]";
-  if (value === "wrong_price" || value === "stock_mismatch" || value === "item_removed") return "bg-[#fff7e8] text-[#7a541b]";
+  if (value === "wrong_price" || value === "description_mismatch" || value === "stock_mismatch" || value === "item_removed") return "bg-[#fff7e8] text-[#7a541b]";
   if (value === "wrong_category") return "bg-[#eef3f8] text-[#47657a]";
   return "bg-[#f2f4f4] text-[#5a6061]";
 }
@@ -8781,12 +8815,12 @@ function feedbackReasonClass(value: OfferFeedback["reason"]): string {
 function feedbackVerificationStatusLabel(value: OfferFeedback["verificationStatus"]): string {
   const labels: Record<OfferFeedback["verificationStatus"], string> = {
     not_needed: "无需核验",
-    pending: "待核验",
+    pending: "待重采",
     running: "核验中",
-    auto_fixed: "已自动修正",
-    recollection_created: "已创建重采",
-    manual_review: "转人工",
-    failed: "核验失败",
+    auto_fixed: "可批量处理",
+    recollection_created: "重采中",
+    manual_review: "需人工确认",
+    failed: "重采失败",
   };
   return labels[value] || "无需核验";
 }

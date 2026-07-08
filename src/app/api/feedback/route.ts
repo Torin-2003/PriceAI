@@ -10,7 +10,7 @@ import {
   getPublicRequestErrorStatus,
   readJsonWithLimit,
 } from "@/lib/public-request";
-import { feedbackRequiresContact, shouldCreateFeedbackVerification } from "@/lib/trust-risk";
+import { feedbackRequiresContact, HIGH_RISK_FEEDBACK_REASONS, shouldCreateFeedbackVerification } from "@/lib/trust-risk";
 import { offerFeedbackReasonValues } from "@/lib/types";
 
 const PUBLIC_OFFER_FEEDBACK_RATE_LIMIT_PER_HOUR = 20;
@@ -128,13 +128,15 @@ export async function POST(request: Request) {
           return;
         }
 
-        const feedback = await runOfferFeedbackRiskPrecheck(result.id);
-        clearPublicDataCache();
-        await markPublicApiSnapshotsDirty("public feedback precheck", {
-          productIds: [feedback.productId, feedback.productSlug],
-          offerIds: [feedback.offerId],
-          sourceIds: [feedback.sourceId],
-        });
+        if (HIGH_RISK_FEEDBACK_REASONS.has(payload.reason)) {
+          const feedback = await runOfferFeedbackRiskPrecheck(result.id);
+          clearPublicDataCache();
+          await markPublicApiSnapshotsDirty("public feedback precheck", {
+            productIds: [feedback.productId, feedback.productSlug],
+            offerIds: [feedback.offerId],
+            sourceIds: [feedback.sourceId],
+          });
+        }
       } catch (error) {
         console.warn("Offer feedback background verification failed:", error instanceof Error ? error.message : error);
       }

@@ -2043,6 +2043,7 @@ export function OfferFeedbackDialog({
 
 const feedbackReasonOptions = [
   { value: "wrong_price", label: "价格不准" },
+  { value: "description_mismatch", label: "商品描述/实际不符" },
   { value: "item_removed", label: "商品已下架" },
   { value: "stock_mismatch", label: "库存状态不准" },
   { value: "wrong_category", label: "分类错误" },

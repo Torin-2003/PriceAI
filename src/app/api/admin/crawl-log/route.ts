@@ -385,40 +385,189 @@ async function markFeedbackRecollectionCovered(
     now: string;
   },
 ): Promise<void> {
-  const message = `来源「${input.sourceName}」已完成重采，最近确认时间 ${input.collectedAt}；请按最新报价状态复核该反馈。`;
   const { data: feedbackRows, error: readError } = await supabase
     .from("offer_feedback")
-    .select("id,ai_review_result")
+    .select("id,reason,offer_id,source_title,offer_price,offer_status,ai_review_result")
     .in("created_collection_job_id", input.jobIds);
   if (readError && !isMissingFeedbackVerificationColumnError(readError)) throw readError;
 
   const rows = feedbackRows || [];
+  const offerIds = rows
+    .map((row) => String((row as Record<string, unknown>).offer_id || ""))
+    .filter(Boolean);
+  const offerById = new Map<string, Record<string, unknown>>();
+  if (offerIds.length) {
+    const { data: offerRows, error: offerReadError } = await supabase
+      .from("raw_offers")
+      .select("id,source_title,price,status,hidden,effective_status")
+      .in("id", offerIds);
+    if (offerReadError) throw offerReadError;
+    for (const offer of offerRows || []) {
+      offerById.set(String((offer as Record<string, unknown>).id), offer as Record<string, unknown>);
+    }
+  }
+
   for (const row of rows) {
+    const record = row as Record<string, unknown>;
+    const offerId = String(record.offer_id || "");
+    const outcome = feedbackRecollectionOutcome(record, offerId ? offerById.get(offerId) || null : null, input);
+    const currentReview = objectRecord(record.ai_review_result);
     const { error } = await supabase
       .from("offer_feedback")
       .update({
-        verification_status: "manual_review",
-        verification_result: "inconclusive",
-        verification_message: message,
+        status: outcome.feedbackStatus,
+        reviewed_at: outcome.feedbackStatus === "resolved" ? input.now : null,
+        verification_status: outcome.verificationStatus,
+        verification_result: outcome.verificationResult,
+        verification_message: outcome.message,
         verification_checked_at: input.now,
         ai_review_result: {
-          ...objectRecord(row.ai_review_result),
-          verificationStatus: "manual_review",
-          verificationResult: "inconclusive",
-          verificationMessage: message,
+          ...currentReview,
+          verificationStatus: outcome.verificationStatus,
+          verificationResult: outcome.verificationResult,
+          verificationMessage: outcome.message,
           verifiedAt: input.now,
           coveredCollectionJobIds: input.jobIds,
+          recollectionOutcome: outcome.details,
         },
       })
-      .eq("id", row.id);
+      .eq("id", record.id);
     if (error && !isMissingFeedbackVerificationColumnError(error)) throw error;
   }
+}
+
+function feedbackRecollectionOutcome(
+  feedback: Record<string, unknown>,
+  offer: Record<string, unknown> | null,
+  input: {
+    sourceName: string;
+    collectedAt: string;
+    now: string;
+  },
+): {
+  feedbackStatus: "pending" | "resolved";
+  verificationStatus: "auto_fixed" | "manual_review";
+  verificationResult: "offer_changed" | "item_removed" | "out_of_stock" | "inconclusive";
+  message: string;
+  details: Record<string, unknown>;
+} {
+  const reason = String(feedback.reason || "");
+  const baseDetails = {
+    sourceName: input.sourceName,
+    collectedAt: input.collectedAt,
+    reason,
+    offerId: feedback.offer_id || null,
+  };
+
+  if (!offer) {
+    return {
+      feedbackStatus: "pending",
+      verificationStatus: "manual_review",
+      verificationResult: "inconclusive",
+      message: `来源「${input.sourceName}」已完成重采，但没有匹配到反馈报价；请人工复核。`,
+      details: { ...baseDetails, outcome: "missing_offer" },
+    };
+  }
+
+  const currentStatus = String(offer.status || "");
+  const currentEffectiveStatus = String(offer.effective_status || "");
+  const currentHidden = offer.hidden === true;
+  if (currentHidden || currentEffectiveStatus === "unavailable" || currentStatus === "out_of_stock") {
+    const verificationResult = currentStatus === "out_of_stock" ? "out_of_stock" : "item_removed";
+    return {
+      feedbackStatus: "resolved",
+      verificationStatus: "auto_fixed",
+      verificationResult,
+      message: `来源「${input.sourceName}」重采完成后，该报价已不可售，自动标记已处理。`,
+      details: {
+        ...baseDetails,
+        outcome: "offer_unavailable",
+        currentStatus,
+        currentEffectiveStatus,
+        currentHidden,
+      },
+    };
+  }
+
+  const snapshotPrice = numberValue(feedback.offer_price);
+  const currentPrice = numberValue(offer.price);
+  if (reason === "wrong_price" && snapshotPrice !== null && currentPrice !== null && Math.abs(snapshotPrice - currentPrice) >= 0.01) {
+    return {
+      feedbackStatus: "resolved",
+      verificationStatus: "auto_fixed",
+      verificationResult: "offer_changed",
+      message: `来源「${input.sourceName}」重采完成后，报价价格已从 ¥${snapshotPrice} 变为 ¥${currentPrice}，自动标记已处理。`,
+      details: {
+        ...baseDetails,
+        outcome: "price_changed",
+        snapshotPrice,
+        currentPrice,
+      },
+    };
+  }
+
+  const snapshotStatus = String(feedback.offer_status || "");
+  if (reason === "stock_mismatch" && snapshotStatus && currentStatus && snapshotStatus !== currentStatus) {
+    return {
+      feedbackStatus: "resolved",
+      verificationStatus: "auto_fixed",
+      verificationResult: "offer_changed",
+      message: `来源「${input.sourceName}」重采完成后，库存状态已从「${snapshotStatus}」变为「${currentStatus}」，自动标记已处理。`,
+      details: {
+        ...baseDetails,
+        outcome: "status_changed",
+        snapshotStatus,
+        currentStatus,
+      },
+    };
+  }
+
+  const snapshotTitle = String(feedback.source_title || "").trim();
+  const currentTitle = String(offer.source_title || "").trim();
+  if (reason === "description_mismatch" && snapshotTitle && currentTitle && snapshotTitle !== currentTitle) {
+    return {
+      feedbackStatus: "resolved",
+      verificationStatus: "auto_fixed",
+      verificationResult: "offer_changed",
+      message: `来源「${input.sourceName}」重采完成后，商品描述已更新，自动标记已处理。`,
+      details: {
+        ...baseDetails,
+        outcome: "description_changed",
+        snapshotTitle,
+        currentTitle,
+      },
+    };
+  }
+
+  return {
+    feedbackStatus: "pending",
+    verificationStatus: "manual_review",
+    verificationResult: "inconclusive",
+    message: `来源「${input.sourceName}」已完成重采，最近确认时间 ${input.collectedAt}；当前报价仍与反馈快照一致，请人工复核。`,
+    details: {
+      ...baseDetails,
+      outcome: "still_consistent",
+      currentPrice,
+      currentStatus,
+      currentEffectiveStatus,
+      currentHidden,
+    },
+  };
 }
 
 function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? { ...(value as Record<string, unknown>) }
     : {};
+}
+
+function numberValue(value: unknown): number | null {
+  const numeric = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim()
+      ? Number(value)
+      : NaN;
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function compactResult(result: {
