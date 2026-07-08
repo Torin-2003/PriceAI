@@ -33,7 +33,7 @@ import { trackAnalyticsEvent } from "@/lib/analytics";
 import { readSessionCache, writeSessionCache } from "@/lib/client-cache";
 import { useMediaQuery } from "@/lib/client-hooks";
 import { createTimeoutSignal, isGeneratedDatasetStale, newestGeneratedDataset, newestUsableGeneratedDataset } from "@/lib/client-refresh";
-import { MERCHANT_COLLECTOR_FILTERS, merchantCollectorLabel } from "@/lib/merchant-collectors";
+import { MERCHANT_COLLECTOR_FILTERS, merchantCollectorLabel, merchantSourcePlatform } from "@/lib/merchant-collectors";
 import { PRICE_DATA_CACHE_TTL_MS } from "@/lib/public-cache-policy";
 import { PUBLIC_MERCHANT_PAGE_SIZE } from "@/lib/public-merchant-policy";
 import { PUBLIC_OFFER_DEFAULT_LIMIT } from "@/lib/public-offer-query";
@@ -1447,48 +1447,7 @@ function MerchantTable({ merchants }: { merchants: PublicMerchantSummary[] }) {
           </thead>
           <tbody className="divide-y divide-[#edf0f1]">
             {merchants.map((merchant) => (
-              <tr key={merchant.id} className="transition hover:bg-[#f7f9f9]">
-                <td className="max-w-[260px] px-5 py-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <CollectorSourceLogo group={merchant.collectorGroup} size="table" />
-                    <span className="min-w-0">
-                      <span className="block truncate font-semibold text-[#202829]">{merchant.name}</span>
-                      <span className="mt-1 block truncate text-xs text-[#5a6061]">{merchant.host || merchant.sourceName}</span>
-                    </span>
-                  </div>
-                </td>
-                <td className="px-5 py-4 align-middle">
-                  <CollectorBadge merchant={merchant} />
-                </td>
-                <td className="max-w-[210px] px-5 py-4">
-                  <p className="font-semibold text-[#202829]">{merchant.productCount} 个商品</p>
-                  <p className="mt-1 truncate text-xs text-[#5a6061]">{merchant.platforms.slice(0, 3).join(" / ") || "未记录平台"}</p>
-                </td>
-                <td className="px-5 py-4">
-                  <div className="flex flex-wrap gap-1.5">
-                    <CountBadge tone="good">有货 {merchant.inStockCount}</CountBadge>
-                    <CountBadge tone="danger">缺货 {merchant.outOfStockCount}</CountBadge>
-                  </div>
-                </td>
-                <td className="px-5 py-4">
-                  <MetricStack value={merchant.lowestHitCount} label="标准最低" />
-                </td>
-                <td className="px-5 py-4">
-                  <MetricStack value={merchant.warrantyLowestHitCount} label="质保最低" />
-                </td>
-                <td className="px-5 py-4">
-                  <MerchantSignalBadges merchant={merchant} />
-                </td>
-                <td className="px-5 py-4">
-                  <MerchantTimeSummary merchant={merchant} compact />
-                </td>
-                <td className="px-5 py-4 text-[#5a6061]">
-                  <RelativeTime value={merchant.latestSeenAt} />
-                </td>
-                <td className="px-5 py-4 text-center align-middle">
-                  <MerchantSourceLink merchant={merchant} />
-                </td>
-              </tr>
+              <MerchantTableRow key={merchant.id} merchant={merchant} />
             ))}
           </tbody>
         </table>
@@ -1497,7 +1456,74 @@ function MerchantTable({ merchants }: { merchants: PublicMerchantSummary[] }) {
   );
 }
 
+function MerchantTableRow({ merchant }: { merchant: PublicMerchantSummary }) {
+  const sourcePlatform = merchantSourcePlatform({
+    collectorKind: merchant.collectorKind,
+    collectorGroup: merchant.collectorGroup,
+    sourceId: merchant.sourceId,
+    sourceName: merchant.sourceName,
+    url: merchant.entryUrl,
+    entryUrl: merchant.shopUrl || merchant.entryUrl,
+    host: merchant.host,
+  });
+
+  return (
+    <tr className="transition hover:bg-[#f7f9f9]">
+      <td className="max-w-[260px] px-5 py-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <CollectorSourceLogo group={merchant.collectorGroup} platformId={sourcePlatform.id} size="table" />
+          <span className="min-w-0">
+            <span className="block truncate font-semibold text-[#202829]">{merchant.name}</span>
+            <span className="mt-1 block truncate text-xs text-[#5a6061]">{merchant.host || merchant.sourceName}</span>
+          </span>
+        </div>
+      </td>
+      <td className="px-5 py-4 align-middle">
+        <CollectorBadge merchant={merchant} />
+      </td>
+      <td className="max-w-[210px] px-5 py-4">
+        <p className="font-semibold text-[#202829]">{merchant.productCount} 个商品</p>
+        <p className="mt-1 truncate text-xs text-[#5a6061]">{merchant.platforms.slice(0, 3).join(" / ") || "未记录平台"}</p>
+      </td>
+      <td className="px-5 py-4">
+        <div className="flex flex-wrap gap-1.5">
+          <CountBadge tone="good">有货 {merchant.inStockCount}</CountBadge>
+          <CountBadge tone="danger">缺货 {merchant.outOfStockCount}</CountBadge>
+        </div>
+      </td>
+      <td className="px-5 py-4">
+        <MetricStack value={merchant.lowestHitCount} label="标准最低" />
+      </td>
+      <td className="px-5 py-4">
+        <MetricStack value={merchant.warrantyLowestHitCount} label="质保最低" />
+      </td>
+      <td className="px-5 py-4">
+        <MerchantSignalBadges merchant={merchant} />
+      </td>
+      <td className="px-5 py-4">
+        <MerchantTimeSummary merchant={merchant} compact />
+      </td>
+      <td className="px-5 py-4 text-[#5a6061]">
+        <RelativeTime value={merchant.latestSeenAt} />
+      </td>
+      <td className="px-5 py-4 text-center align-middle">
+        <MerchantSourceLink merchant={merchant} />
+      </td>
+    </tr>
+  );
+}
+
 function MerchantCard({ merchant }: { merchant: PublicMerchantSummary }) {
+  const sourcePlatform = merchantSourcePlatform({
+    collectorKind: merchant.collectorKind,
+    collectorGroup: merchant.collectorGroup,
+    sourceId: merchant.sourceId,
+    sourceName: merchant.sourceName,
+    url: merchant.entryUrl,
+    entryUrl: merchant.shopUrl || merchant.entryUrl,
+    host: merchant.host,
+  });
+
   return (
     <article
       data-merchant-card="true"
@@ -1505,7 +1531,7 @@ function MerchantCard({ merchant }: { merchant: PublicMerchantSummary }) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
-          <CollectorSourceLogo group={merchant.collectorGroup} />
+          <CollectorSourceLogo group={merchant.collectorGroup} platformId={sourcePlatform.id} />
           <div className="min-w-0">
             <p className="truncate text-base font-semibold text-[#202829]">{merchant.name}</p>
             <p className="mt-1 truncate text-xs text-[#5a6061]">{merchant.host || merchant.sourceName}</p>
@@ -1544,9 +1570,18 @@ function MerchantCard({ merchant }: { merchant: PublicMerchantSummary }) {
 
 function CollectorBadge({ merchant }: { merchant: PublicMerchantSummary }) {
   const tone = merchant.collectorGroup === "shopApi" ? "info" : merchant.collectorGroup === "other" ? "muted" : "warn";
+  const sourcePlatform = merchantSourcePlatform({
+    collectorKind: merchant.collectorKind,
+    collectorGroup: merchant.collectorGroup,
+    sourceId: merchant.sourceId,
+    sourceName: merchant.sourceName,
+    url: merchant.entryUrl,
+    entryUrl: merchant.shopUrl || merchant.entryUrl,
+    host: merchant.host,
+  });
   return (
     <span className="inline-flex min-w-[5rem] justify-center whitespace-nowrap">
-      <CountBadge tone={tone}>{merchant.collectorLabel}</CountBadge>
+      <CountBadge tone={tone}>{sourcePlatform.label}</CountBadge>
     </span>
   );
 }

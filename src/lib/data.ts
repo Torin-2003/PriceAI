@@ -26,7 +26,7 @@ import {
 } from "./public-api-snapshots";
 import { getFallbackRiskReviewSettingsSummary, getRiskReviewSettingsSummary } from "./risk-review-settings";
 import { getFallbackSponsorSettingsSummary, getSponsorSettingsSummary } from "./sponsor-settings";
-import { merchantCollectorGroup, merchantCollectorLabel, parseMerchantCollectorFilter } from "./merchant-collectors";
+import { merchantCollectorGroup, merchantCollectorLabel, merchantSourcePlatform, parseMerchantCollectorFilter } from "./merchant-collectors";
 import {
   normalizePublicOfferLimit,
   normalizePublicOfferOffset,
@@ -3501,6 +3501,15 @@ function filterAndSortPublicMerchants(
   return merchants
     .filter((merchant) => {
       const representativePrice = merchant.representativePrice ?? null;
+      const sourcePlatform = merchantSourcePlatform({
+        collectorKind: merchant.collectorKind,
+        collectorGroup: merchant.collectorGroup,
+        sourceId: merchant.sourceId,
+        sourceName: merchant.sourceName,
+        url: merchant.entryUrl,
+        entryUrl: merchant.shopUrl || merchant.entryUrl,
+        host: merchant.host,
+      });
       const haystack = [
         merchant.name,
         merchant.sourceName,
@@ -3508,6 +3517,8 @@ function filterAndSortPublicMerchants(
         merchant.entryUrl,
         merchant.shopUrl || "",
         merchant.collectorLabel,
+        sourcePlatform.label,
+        sourcePlatform.shortLabel,
         merchant.representativeProduct || "",
         merchant.representativeOfferTitle || "",
         ...merchant.platforms,
@@ -3964,6 +3975,14 @@ function mapPublicMerchantSummaryRow(row: PublicMerchantRow): PublicMerchantSumm
   const collectorGroup = merchantCollectorGroup(collectorKind);
   const platforms = arrayFromRow(row.platforms);
   const productTypes = arrayFromRow(row.product_types);
+  const host = row.host ? String(row.host) : null;
+  const entryUrl = String(row.entry_url || "");
+  const shopUrl = inferMerchantShopUrl({
+    sourceId: row.source_id ? String(row.source_id) : null,
+    sourceName: row.source_name ? String(row.source_name) : null,
+    entryUrl: row.shop_url ? String(row.shop_url) : row.entry_url ? String(row.entry_url) : null,
+    host,
+  });
 
   return {
     id: String(row.id || stableId("merchant", row.source_id ? String(row.source_id) : String(row.name || ""))),
@@ -3971,14 +3990,9 @@ function mapPublicMerchantSummaryRow(row: PublicMerchantRow): PublicMerchantSumm
     name: String(row.name || row.source_name || "未记录商家"),
     storeName: row.store_name ? String(row.store_name) : null,
     sourceName: String(row.source_name || row.name || "未记录渠道"),
-    entryUrl: String(row.entry_url || ""),
-    shopUrl: inferMerchantShopUrl({
-      sourceId: row.source_id ? String(row.source_id) : null,
-      sourceName: row.source_name ? String(row.source_name) : null,
-      entryUrl: row.shop_url ? String(row.shop_url) : row.entry_url ? String(row.entry_url) : null,
-      host: row.host ? String(row.host) : null,
-    }),
-    host: row.host ? String(row.host) : null,
+    entryUrl,
+    shopUrl,
+    host,
     collectorKind,
     collectorGroup,
     collectorLabel: merchantCollectorLabel(collectorGroup),
@@ -4313,13 +4327,19 @@ function compactPublicOffer(offer: RawOffer): RawOffer {
 function compactPublicMerchant(merchant: PublicMerchantSummary): PublicMerchantSummary {
   return {
     id: merchant.id,
+    sourceId: merchant.sourceId,
     name: merchant.name,
+    storeName: merchant.storeName,
     sourceName: merchant.sourceName,
     entryUrl: merchant.entryUrl,
     shopUrl: merchant.shopUrl,
     host: merchant.host,
+    collectorKind: merchant.collectorKind,
     collectorGroup: merchant.collectorGroup,
     collectorLabel: merchant.collectorLabel,
+    healthStatus: merchant.healthStatus,
+    lastSuccessAt: merchant.lastSuccessAt,
+    consecutiveFailures: merchant.consecutiveFailures,
     productCount: merchant.productCount,
     offerCount: merchant.offerCount,
     inStockCount: merchant.inStockCount,
@@ -4337,6 +4357,7 @@ function compactPublicMerchant(merchant: PublicMerchantSummary): PublicMerchantS
     representativeProduct: merchant.representativeProduct,
     representativeOfferTitle: merchant.representativeOfferTitle,
     representativePrice: merchant.representativePrice,
+    representativeCurrency: merchant.representativeCurrency,
     hasPlatformAftersalesMechanism: merchant.hasPlatformAftersalesMechanism,
   };
 }
@@ -4698,6 +4719,12 @@ function inferMerchantShopUrl({
   if (explicit) return explicit;
 
   const parsedHost = offerHost(entryUrl) || host;
+  if (parsedHost === "catfk.com") {
+    const idMatch = String(sourceId || "").match(/^catfk-([^/]+)$/i);
+    const nameMatch = String(sourceName || "").match(/云猫寄售\s*\/\s*([^/\s]+)/i);
+    const token = (idMatch?.[1] || nameMatch?.[1] || "").trim();
+    return token ? `https://catfk.com/shop/${encodeURIComponent(token)}` : null;
+  }
   if (parsedHost !== "pay.ldxp.cn" && parsedHost !== "ldxp.cn") return null;
 
   const idMatch = String(sourceId || "").match(/^ldxp-([^/]+)$/i);

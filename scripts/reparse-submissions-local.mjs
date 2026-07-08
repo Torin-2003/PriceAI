@@ -44,7 +44,7 @@ for (const submission of submissions || []) {
     }
 
     const host = normalizeHostname(parsedUrl.hostname);
-    if (host !== "pay.ldxp.cn" && host !== "pay.qxvx.cn") {
+    if (!["catfk.com", "pay.ldxp.cn", "pay.qxvx.cn"].includes(host)) {
       skipped++;
       continue;
     }
@@ -141,14 +141,17 @@ async function fetchShopGoods(baseUrl, itemUrl, goodsKey) {
 function inferSourceName(host, title, token, nickname) {
   if (host === "pay.ldxp.cn" && nickname) return `LDXP / ${nickname}`;
   if (host === "pay.qxvx.cn" && nickname) return `QXVX / ${nickname}`;
+  if (host === "catfk.com" && nickname) return nickname;
   if (host === "pay.ldxp.cn" && token) return `LDXP / ${token}`;
   if (host === "pay.qxvx.cn" && token) return `QXVX / ${token}`;
+  if (host === "catfk.com" && token) return `云猫寄售 / ${token}`;
   return title || host;
 }
 
 function inferSourceId(host, sourceName, token) {
   if (host === "pay.ldxp.cn") return `ldxp-${slugify(token || sourceName) || stableHostId(host)}`;
   if (host === "pay.qxvx.cn") return `qxvx-${slugify(token || sourceName) || stableHostId(host)}`;
+  if (host === "catfk.com") return `catfk-${slugify(token || sourceName) || stableHostId(host)}`;
   return slugify(sourceName) || stableHostId(host);
 }
 

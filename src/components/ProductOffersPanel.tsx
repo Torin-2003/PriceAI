@@ -13,6 +13,7 @@ import {
   MERCHANT_COLLECTOR_FILTERS,
   merchantCollectorGroup,
   merchantCollectorLabel,
+  merchantSourcePlatform,
   parseMerchantCollectorFilter,
 } from "@/lib/merchant-collectors";
 import {
@@ -1038,6 +1039,14 @@ function OfferTable({
             {offers.map((offer, index) => {
               const available = isOfferAvailable(offer);
               const sharedAccess = isSharedAccessOffer(offer);
+              const collectorGroup = merchantCollectorGroup(offer.collectorKind);
+              const sourcePlatform = merchantSourcePlatform({
+                collectorKind: offer.collectorKind,
+                sourceId: offer.sourceId,
+                sourceName: offer.sourceName,
+                sourceStoreName: offer.sourceStoreName,
+                url: offer.url,
+              });
 
               return (
                 <tr
@@ -1049,7 +1058,7 @@ function OfferTable({
                   </td>
                   <td className="px-4 py-4">
                     <span className="flex min-w-0 items-center gap-2">
-                      <CollectorSourceLogo group={merchantCollectorGroup(offer.collectorKind)} size="compact" />
+                      <CollectorSourceLogo group={collectorGroup} platformId={sourcePlatform.id} size="compact" />
                       <span className="min-w-0 max-w-full">
                         <span className="block truncate font-semibold text-[#202829]">
                           {sourceLabel(offer)}
@@ -1103,6 +1112,14 @@ function OfferListItem({
   const available = isOfferAvailable(offer);
   const sharedAccess = isSharedAccessOffer(offer);
   const hasRisk = Boolean(offer.riskFeedback?.count);
+  const collectorGroup = merchantCollectorGroup(offer.collectorKind);
+  const sourcePlatform = merchantSourcePlatform({
+    collectorKind: offer.collectorKind,
+    sourceId: offer.sourceId,
+    sourceName: offer.sourceName,
+    sourceStoreName: offer.sourceStoreName,
+    url: offer.url,
+  });
 
   return (
     <article
@@ -1112,7 +1129,7 @@ function OfferListItem({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-2">
-          <CollectorSourceLogo group={merchantCollectorGroup(offer.collectorKind)} size="compact" />
+          <CollectorSourceLogo group={collectorGroup} platformId={sourcePlatform.id} size="compact" />
           <div className="min-w-0">
             <p className="truncate font-semibold text-[#202829]">{sourceLabel(offer)}</p>
             <OfferSourceTitle title={offer.sourceTitle} mode="card" sharedAccess={sharedAccess} />
@@ -1378,12 +1395,25 @@ function riskFeedbackReasonLabel(reason: "aftersales_shipping" | "bad_source" | 
 function OfferExitNoticeDialog({ offer, onClose }: { offer: RawOffer; onClose: () => void }) {
   const [muteToday, setMuteToday] = useState(false);
   const titleId = "offer-exit-notice-title";
-  const shopApi = isShopApiOffer(offer);
+  const sourcePlatform = merchantSourcePlatform({
+    collectorKind: offer.collectorKind,
+    sourceId: offer.sourceId,
+    sourceName: offer.sourceName,
+    sourceStoreName: offer.sourceStoreName,
+    url: offer.url,
+  });
+  const hostedShopPlatform = sourcePlatform.hasPlatformAftersalesMechanism || isShopApiOffer(offer);
+  const hostedShopLabel = sourcePlatform.hasPlatformAftersalesMechanism
+    ? sourcePlatform.label
+    : "托管发卡平台";
+  const hostedShopExitLabel = sourcePlatform.hasPlatformAftersalesMechanism
+    ? sourcePlatform.exitLabel
+    : "托管发卡平台";
   const highRisk = isHighRiskOutboundOffer(offer);
   const highPrice = typeof offer.price === "number" && offer.price >= OFFER_HIGH_RISK_PRICE_THRESHOLD;
   const risks = getOfferRiskHints(offer);
-  const primaryCopy = shopApi
-    ? "我已确认细节，前往链动小铺"
+  const primaryCopy = hostedShopPlatform
+    ? `我已确认细节，前往${hostedShopExitLabel}`
     : "我会先联系商家，继续前往";
 
   useEffect(() => {
@@ -1443,13 +1473,13 @@ function OfferExitNoticeDialog({ offer, onClose }: { offer: RawOffer; onClose: (
           <p>
             PriceAI 只聚合公开报价，不售卖、不担保商品。分类和价格来自标题、标签和采集结果，最终商品细节、交付内容、售后规则仍以原店铺为准。
           </p>
-          {shopApi ? (
+          {hostedShopPlatform ? (
             <p className="rounded-lg bg-[#eef8f1] px-3 py-2 text-[#2f7a4b]">
-              该渠道识别为链动小铺来源。购买前仍建议确认套餐、有效期、质保和自动发货规则；如订单售后有问题，可优先在链动小铺订单或投诉售后入口处理。
+              该渠道识别为{hostedShopLabel}来源。购买前仍建议确认套餐、有效期、质保和自动发货规则；如订单售后有问题，可优先在{hostedShopLabel}订单或投诉售后入口处理。
             </p>
           ) : (
             <p className="rounded-lg bg-[#fff7e8] px-3 py-2 text-[#7a541b]">
-              该渠道不属于链动小铺采集来源。请先联系商家，确认店铺可信度、发货方式、售后路径和退款边界，再决定是否购买，不建议直接付款。
+              该渠道不属于托管发卡平台来源。请先联系商家，确认店铺可信度、发货方式、售后路径和退款边界，再决定是否购买，不建议直接付款。
             </p>
           )}
           {highPrice ? (

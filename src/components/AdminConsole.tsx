@@ -50,6 +50,7 @@ import {
   isCollectorKind,
   knownAutoCollectorHosts as createKnownAutoCollectorHosts,
 } from "@/lib/collector-registry";
+import { merchantSourcePlatform } from "@/lib/merchant-collectors";
 import { sponsorAssetDisplayUrl } from "@/lib/sponsor-asset-url";
 import {
   SPONSOR_DISCLOSURE_LABEL_MAX_LENGTH,
@@ -3643,6 +3644,14 @@ function SubmissionCard({
   const hasValidSourceUrl = Boolean(canonicalSourceUrl || submittedUrlType !== "product");
   const sameChannelPending = Boolean(sameChannelPendingName || sameChannelPendingId);
   const canApprove = hasValidSourceUrl && Boolean(existingSource || hasSuccessfulProbe || hasKnownCollector);
+  const sourcePlatform = merchantSourcePlatform({
+    collectorKind: suggestedCollector,
+    sourceId: suggestedSourceId,
+    sourceName: suggestedName || submission.name || submission.parsedTitle,
+    url: submission.url,
+    entryUrl: canonicalSourceUrl || submission.url,
+    host: domain,
+  });
 
   const [mode, setMode] = useState<"idle" | "approve" | "todo" | "reject">("idle");
   const [name, setName] = useState(submission.name || suggestedName || submission.parsedTitle || "");
@@ -3735,6 +3744,7 @@ function SubmissionCard({
               {submittedUrlType === "product" && <Badge tone="info">商品链接</Badge>}
               {canonicalSourceStatus === "resolved" && <Badge tone="info">已反查渠道</Badge>}
               {canonicalSourceStatus === "unresolved" && <Badge tone="warn">未反查渠道</Badge>}
+              {sourcePlatform.hasPlatformAftersalesMechanism && <Badge tone="info">{sourcePlatform.label}</Badge>}
               {platform && <Badge>{platform}</Badge>}
               {productType && <Badge>{productType}</Badge>}
               {existingSource && <Badge tone="info">已有源: {existingSource.name}</Badge>}
@@ -3814,6 +3824,9 @@ function SubmissionCard({
           <div className="mt-3 grid gap-2 rounded-lg bg-[#f2f4f4] p-3 text-xs text-[#5a6061] sm:grid-cols-2">
             <p><span className="font-medium text-[#2d3435]">建议渠道名：</span>{suggestedName || submission.name || domain || "未识别"}</p>
             <p><span className="font-medium text-[#2d3435]">建议来源 ID：</span>{suggestedSourceId || "自动生成"}</p>
+            {sourcePlatform.hasPlatformAftersalesMechanism && (
+              <p><span className="font-medium text-[#2d3435]">托管平台：</span>{sourcePlatform.label}</p>
+            )}
             <p><span className="font-medium text-[#2d3435]">建议采集方式：</span>{collectionMethodLabel(suggestedMethod || "browser")}</p>
             <p><span className="font-medium text-[#2d3435]">建议解析器：</span>{collectorKindLabel(suggestedCollector || "auto")}</p>
             <p><span className="font-medium text-[#2d3435]">初步判断：</span>{supportReason || "已完成基础链接解析。"}</p>

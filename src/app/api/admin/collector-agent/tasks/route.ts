@@ -9,6 +9,9 @@ const DEFAULT_COOLDOWN_MINUTES = 25;
 const FAMILY_HOSTS: Record<string, string[]> = {
   "liandong-shop": ["pay.ldxp.cn", "ldxp.cn"],
   ldxp: ["pay.ldxp.cn", "ldxp.cn"],
+  "yunmao-consignment": ["catfk.com"],
+  yunmao: ["catfk.com"],
+  catfk: ["catfk.com"],
 };
 const ALL_SHOPAPI_FAMILIES = new Set(["all", "*", "shopapi", "shop-api"]);
 

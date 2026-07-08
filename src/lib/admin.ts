@@ -137,6 +137,19 @@ type ShopGoodsLookupResult = {
   error?: string | null;
 };
 
+type ShopInfoLookupResult = {
+  checkedAt: string;
+  token: string;
+  httpStatus?: number;
+  apiCode?: number | string | null;
+  apiMessage?: string | null;
+  sourceUrl?: string | null;
+  sourceName?: string | null;
+  status?: string | null;
+  shopCreatedAt?: string | null;
+  error?: string | null;
+};
+
 type SubmissionParseContext = {
   submissionId?: string | null;
   submittedName?: string | null;
@@ -1717,7 +1730,31 @@ async function resolveSubmittedSource(
   if (knownSourceMeta) return knownSourceMeta;
 
   const goodsKey = getSubmittedGoodsKey(parsed);
-  if ((host !== "pay.ldxp.cn" && host !== "pay.qxvx.cn") || !goodsKey || getShopToken(parsed.pathname)) {
+  const shopToken = getShopToken(parsed.pathname);
+  if (shopToken && isSharedShopApiPlatformHost(host)) {
+    const baseUrl = `${parsed.protocol}//${parsed.host}`;
+    const shopUrl = `${baseUrl}/shop/${encodeURIComponent(shopToken)}`;
+    const shopInfo = await fetchShopInfoFromToken(baseUrl, shopUrl, shopToken);
+    const shopMeta = shopInfo ? shopInfoLookupMeta(shopInfo) : {};
+    const suggestedName = shopInfo?.sourceName || inferSubmittedSourceName(host, parsedTitle, shopToken);
+    return {
+      ...baseMeta,
+      ...shopMeta,
+      submitted_url_type: "source",
+      canonical_source_url: shopInfo?.sourceUrl || shopUrl,
+      shop_token: shopToken,
+      suggested_source_name: suggestedName,
+      suggested_source_id: inferSubmittedSourceId(host, suggestedName, shopToken),
+      ...(shopInfo?.sourceName
+        ? {
+            canonical_source_status: "resolved",
+            canonical_source_reason: "已从店铺接口识别到店铺名，审核通过时会按该渠道入口入库。",
+          }
+        : {}),
+    };
+  }
+
+  if (!isSharedShopApiPlatformHost(host) || !goodsKey || shopToken) {
     return baseMeta;
   }
 
@@ -2059,6 +2096,7 @@ function inferSubmittedSourceName(host: string, parsedTitle: string | null, shop
   if (host === "ai666.dnxb.cc") return "T佬的gmail批发渠道";
   if (host === "pay.ldxp.cn" && shopToken) return `LDXP / ${shopToken}`;
   if (host === "pay.qxvx.cn" && shopToken) return `QXVX / ${shopToken}`;
+  if (host === "catfk.com" && shopToken) return `云猫寄售 / ${shopToken}`;
   if (host === "kapay.shop") return "Auto Subscribe / kapay.shop";
   if (host === "shop.auto-subscribe.com") return "Auto Subscribe";
   if (host === "zhang520.store") return "zhang520.store";
@@ -2086,6 +2124,7 @@ function inferSubmittedSourceId(host: string, sourceName: string, shopToken: str
   if (host === "ai666.dnxb.cc") return "ai666-gmail-wholesale";
   if (host === "pay.ldxp.cn") return `ldxp-${slugify(shopToken || sourceName) || stableId(host, sourceName)}`;
   if (host === "pay.qxvx.cn") return `qxvx-${slugify(shopToken || sourceName) || stableId(host, sourceName)}`;
+  if (host === "catfk.com") return `catfk-${slugify(shopToken || sourceName) || stableId(host, sourceName)}`;
   if (host === "shop.auto-subscribe.com") return "auto-subscribe";
   if (host === "zhang520.store") return "zhang520-store";
   if (host === "shopcardai.click") return "购物-dn发卡网";
@@ -2126,6 +2165,74 @@ function getShopTokenFromHtml(html: string | null): string | null {
   const tokenMatch = html.match(/["']token["']\s*:\s*["']([^"']+)["']/i);
   if (tokenMatch?.[1]) return tokenMatch[1];
   return null;
+}
+
+async function fetchShopInfoFromToken(baseUrl: string, shopUrl: string, token: string): Promise<ShopInfoLookupResult | null> {
+  if (!token) return null;
+
+  let lastResult: ShopInfoLookupResult | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const checkedAt = new Date().toISOString();
+    try {
+      const response = await fetch(`${baseUrl}/shopApi/Shop/info`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/plain, */*",
+          "user-agent": attempt === 0
+            ? "AIPriceHubBot/1.0 (+https://priceai.cc)"
+            : "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+          origin: baseUrl,
+          referer: shopUrl,
+          visitorid: `review${Math.random().toString(36).slice(2, 10)}`,
+        },
+        body: JSON.stringify({ token, category_key: "" }),
+        signal: AbortSignal.timeout(SHOP_API_TIMEOUT_MS),
+      });
+      const payload = await response.json().catch(() => null);
+      lastResult = getShopInfoLookupResult(payload, {
+        baseUrl,
+        checkedAt,
+        httpStatus: response.status,
+        token,
+      });
+      if (lastResult.sourceName) return lastResult;
+    } catch (error) {
+      lastResult = {
+        checkedAt,
+        token,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+  return lastResult;
+}
+
+function getShopInfoLookupResult(
+  payload: unknown,
+  context: { baseUrl: string; checkedAt: string; httpStatus?: number; token: string },
+): ShopInfoLookupResult {
+  const result: ShopInfoLookupResult = {
+    checkedAt: context.checkedAt,
+    token: context.token,
+    httpStatus: context.httpStatus,
+  };
+  if (!payload || typeof payload !== "object") {
+    return { ...result, error: "店铺接口未返回 JSON。" };
+  }
+
+  const record = payload as Record<string, unknown>;
+  result.apiCode = stringValue(record.code) || numberValue(record.code);
+  result.apiMessage = stringValue(record.msg) || stringValue(record.message);
+
+  const data = record.data;
+  if (!data || typeof data !== "object" || Array.isArray(data)) return result;
+  const dataRecord = data as Record<string, unknown>;
+  result.sourceName = stringValue(dataRecord.nickname);
+  result.sourceUrl = stringValue(dataRecord.link) || `${context.baseUrl}/shop/${encodeURIComponent(context.token)}`;
+  result.status = stringValue(dataRecord.status) || (numberValue(dataRecord.status) !== null ? String(numberValue(dataRecord.status)) : null);
+  result.shopCreatedAt = timestampFromShopApiValue(dataRecord.create_time);
+  return result;
 }
 
 async function fetchShopGoodsFromGoods(baseUrl: string, itemUrl: string, goodsKey: string): Promise<ShopGoodsLookupResult | null> {
@@ -2222,6 +2329,22 @@ function shopTokenFromUserLink(value: unknown): string | null {
   return parsed ? getShopToken(parsed.pathname) : null;
 }
 
+function shopInfoLookupMeta(lookup: ShopInfoLookupResult): Record<string, unknown> {
+  const meta: Record<string, unknown> = {
+    shop_api_shop_checked_at: lookup.checkedAt,
+    shop_api_shop_token: lookup.token,
+  };
+  if (typeof lookup.httpStatus === "number") meta.shop_api_shop_http_status = lookup.httpStatus;
+  if (lookup.apiCode !== undefined && lookup.apiCode !== null) meta.shop_api_shop_code = lookup.apiCode;
+  if (lookup.apiMessage) meta.shop_api_shop_message = lookup.apiMessage;
+  if (lookup.error) meta.shop_api_shop_error = lookup.error;
+  if (lookup.sourceName) meta.shop_api_shop_name = lookup.sourceName;
+  if (lookup.sourceUrl) meta.shop_api_shop_url = lookup.sourceUrl;
+  if (lookup.shopCreatedAt) meta.shop_api_shop_created_at = lookup.shopCreatedAt;
+  if (lookup.status) meta.shop_api_shop_status = lookup.status;
+  return meta;
+}
+
 function shopGoodsLookupMeta(lookup: ShopGoodsLookupResult): Record<string, unknown> {
   const meta: Record<string, unknown> = {
     shop_api_checked_at: lookup.checkedAt,
@@ -2258,6 +2381,15 @@ function shopGoodsStatusLabel(value: string): string {
   if (value === "1" || value.toLowerCase() === "available") return "上架";
   if (value === "0" || value.toLowerCase() === "unavailable") return "未上架";
   return value;
+}
+
+function timestampFromShopApiValue(value: unknown): string | null {
+  const numeric = numberValue(value);
+  if (numeric === null) return null;
+
+  const ms = numeric > 1e12 ? numeric : numeric * 1000;
+  const date = new Date(ms);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 function summarizeHtmlText(value: string | null): string | null {

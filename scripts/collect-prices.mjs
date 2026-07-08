@@ -3423,6 +3423,7 @@ function sourceNameFromUrl(value) {
     if (url.hostname === "ai666.dnxb.cc") return "T佬的gmail批发渠道";
     if (token && url.hostname === "pay.ldxp.cn") return `LDXP / ${token}`;
     if (token && url.hostname === "pay.qxvx.cn") return `QXVX / ${token}`;
+    if (token && url.hostname === "catfk.com") return `云猫寄售 / ${token}`;
     return url.hostname.replace(/^www\./, "");
   } catch {
     return "Submitted Source";
