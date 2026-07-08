@@ -46,11 +46,19 @@ export function merchantCollectorLabel(group: MerchantCollectorFilter): string {
   if (group === "all") return "全部来源";
   if (group === "liandongShop") return "链动小铺";
   if (group === "yunmaoConsignment") return "云猫寄售";
-  if (group === "qxvx") return "QXVX";
+  if (group === "qxvx") return "QXVX Pay";
   if (group === "shopApi") return "ShopApi";
   if (group === "dujiao") return "独角数卡";
   if (group === "kami") return "异次元";
   return "自研";
+}
+
+export function merchantSourceDisplayName(value: string | null | undefined): string | null {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  if (/^QXVX(?=\s*(?:\/|$))/i.test(text)) return text.replace(/^QXVX/i, "QXVX Pay");
+  if (/^LDXP(?=\s*(?:\/|$))/i.test(text)) return text.replace(/^LDXP/i, "链动小铺");
+  return text;
 }
 
 export function merchantSourcePlatform(input: {
@@ -77,9 +85,9 @@ export function merchantSourcePlatform(input: {
   if (host === "pay.qxvx.cn") {
     return {
       id: "qxvx",
-      label: "QXVX",
-      shortLabel: "QXVX",
-      exitLabel: "QXVX",
+      label: "QXVX Pay",
+      shortLabel: "QXVX Pay",
+      exitLabel: "QXVX Pay",
       hasPlatformAftersalesMechanism: true,
     };
   }
@@ -112,9 +120,9 @@ export function merchantSourcePlatform(input: {
   if (/pay\.qxvx\.cn|qxvx/.test(text)) {
     return {
       id: "qxvx",
-      label: "QXVX",
-      shortLabel: "QXVX",
-      exitLabel: "QXVX",
+      label: "QXVX Pay",
+      shortLabel: "QXVX Pay",
+      exitLabel: "QXVX Pay",
       hasPlatformAftersalesMechanism: true,
     };
   }

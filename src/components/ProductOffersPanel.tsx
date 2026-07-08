@@ -14,6 +14,7 @@ import {
   merchantCollectorFilterLogo,
   merchantCollectorGroup,
   merchantCollectorLabel,
+  merchantSourceDisplayName,
   merchantSourcePlatform,
   parseMerchantCollectorFilter,
 } from "@/lib/merchant-collectors";
@@ -1480,7 +1481,7 @@ function OfferExitNoticeDialog({ offer, onClose }: { offer: RawOffer; onClose: (
             </p>
           ) : (
             <p className="rounded-lg bg-[#fff7e8] px-3 py-2 text-[#7a541b]">
-              该渠道暂未识别为链动小铺、云猫寄售或 QXVX 这类平台来源。请先联系商家，确认店铺可信度、发货方式、售后路径和退款边界，再决定是否购买，不建议直接付款。
+              该渠道暂未识别为链动小铺、云猫寄售或 QXVX Pay 这类平台来源。请先联系商家，确认店铺可信度、发货方式、售后路径和退款边界，再决定是否购买，不建议直接付款。
             </p>
           )}
           {highPrice ? (
@@ -2119,10 +2120,11 @@ function offerTimestamp(offer: RawOffer): string | null | undefined {
 }
 
 function sourceLabel(offer: RawOffer): string {
-  return offer.sourceStoreName || offer.sourceName || "未记录渠道";
+  return merchantSourceDisplayName(offer.sourceStoreName) || merchantSourceDisplayName(offer.sourceName) || "未记录渠道";
 }
 
 function sourceSecondaryLabel(offer: RawOffer): string | null {
-  if (!offer.sourceName || offer.sourceName === sourceLabel(offer)) return null;
-  return offer.sourceName;
+  const sourceName = merchantSourceDisplayName(offer.sourceName);
+  if (!sourceName || sourceName === sourceLabel(offer)) return null;
+  return sourceName;
 }

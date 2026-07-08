@@ -2094,14 +2094,14 @@ function inferCollectorKindFromSubmissionFingerprint(parsed: URL, html: string):
 
 function inferSubmittedSourceName(host: string, parsedTitle: string | null, shopToken: string | null): string {
   if (host === "ai666.dnxb.cc") return "T佬的gmail批发渠道";
-  if (host === "pay.ldxp.cn" && shopToken) return `LDXP / ${shopToken}`;
-  if (host === "pay.qxvx.cn" && shopToken) return `QXVX / ${shopToken}`;
+  if (host === "pay.ldxp.cn" && shopToken) return `链动小铺 / ${shopToken}`;
+  if (host === "pay.qxvx.cn" && shopToken) return `QXVX Pay / ${shopToken}`;
   if (host === "catfk.com" && shopToken) return `云猫寄售 / ${shopToken}`;
   if (host === "kapay.shop") return "Auto Subscribe / kapay.shop";
   if (host === "shop.auto-subscribe.com") return "Auto Subscribe";
   if (host === "zhang520.store") return "zhang520.store";
   if (host === "shopcardai.click") return "购物 - DN发卡网";
-  if (host === "ldxp.cn" && shopToken) return `LDXP / ${shopToken}`;
+  if (host === "ldxp.cn" && shopToken) return `链动小铺 / ${shopToken}`;
   if (host === "ldxp.cn") return "ldxp.cn";
   if (host === "ikunlove.best") return "AI 商品站";
   if (host === "getgpt.pro") return parsedTitle || "ChatGPT Plus 充值服务|GPT Pro官方充值|GPT5代充|Codex充值";

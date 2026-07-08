@@ -49,5 +49,7 @@ These assets are cached locally for stable rendering and performance. They are s
 | `new-api.png` | `https://github.com/QuantumNous/new-api/blob/main/web/default/public/logo.png` | Cached from the QuantumNous/new-api public repository for New API based transit stations. |
 | `sub2api.png` | `https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/frontend/public/logo.png` | Cached from the Wei-Shaw/sub2api public repository for Sub2API based transit stations. |
 | `collector-ldxp.png` | `https://pay.ldxp.cn/favicon.ico` | Converted from the public favicon exposed by LinkShop/链动小铺 storefront pages. |
+| `collector-yunmao.png` | `https://catfk.com/upload/b3/8b6e02e98dc2a32cd2905c4287c84d.png` | Cropped from the official 云猫寄售 public logo exposed by `https://catfk.com/` for compact merchant rows. |
+| `collector-qxvx.png` | `https://pay.qxvx.cn/upload/dd/c5d5a62f06993a778e20908e1c96f9.png` | Cropped from the official QXVX Pay public logo exposed by `https://pay.qxvx.cn/` for compact merchant rows. |
 | `collector-dujiao.png` | `https://shop.mfttai.com/dj.svg` | Cached from a public Dujiaoka/独角数卡 storefront using the shared `dj.svg` unicorn asset, then resized to PNG for compact merchant rows. |
 | `collector-kami.png` | `https://fk.10886.xyz/favicon.ico` | Converted from a public Kami storefront favicon that matches the default Kami face mark. |

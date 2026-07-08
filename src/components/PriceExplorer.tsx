@@ -36,6 +36,7 @@ import { createTimeoutSignal, isGeneratedDatasetStale, newestGeneratedDataset, n
 import {
   MERCHANT_COLLECTOR_FILTERS,
   merchantCollectorLabel,
+  merchantSourceDisplayName,
   merchantSourcePlatform,
   parseMerchantCollectorFilter,
 } from "@/lib/merchant-collectors";
@@ -1224,7 +1225,7 @@ function ProductTable({
                   <td className="px-5 py-4 text-[#2d3435]">{product.offerCount}</td>
                   <td className="max-w-[190px] px-5 py-4">
                     <span className="block truncate font-medium text-[#202829]">
-                      {previewOffer?.sourceStoreName || previewOffer?.sourceName || "未记录"}
+                      {previewOffer ? sourceLabel(previewOffer) : "未记录"}
                     </span>
                     <span className="mt-1 block truncate text-xs text-[#5a6061]">
                       {previewOffer?.sourceTitle || "暂无原始商品名"}
@@ -1935,7 +1936,7 @@ function MobileProductCard({
             {formatCurrency(product.lowestPrice, previewOffer?.currency)}
           </p>
           <p className="mt-1 truncate text-xs text-[#5a6061]">
-            {previewOffer?.sourceStoreName || previewOffer?.sourceName || "暂无最低渠道"} · <RelativeTime value={product.latestSeenAt} />
+            {previewOffer ? sourceLabel(previewOffer) : "暂无最低渠道"} · <RelativeTime value={product.latestSeenAt} />
           </p>
           <WarrantyLowestPrice
             product={product}
@@ -2516,13 +2517,14 @@ function offerTimestamp(offer: RawOffer): string | null | undefined {
   return offer.verifiedAt || offer.lastSeenAt || offer.capturedAt || offer.sourceUpdatedAt;
 }
 
-function sourceLabel(offer: RawOffer): string {
-  return offer.sourceStoreName || offer.sourceName || "未记录渠道";
+function sourceLabel(offer: Pick<RawOffer, "sourceName" | "sourceStoreName">): string {
+  return merchantSourceDisplayName(offer.sourceStoreName) || merchantSourceDisplayName(offer.sourceName) || "未记录渠道";
 }
 
-function sourceSecondaryLabel(offer: RawOffer): string | null {
-  if (!offer.sourceName || offer.sourceName === sourceLabel(offer)) return null;
-  return offer.sourceName;
+function sourceSecondaryLabel(offer: Pick<RawOffer, "sourceName" | "sourceStoreName">): string | null {
+  const sourceName = merchantSourceDisplayName(offer.sourceName);
+  if (!sourceName || sourceName === sourceLabel(offer)) return null;
+  return sourceName;
 }
 
 function trackProductDetailOpen(product: Pick<CanonicalProduct, "id" | "platform" | "productType">) {
