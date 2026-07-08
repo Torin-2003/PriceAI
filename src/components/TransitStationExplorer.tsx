@@ -66,6 +66,7 @@ import {
   type TransitSortKey,
 } from "@/lib/api-transit";
 import {
+  TRANSIT_CACHE_HIT_RATE_EXPLANATION,
   TRANSIT_COMBINED_RATE_EXPLANATION,
   TRANSIT_RATE_BREAKDOWN_EXPLANATION,
 } from "@/lib/api-transit-copy";
@@ -526,8 +527,13 @@ function PriceBreakdownCell({
         </div>
       </div>
       <div className="flex items-center gap-1.5 text-[11px] font-semibold">
-        <span className="shrink-0 text-[10px] font-extrabold text-[#7f8889]">缓存命中率</span>
-        <span className={`rounded-full px-2 py-0.5 tabular-nums ${getCacheHitRateBadgeClass(cacheUsage)}`}>
+        <span className="shrink-0 text-[10px] font-extrabold text-[#7f8889]" title={TRANSIT_CACHE_HIT_RATE_EXPLANATION}>
+          缓存命中率
+        </span>
+        <span
+          className={`rounded-full px-2 py-0.5 tabular-nums ${getCacheHitRateBadgeClass(cacheUsage)}`}
+          title={TRANSIT_CACHE_HIT_RATE_EXPLANATION}
+        >
           {formatCacheHitRate(cacheUsage)}
         </span>
       </div>

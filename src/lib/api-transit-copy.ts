@@ -4,6 +4,9 @@ export const TRANSIT_COMBINED_RATE_EXPLANATION =
 export const TRANSIT_RATE_BREAKDOWN_EXPLANATION =
   "这里拆开展示综合倍率的来源。多数中转站的站内额度默认按美元记账，充值倍率表示人民币充值后折成 1 美元站内额度的成本：1:1 记为 1.00x，1:10 记为 0.10x，也就是大约 0.10 元买到 1 美元额度。模型倍率表示该模型分组相对官方价格的扣费倍数。两者相乘后得到左侧综合倍率。例：充值倍率 0.10x × 模型倍率 1.50x = 综合倍率 0.15x。";
 
+export const TRANSIT_CACHE_HIT_RATE_EXPLANATION =
+  "这里按 PriceAI 当前较保守的分组口径统计：cache 读取 / (普通输入 + cache 写入 + cache 读取)，会把 cache 写入也计入分母。Sub2API 用户侧常见口径通常是 cache 读取 / (普通输入 + cache 读取)，所以 Claude 分组 cache 写入较多时，PriceAI 显示的 85%–88% 可能对应用户侧约 97% 的读缓存命中。该值用于提示缓存覆盖和成本变化，不计入默认综合倍率。";
+
 export const TRANSIT_RECHARGE_COEFFICIENT_EXPLANATION =
   "充值倍率只描述人民币与站内额度的换算关系，不代表某个模型本身便宜或贵。站内额度通常按美元计费：1:1 记为 1.00x，1:10 记为 0.10x，表示约 0.10 元换到站内 1 美元额度；最终价格还要再乘以模型倍率。";
 

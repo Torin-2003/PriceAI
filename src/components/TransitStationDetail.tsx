@@ -77,6 +77,7 @@ import {
   isTransitStationOutboundAff,
 } from "@/lib/api-transit";
 import {
+  TRANSIT_CACHE_HIT_RATE_EXPLANATION,
   TRANSIT_COMBINED_RATE_EXPLANATION,
   TRANSIT_MODEL_MULTIPLIER_EXPLANATION,
   TRANSIT_MONITORED_PRICE_EXPLANATION,
@@ -971,7 +972,7 @@ function PriceTable({
                     <tr className="bg-[#f2f4f4]/50">
                       <DataTableHead compact>分组 / 模型</DataTableHead>
                       <DataTableHead compact explanation={TRANSIT_COMBINED_RATE_EXPLANATION}>综合倍率</DataTableHead>
-                      <DataTableHead compact explanation="缓存命中率来自站点公开分组累计用量，会影响实际成本，但取决于请求是否复用上下文，不计入默认综合倍率。">缓存命中率</DataTableHead>
+                      <DataTableHead compact explanation={TRANSIT_CACHE_HIT_RATE_EXPLANATION}>缓存命中率</DataTableHead>
                       <DataTableHead compact explanation={TRANSIT_MONITORED_PRICE_EXPLANATION}>监测模型价格</DataTableHead>
                       <DataTableHead compact explanation="展示该分组的可用性探测、来源披露和最近来源更新时间。PriceAI 实测与站方公开状态会分开标注。">监测 / 来源</DataTableHead>
                     </tr>
@@ -1399,6 +1400,7 @@ function PriceGroupMobileCard({
           label="缓存命中率"
           value={formatCacheHitRate(group.cacheUsage)}
           valueClassName={getCacheHitRateTextClass(group.cacheUsage)}
+          title={TRANSIT_CACHE_HIT_RATE_EXPLANATION}
         />
         <MobilePriceFact label="覆盖" value={`${group.prices.length} 个模型`} />
         <MobilePriceFact label="可用率" value={formatPercent(group.sevenDayRate)} />
@@ -1450,13 +1452,15 @@ function MobilePriceFact({
   label,
   value,
   valueClassName = "text-[#202829]",
+  title,
 }: {
   label: string;
   value: string;
   valueClassName?: string;
+  title?: string;
 }) {
   return (
-    <div className="min-w-0 rounded-md bg-[#f7f9f9] px-2.5 py-2 ring-1 ring-[#adb3b4]/15">
+    <div className="min-w-0 rounded-md bg-[#f7f9f9] px-2.5 py-2 ring-1 ring-[#adb3b4]/15" title={title}>
       <div className="truncate text-[10px] font-bold text-[#7a8182]">{label}</div>
       <div className={`mt-0.5 break-words text-xs font-extrabold tabular-nums ${valueClassName}`}>{value}</div>
     </div>
@@ -1467,7 +1471,7 @@ function CacheHitCell({ cacheUsage }: { cacheUsage: TransitModelPrice["cacheUsag
   return (
     <div
       className={`inline-flex rounded-full px-2.5 py-1 text-xs font-extrabold tabular-nums ${getCacheHitRateBadgeClass(cacheUsage)}`}
-      title="缓存命中率来自站点公开分组累计用量，会影响实际成本，但不计入默认综合倍率。"
+      title={TRANSIT_CACHE_HIT_RATE_EXPLANATION}
     >
       {formatCacheHitRate(cacheUsage)}
     </div>
