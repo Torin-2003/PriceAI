@@ -1510,20 +1510,25 @@ function normalizeAliasValue(value: string, aliases: Record<string, string>): st
 }
 
 function commercialOffers(value: unknown): ApiTransitCommercialOffer[] {
-  return objectArray(value).map((item, index) => ({
-    id: nullableString(item.id) || `offer-${index}`,
-    type: commercialOfferType(item.type),
-    title: stringValue(item.title) || "可用优惠",
-    listLabel: nullableString(item.listLabel || item.list_label),
-    description: nullableString(item.description),
-    code: nullableString(item.code),
-    url: nullableString(item.url),
-    validUntil: nullableString(item.validUntil || item.valid_until),
-    enabled: item.enabled === undefined ? true : Boolean(item.enabled),
-    disclosure: item.enabled === false
-      ? null
-      : normalizedTransitCommercialOfferDisclosure(nullableString(item.disclosure)),
-  })).filter((item) => item.title);
+  const offers: ApiTransitCommercialOffer[] = [];
+  objectArray(value).forEach((item, index) => {
+    const offer: ApiTransitCommercialOffer = {
+      id: nullableString(item.id) || `offer-${index}`,
+      type: commercialOfferType(item.type),
+      title: stringValue(item.title),
+      listLabel: nullableString(item.listLabel || item.list_label),
+      description: nullableString(item.description),
+      code: nullableString(item.code),
+      url: nullableString(item.url),
+      validUntil: nullableString(item.validUntil || item.valid_until),
+      enabled: item.enabled === undefined ? true : Boolean(item.enabled),
+      disclosure: item.enabled === false
+        ? null
+        : normalizedTransitCommercialOfferDisclosure(nullableString(item.disclosure)),
+    };
+    if (hasCommercialOfferContent(offer)) offers.push(offer);
+  });
+  return offers;
 }
 
 function verificationEvents(value: unknown): ApiTransitVerificationEvent[] {
@@ -1538,26 +1543,30 @@ function verificationEvents(value: unknown): ApiTransitVerificationEvent[] {
 }
 
 function sanitizeCommercialOffers(values: ApiTransitCommercialOffer[]): ApiTransitCommercialOffer[] {
-  return values
-    .map((item, index) => {
-      const enabled = Boolean(item.enabled);
-      return {
-        id: cleanNullable(item.id) || `offer-${index}`,
-        type: commercialOfferType(item.type),
-        title: cleanNullable(item.title) || "",
-        listLabel: cleanNullable(item.listLabel),
-        description: cleanNullable(item.description),
-        code: cleanNullable(item.code),
-        url: cleanNullable(item.url),
-        validUntil: cleanNullable(item.validUntil),
-        disclosure: enabled
-          ? normalizedTransitCommercialOfferDisclosure(cleanNullable(item.disclosure))
-          : null,
-        enabled,
-      };
-    })
-    .filter((item) => item.title)
-    .slice(0, 8);
+  const offers: ApiTransitCommercialOffer[] = [];
+  values.forEach((item, index) => {
+    const enabled = Boolean(item.enabled);
+    const offer: ApiTransitCommercialOffer = {
+      id: cleanNullable(item.id) || `offer-${index}`,
+      type: commercialOfferType(item.type),
+      title: cleanNullable(item.title) || "",
+      listLabel: cleanNullable(item.listLabel),
+      description: cleanNullable(item.description),
+      code: cleanNullable(item.code),
+      url: cleanNullable(item.url),
+      validUntil: cleanNullable(item.validUntil),
+      disclosure: enabled
+        ? normalizedTransitCommercialOfferDisclosure(cleanNullable(item.disclosure))
+        : null,
+      enabled,
+    };
+    if (hasCommercialOfferContent(offer)) offers.push(offer);
+  });
+  return offers.slice(0, 8);
+}
+
+function hasCommercialOfferContent(offer: Pick<ApiTransitCommercialOffer, "title" | "listLabel" | "description" | "code" | "url" | "validUntil">): boolean {
+  return Boolean(offer.title || offer.listLabel || offer.description || offer.code || offer.url || offer.validUntil);
 }
 
 function sanitizeVerificationEvents(values: ApiTransitVerificationEvent[]): ApiTransitVerificationEvent[] {

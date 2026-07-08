@@ -252,6 +252,23 @@ commercialStation.commercialOffers = [
 const activeCommercialOffers = getActiveTransitCommercialOffers(commercialStation);
 assertEqual(activeCommercialOffers.length, 1);
 assertEqual(activeCommercialOffers[0]?.disclosure, TRANSIT_DEFAULT_COMMERCIAL_OFFER_DISCLOSURE);
+commercialStation.commercialOffers = [
+  {
+    id: "enabled-url-without-title",
+    type: "affiliate",
+    title: "",
+    description: null,
+    code: null,
+    url: "https://commercial-test.example.test/aff",
+    validUntil: null,
+    disclosure: null,
+    enabled: true,
+  },
+];
+const activeUntitledOffers = getActiveTransitCommercialOffers(commercialStation);
+assertEqual(activeUntitledOffers.length, 1);
+assertEqual(activeUntitledOffers[0]?.title, "");
+assertEqual(activeUntitledOffers[0]?.url, "https://commercial-test.example.test/aff");
 assertEqual(
   normalizedTransitCommercialOfferDisclosure("该链接包含AFF,但不影响排序口径。"),
   TRANSIT_DEFAULT_COMMERCIAL_OFFER_DISCLOSURE,

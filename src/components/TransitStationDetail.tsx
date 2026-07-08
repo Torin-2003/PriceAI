@@ -748,7 +748,7 @@ function CommercialOfferCard({
           {TRANSIT_COMMERCIAL_OFFER_TYPE_LABELS[offer.type]}
         </StatusChip>
       </div>
-      <p className="mt-2 text-sm font-bold leading-6 text-[#202829]">{offer.title}</p>
+      {offer.title ? <p className="mt-2 text-sm font-bold leading-6 text-[#202829]">{offer.title}</p> : null}
       {offer.description ? <p className="mt-1 text-xs leading-5 text-[#5a6061]">{offer.description}</p> : null}
       {offer.code ? (
         <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#dfe4e5] bg-white p-2">

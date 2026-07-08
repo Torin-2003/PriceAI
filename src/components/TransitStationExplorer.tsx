@@ -851,7 +851,7 @@ function UpdatedAtCell({ station }: { station: TransitStation }) {
 function StationIdentity({ station }: { station: TransitStation }) {
   const offer = getPrimaryTransitCommercialOffer(station);
   const offerLabel = offer ? formatListOfferLabel(offer) : null;
-  const offerTitle = offer ? offer.title : "";
+  const offerTitle = offer ? offer.title || offer.listLabel || offer.description || "优惠说明" : "";
   const hasAff = hasTransitAffRelation(station);
   const operatorType = getTransitOperatorType(station);
   const operatorLabel = TRANSIT_OPERATOR_TYPE_LABELS[operatorType];
@@ -912,28 +912,8 @@ function StationInfoTag({
   );
 }
 
-function formatListOfferLabel(offer: NonNullable<TransitStation["commercialOffers"]>[number]): string {
-  if (offer.listLabel) return offer.listLabel;
-  if (/首充/.test(offer.title)) return "首充优惠";
-  if (/充值/.test(offer.title)) return "充值优惠";
-
-  const amount = extractRegistrationBonusAmount([
-    offer.title,
-    offer.description,
-  ].filter(Boolean).join(" "));
-  if (amount) return `注册赠送 $${amount}`;
-  return offer.title;
-}
-
-function extractRegistrationBonusAmount(text: string): string | null {
-  const normalized = text.replace(/\s+/g, " ");
-  const registrationMatch = normalized.match(/注册[^0-9$¥￥]*(?:赠送|赠|送)[^0-9$¥￥]*(?:[$¥￥]\s*)?(\d+(?:\.\d+)?)(?:\s*(?:刀|美元|美金|余额|额度))?/);
-  if (registrationMatch?.[1]) return registrationMatch[1];
-
-  const dollarMatch = normalized.match(/(?:[$]\s*)(\d+(?:\.\d+)?)(?:\s*(?:余额|额度))?/);
-  if (dollarMatch?.[1]) return dollarMatch[1];
-
-  return null;
+function formatListOfferLabel(offer: NonNullable<TransitStation["commercialOffers"]>[number]): string | null {
+  return offer.listLabel || null;
 }
 
 function PillList({ items, max = items.length }: { items: { id: string; label: string }[]; max?: number }) {

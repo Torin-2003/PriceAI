@@ -2234,7 +2234,7 @@ function buildCommercialOffersFromForm(
     {
       id: existing?.id || "primary-offer",
       type: commercialOfferTypeFromText(formText(formData, "offerType")),
-      title: title || (url ? "优惠入口" : "可用优惠"),
+      title,
       listLabel,
       description,
       code,

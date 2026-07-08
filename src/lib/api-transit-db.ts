@@ -1089,18 +1089,29 @@ function objectArray(value: unknown): DbRow[] {
 }
 
 function commercialOffers(value: unknown): NonNullable<TransitStation["commercialOffers"]> {
-  return objectArray(value).map((item, index) => ({
-    id: nullableString(item.id) || `offer-${index}`,
-    type: commercialOfferType(item.type),
-    title: stringValue(item.title) || "可用优惠",
-    listLabel: nullableString(item.listLabel || item.list_label),
-    description: nullableString(item.description),
-    code: nullableString(item.code),
-    url: nullableString(item.url),
-    validUntil: nullableString(item.validUntil || item.valid_until),
-    disclosure: nullableString(item.disclosure),
-    enabled: item.enabled === undefined ? true : Boolean(item.enabled),
-  })).filter((item) => item.title).map(withTransitCommercialOfferDisclosure);
+  const offers: NonNullable<TransitStation["commercialOffers"]> = [];
+  objectArray(value).forEach((item, index) => {
+    const offer: NonNullable<TransitStation["commercialOffers"]>[number] = {
+      id: nullableString(item.id) || `offer-${index}`,
+      type: commercialOfferType(item.type),
+      title: stringValue(item.title),
+      listLabel: nullableString(item.listLabel || item.list_label),
+      description: nullableString(item.description),
+      code: nullableString(item.code),
+      url: nullableString(item.url),
+      validUntil: nullableString(item.validUntil || item.valid_until),
+      disclosure: nullableString(item.disclosure),
+      enabled: item.enabled === undefined ? true : Boolean(item.enabled),
+    };
+    if (hasCommercialOfferContent(offer)) offers.push(withTransitCommercialOfferDisclosure(offer));
+  });
+  return offers;
+}
+
+function hasCommercialOfferContent(
+  offer: Pick<NonNullable<TransitStation["commercialOffers"]>[number], "title" | "listLabel" | "description" | "code" | "url" | "validUntil">
+): boolean {
+  return Boolean(offer.title || offer.listLabel || offer.description || offer.code || offer.url || offer.validUntil);
 }
 
 function verificationEvents(value: unknown): NonNullable<TransitStation["verificationEvents"]> {

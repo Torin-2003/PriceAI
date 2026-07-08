@@ -61,7 +61,7 @@ const patchSchema = z.discriminatedUnion("action", [
     commercialOffers: z.array(z.object({
       id: z.string().trim().max(80),
       type: z.enum(["coupon", "affiliate", "sponsored"]),
-      title: z.string().trim().max(120),
+      title: z.string().trim().max(120).optional().default(""),
       listLabel: z.string().trim().max(40).nullable().optional(),
       description: z.string().trim().max(300).nullable(),
       code: z.string().trim().max(80).nullable(),
