@@ -29,11 +29,12 @@
 
 <p align="center">
   <a href="https://priceai.cc">在线访问</a> ·
-  <a href="#四个模块">四个模块</a> ·
+  <a href="#核心模块">核心模块</a> ·
   <a href="#适合谁">适合谁</a> ·
   <a href="#解决的痛点">痛点</a> ·
   <a href="#为什么做-priceai">为什么做</a> ·
   <a href="#priceai-怎么解决">怎么解决</a> ·
+  <a href="#模型检测服务">模型检测服务</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#公开文档">公开文档</a> ·
   <a href="#贡献">贡献</a> ·
@@ -47,7 +48,7 @@
   <img src="assets/priceai-home-2026-07-01-v2.png" alt="PriceAI AI card shop subscription comparison table screenshot" width="100%" />
 </p>
 
-## 四个模块
+## 核心模块
 
 PriceAI 不再只是一个卡网订阅比价页，而是围绕“AI 能力怎么来”的购买前决策入口。
 
@@ -57,8 +58,9 @@ PriceAI 不再只是一个卡网订阅比价页，而是围绕“AI 能力怎么
 | AI 卡网低价订阅 | 聚合 200+ AI 订阅卡网、发卡站和低价会员渠道，覆盖链动小铺、独角数卡、Kami / 卡密类自动发货等常见卡网形态，比较代充、成品号、卡密、CDK、邮箱和低价会员的有货报价 | [卡网订阅比价](https://priceai.cc/channels) |
 | 官方 API / 模型 API | 横向比较 DeepSeek API、Qwen API、Kimi API、GLM API、免费 API、Token Plan 和 OpenAI-compatible API 入口 | [API 模型雷达](https://priceai.cc/api-models) |
 | 中转 API 比价雷达 | 对比 API 中转站、API Gateway、GPT / Claude / Gemini 中转 API 的充值系数、模型倍率、综合倍率和稳定性 | [API 中转站价格榜](https://priceai.cc/api-transit) |
+| API 中转模型检测 | 输入中转接口、模型名和临时 Key，生成协议、能力、来源线路、计费和性能证据报告 | [模型检测](https://priceai.cc/api-transit/detector) |
 
-可以把它理解成四类搜索心智：
+可以把它理解成几类搜索心智：
 
 - AI 比价雷达
 - AI 低价卡网 / AI 卡网低价订阅
@@ -132,11 +134,20 @@ PriceAI 不卖货、不收款、不替任何渠道担保。它更像一个购买
 - **卡网订阅比价**：覆盖 200+ AI 订阅卡网、发卡站和低价会员渠道，按 ChatGPT、Claude、Gemini、Grok、邮箱、API/CDK、工具账号等整理多渠道报价。
 - **API 模型雷达**：整理官方 API、模型路由、免费/测试额度、Token Plan、价格和限制。
 - **中转 API 价格榜**：展示第三方中转站的充值系数、模型倍率、综合倍率、近 7 日可用性和来源渠道。
+- **API 中转模型检测**：通过独立检测服务生成中转 API 的协议、能力、来源线路、计费和性能证据报告。
 - **指南内容**：解释官方订阅、地区价、卡网渠道、交付方式和风险边界。
 - **提交与反馈**：支持用户提交新渠道、API 模型来源、中转站资料和问题反馈。
 - **后台管理**：用于来源审核、试采集、分类调整、报价隐藏、采集日志和站点资料维护。
 
 当前线上版本：<https://priceai.cc>
+
+## 模型检测服务
+
+PriceAI 的 API 中转模型检测入口在 <https://priceai.cc/api-transit/detector>。检测执行层独立维护在 [physics-dimension/priceai-detector-service](https://github.com/physics-dimension/priceai-detector-service)，主站通过 `NEXT_PUBLIC_TRANSIT_DETECTOR_API_BASE_URL` 调用它。
+
+这个检测服务 fork 自 [canarybyte/veridrop](https://github.com/canarybyte/veridrop)，继续采用 AGPL-3.0-or-later，并保留上游项目标识和归属说明。PriceAI 主仓负责入口、站点上下文和报告展示；独立服务负责接收临时 Key、运行 Claude / OpenAI / OpenAI Responses / Gemini 兼容协议探针、生成报告 JSON 和可分享报告页。
+
+检测报告是用于辅助判断接口协议、模型能力、来源线路和计费口径的证据链，不代表 PriceAI 对任何中转站或商家做担保。
 
 ## 不做什么
 
@@ -208,6 +219,7 @@ npm run collect:browser -- --url https://example.com/ --password your-admin-pass
 - [公开素材](./assets/README.md)
 - [数据与内容授权](./DATA_LICENSE.md)
 - [品牌与商标政策](./TRADEMARKS.md)
+- [模型检测服务仓库](https://github.com/physics-dimension/priceai-detector-service)
 
 内部规划、审计、增长方案、运营复盘和 Agent 工作流文件不随公开仓库发布。
 
@@ -224,6 +236,7 @@ npm run collect:browser -- --url https://example.com/ --password your-admin-pass
 - 优化官方订阅、卡网订阅、官方 API 和中转 API 的交叉解释。
 - 补充更清晰的交付方式、套餐差异、倍率口径和风险提示。
 - 完善用户提交、站长提交、反馈审核和公开披露闭环。
+- 持续迭代独立模型检测服务，扩展协议检测、能力评测和报告归属能力。
 
 ## 贡献
 
