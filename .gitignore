@@ -48,6 +48,7 @@ yarn-error.log*
 
 # local/manual workflow drafts
 /scripts/refine-ldxp-probe-relevance.mjs
+/scripts/export-ldxp-source-square.mjs
 
 # local docs kept off GitHub and production deploys
 /docs/
