@@ -443,6 +443,51 @@ for (const [title, expectedTags] of tagCases) {
   }
 }
 
+const chatGptTeamSubtypeCases = [
+  [
+    {
+      sourceTitle: "1个 team k12子号 不含rt 仅反代 保首登（含CPA+sub2api）",
+      tags: ["K12/team/bugteam", "卡密", "自动发货"],
+    },
+    ["team_k12"],
+    ["team_bug", "team_official"],
+  ],
+  [
+    {
+      sourceTitle: "谷歌邮箱 GPT Team K12 成品 JSON 反代 发cpa",
+      tags: ["K12 bug team", "卡密", "自动发货"],
+    },
+    ["team_k12"],
+    ["team_bug", "team_official"],
+  ],
+  [
+    {
+      sourceTitle: "GPT Bug Team账号 月限额 没被封就能一直用 240+额度",
+      tags: ["K12/team/bugteam", "卡密", "自动发货"],
+    },
+    ["team_bug"],
+    ["team_k12", "team_official"],
+  ],
+  [
+    {
+      sourceTitle: "GPT Team 子号 JSON 反代",
+      tags: ["bugteam", "卡密", "自动发货"],
+    },
+    ["team_bug"],
+    ["team_k12", "team_official"],
+  ],
+];
+
+for (const [offer, expectedTags, unexpectedTags] of chatGptTeamSubtypeCases) {
+  const tags = deriveOfferFilterTags(offer);
+  for (const expectedTag of expectedTags) {
+    assert.ok(tags.includes(expectedTag), `${offer.sourceTitle} should include ${expectedTag}. actual=${tags.join(",")}`);
+  }
+  for (const unexpectedTag of unexpectedTags) {
+    assert.ok(!tags.includes(unexpectedTag), `${offer.sourceTitle} should not include ${unexpectedTag}. actual=${tags.join(",")}`);
+  }
+}
+
 const geminiConditionNegativeCases = [
   ["【低价】Gemini Pro 一年成品号，GCP已禁用", "gemini_antigravity_gcp"],
   ["Gemini Pro 一年 无需绑定手机", "gemini_phone_required"],

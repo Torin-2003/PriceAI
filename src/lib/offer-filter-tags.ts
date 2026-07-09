@@ -374,15 +374,7 @@ export function deriveOfferFilterTags(input: {
     output.add("delivery_account");
   }
 
-  if (hasChatGptTeamK12Signal(text)) {
-    output.add("team_k12");
-  }
-  if (hasChatGptTeamBugSignal(text)) {
-    output.add("team_bug");
-  }
-  if (hasChatGptTeamOfficialSignal(text)) {
-    output.add("team_official");
-  }
+  addChatGptTeamSubtypeFilterTag(output, titleText, sourceTagsText);
 
   if (hasDurationYearSignal(text)) {
     output.add("duration_year");
@@ -537,6 +529,41 @@ function hasChatGptTeamBugSignal(text: string): boolean {
 
 function hasChatGptTeamOfficialSignal(text: string): boolean {
   return /正价|正规官方|官方.{0,12}(team|business|团队|席位)|business\(team\)|gptbusiness|48个月|48月|四十八个月|4年|四年|全程质保订阅|无限续费|可无限续费|可用pro模型额度比plus高|首次激活码|续费码/.test(text);
+}
+
+function addChatGptTeamSubtypeFilterTag(
+  output: Set<OfferFilterTagId>,
+  titleText: string,
+  sourceTagsText: string,
+): void {
+  const titleHasOfficial = hasChatGptTeamOfficialSignal(titleText);
+  const titleHasK12 = hasChatGptTeamK12Signal(titleText);
+  const titleHasBug = hasChatGptTeamBugSignal(titleText);
+
+  if (titleHasOfficial) {
+    output.add("team_official");
+    return;
+  }
+  if (titleHasK12) {
+    output.add("team_k12");
+    return;
+  }
+  if (titleHasBug) {
+    output.add("team_bug");
+    return;
+  }
+
+  if (hasChatGptTeamOfficialSignal(sourceTagsText)) {
+    output.add("team_official");
+    return;
+  }
+  if (hasChatGptTeamK12Signal(sourceTagsText)) {
+    output.add("team_k12");
+    return;
+  }
+  if (hasChatGptTeamBugSignal(sourceTagsText)) {
+    output.add("team_bug");
+  }
 }
 
 function hasStrongSharedAccessSignal(text: string): boolean {
