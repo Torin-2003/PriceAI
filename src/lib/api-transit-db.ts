@@ -24,6 +24,7 @@ let hasWarnedMissingEnhancementColumns = false;
 let hasWarnedMissingHistoryTable = false;
 const CACHE_TTL_MS = 30_000;
 const PUBLIC_TRANSIT_READ_TIMEOUT_MS = 2_500;
+const PUBLIC_TRANSIT_REFRESH_READ_TIMEOUT_MS = 15_000;
 const PUBLIC_TRANSIT_BUILD_READ_TIMEOUT_MS = 15_000;
 const API_TRANSIT_SNAPSHOT_KEY = "default";
 const API_TRANSIT_SNAPSHOT_MAX_STALE_MS = 10 * 60 * 1000;
@@ -261,9 +262,13 @@ export type TransitStationsSnapshotRefreshResult = {
   stationCount: number;
 };
 
+type TransitStationsReadOptions = {
+  signal?: AbortSignal;
+};
+
 export async function refreshTransitStationsSnapshot(): Promise<TransitStationsSnapshotRefreshResult> {
   const generatedAt = new Date().toISOString();
-  const stations = await readStationsFromSupabase();
+  const stations = await readStationsFromSupabase({ signal: publicTransitRefreshReadSignal() });
 
   if (!stations.length) {
     return {
@@ -382,11 +387,11 @@ function getCachedStationBySlug(slug: string): TransitStation | undefined {
   return entry.station;
 }
 
-async function readStationsFromSupabase(): Promise<TransitStation[]> {
+async function readStationsFromSupabase(options: TransitStationsReadOptions = {}): Promise<TransitStation[]> {
   const supabase = getSupabaseServerClient();
   if (!supabase) return seedStations;
   const client = supabase;
-  const signal = publicTransitReadSignal();
+  const signal = options.signal || publicTransitReadSignal();
 
   try {
     const [stationsResult, offerRows] = await Promise.all([
@@ -403,7 +408,7 @@ async function readStationsFromSupabase(): Promise<TransitStation[]> {
     );
     const [enhancementRows, recentSampleRows] = await Promise.all([
       readStationEnhancementRows(),
-      readRecentAvailabilitySampleRows(supabase, stationIds, sampleRowLimit),
+      readRecentAvailabilitySampleRows(supabase, stationIds, sampleRowLimit, signal),
     ]);
     const enhancementsByStation = new Map<string, DbRow>();
     for (const row of enhancementRows) {
@@ -493,7 +498,8 @@ async function readStationFromSupabaseBySlug(slug: string): Promise<TransitStati
       readRecentAvailabilitySampleRows(
         supabase,
         [stationId],
-        TRANSIT_RECENT_AVAILABILITY_SAMPLE_DETAIL_ROW_LIMIT
+        TRANSIT_RECENT_AVAILABILITY_SAMPLE_DETAIL_ROW_LIMIT,
+        signal
       ),
     ]);
 
@@ -530,17 +536,18 @@ async function readPublicOfferRows(
   let lastError: unknown = null;
   for (const columns of attempts) {
     try {
-      return await queryPublicOfferRows(client, columns === OFFER_COLUMNS ? signal : publicTransitReadSignal(), columns, stationId);
+      return await queryPublicOfferRows(client, signal, columns, stationId);
     } catch (error) {
       if (!isMissingColumnError(error)) throw error;
       lastError = error;
     }
   }
-  return readPublicOfferRowsWithoutNewOptionalColumns(client, stationId, lastError);
+  return readPublicOfferRowsWithoutNewOptionalColumns(client, signal, stationId, lastError);
 }
 
 async function readPublicOfferRowsWithoutNewOptionalColumns(
   client: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
+  signal: AbortSignal,
   stationId?: string,
   previousError: unknown = null
 ): Promise<DbRow[]> {
@@ -565,7 +572,7 @@ async function readPublicOfferRowsWithoutNewOptionalColumns(
   let lastError: unknown = previousError;
   for (const columns of attempts) {
     try {
-      return await queryPublicOfferRows(client, publicTransitReadSignal(), columns, stationId);
+      return await queryPublicOfferRows(client, signal, columns, stationId);
     } catch (error) {
       if (!isMissingColumnError(error)) throw error;
       lastError = error;
@@ -610,7 +617,7 @@ async function queryPublishedStationRows(
   let lastMissingColumnError: unknown = null;
   for (const columns of attempts) {
     try {
-      return await queryStationRows(client, columns === STATION_CORE_COLUMNS ? signal : publicTransitReadSignal(), columns, slug);
+      return await queryStationRows(client, signal, columns, slug);
     } catch (error) {
       if (!isMissingColumnError(error)) throw error;
       lastMissingColumnError = error;
@@ -711,6 +718,7 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
   if (!supabase || !station.prices.length) return station;
 
   const cutoff = new Date(Date.now() - TRANSIT_HISTORY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const signal = publicTransitReadSignal();
   try {
     const [historyResult, samplesResult, recentSampleRows] = await Promise.all([
       supabase
@@ -733,7 +741,7 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
         .gte("observed_at", cutoff)
         .order("observed_at", { ascending: false })
         .limit(TRANSIT_HISTORY_STATION_LIMIT)
-        .abortSignal(publicTransitReadSignal()),
+        .abortSignal(signal),
       supabase
         .from("api_transit_availability_samples")
         .select("scope,standard_model,group_name,checked_at")
@@ -741,11 +749,12 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
         .gte("checked_at", cutoff)
         .order("checked_at", { ascending: true })
         .limit(1200)
-        .abortSignal(publicTransitReadSignal()),
+        .abortSignal(signal),
       readRecentAvailabilitySampleRows(
         supabase,
         [station.id],
-        TRANSIT_RECENT_AVAILABILITY_SAMPLE_DETAIL_ROW_LIMIT
+        TRANSIT_RECENT_AVAILABILITY_SAMPLE_DETAIL_ROW_LIMIT,
+        signal
       ),
     ]);
     if (historyResult.error) throw historyResult.error;
@@ -849,7 +858,8 @@ type RecentAvailabilitySamplesByKey = Map<string, NonNullable<TransitAvailabilit
 async function readRecentAvailabilitySampleRows(
   client: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
   stationIds: string[],
-  rowLimit: number
+  rowLimit: number,
+  signal: AbortSignal = publicTransitReadSignal()
 ): Promise<DbRow[]> {
   const ids = Array.from(new Set(stationIds.filter(Boolean)));
   if (!ids.length || rowLimit <= 0) return [];
@@ -860,7 +870,7 @@ async function readRecentAvailabilitySampleRows(
     .in("station_id", ids)
     .order("checked_at", { ascending: false })
     .limit(rowLimit)
-    .abortSignal(publicTransitReadSignal());
+    .abortSignal(signal);
 
   const { data, error } = await query();
 
@@ -871,7 +881,7 @@ async function readRecentAvailabilitySampleRows(
       .in("station_id", ids)
       .order("checked_at", { ascending: false })
       .limit(rowLimit)
-      .abortSignal(publicTransitReadSignal());
+      .abortSignal(signal);
     if (fallback.error) {
       if (isMissingTableError(fallback.error) || isMissingColumnError(fallback.error)) return [];
       throw fallback.error;
@@ -968,6 +978,10 @@ type DbRow = Record<string, unknown>;
 
 function publicTransitReadSignal(): AbortSignal {
   return AbortSignal.timeout(publicTransitReadTimeoutMs());
+}
+
+function publicTransitRefreshReadSignal(): AbortSignal {
+  return AbortSignal.timeout(PUBLIC_TRANSIT_REFRESH_READ_TIMEOUT_MS);
 }
 
 function publicTransitReadTimeoutMs(): number {

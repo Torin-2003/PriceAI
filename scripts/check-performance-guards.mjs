@@ -209,6 +209,13 @@ assert(/normalizePublicOfferQuery/.test(publicOfferQueryText), "src/lib/public-o
 const transitPublicText = read("src/lib/api-transit-db.ts");
 assert(!/api_transit_detection_runs/.test(transitPublicText), "src/lib/api-transit-db.ts: public API transit reads must not query detection runs.");
 assert(!/raw_snapshot/.test(transitPublicText), "src/lib/api-transit-db.ts: public API transit reads must not parse raw snapshots.");
+assert(/PUBLIC_TRANSIT_READ_TIMEOUT_MS\s*=\s*2_500/.test(transitPublicText), "src/lib/api-transit-db.ts: normal API transit public reads must keep the 2.5s fallback timeout.");
+assert(/PUBLIC_TRANSIT_REFRESH_READ_TIMEOUT_MS\s*=\s*15_000/.test(transitPublicText), "src/lib/api-transit-db.ts: API transit snapshot refresh must use a longer Supabase read timeout.");
+assert(/refreshTransitStationsSnapshot[\s\S]{0,500}readStationsFromSupabase\(\{\s*signal:\s*publicTransitRefreshReadSignal\(\)\s*\}\)/.test(transitPublicText), "src/lib/api-transit-db.ts: API transit snapshot refresh must pass the long refresh signal into Supabase reads.");
+assert(/function\s+publicTransitRefreshReadSignal\(\):\s*AbortSignal\s*\{\s*return\s+AbortSignal\.timeout\(PUBLIC_TRANSIT_REFRESH_READ_TIMEOUT_MS\);\s*\}/.test(transitPublicText), "src/lib/api-transit-db.ts: API transit refresh signal must derive from PUBLIC_TRANSIT_REFRESH_READ_TIMEOUT_MS.");
+assert(/readRecentAvailabilitySampleRows\(\s*supabase,\s*stationIds,\s*sampleRowLimit,\s*signal\s*\)/.test(transitPublicText), "src/lib/api-transit-db.ts: API transit list recent sample reads must inherit the caller read signal.");
+assert(/readRecentAvailabilitySampleRows\([\s\S]{0,300}signal:\s*AbortSignal\s*=\s*publicTransitReadSignal\(\)/.test(transitPublicText), "src/lib/api-transit-db.ts: recent sample reads must accept a caller signal while defaulting normal pages to 2.5s.");
+assert(!/\.abortSignal\(publicTransitReadSignal\(\)\)/.test(transitPublicText), "src/lib/api-transit-db.ts: nested API transit queries must not silently recreate the short 2.5s signal.");
 
 const transitAdminText = read("src/lib/api-transit-admin.ts");
 assert(/ADMIN_RUN_SELECT/.test(transitAdminText), "src/lib/api-transit-admin.ts: admin run lists must use an explicit field projection.");
