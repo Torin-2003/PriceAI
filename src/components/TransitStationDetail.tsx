@@ -67,6 +67,7 @@ import {
   getTransitStationOutboundUrl,
   getNormalizedSourceTags,
   getRateBadgeClass,
+  getRecentTransitAvailabilitySamples,
   getStationRechargeCoefficient,
   getStationPublishedAvailabilitySummary,
   getTransitVerificationEvents,
@@ -105,6 +106,7 @@ type TransitPriceGroup = {
   sevenDaySamples: number;
   firstCheckedAt: string | null;
   lastCheckedAt: string | null;
+  recentSamples?: TransitModelPrice["availability"]["recentSamples"];
   latestLatencyMs: number | null;
   avgLatency7dMs: number | null;
   latestVerifiedAt: string;
@@ -1438,6 +1440,7 @@ function PriceGroupMobileCard({
           samples={group.sevenDaySamples}
           firstCheckedAt={group.firstCheckedAt}
           lastCheckedAt={group.lastCheckedAt}
+          recentSamples={group.recentSamples}
           className="shrink-0"
         />
         <span className="min-w-0 break-words text-xs font-semibold leading-5 text-[#2d3435]">
@@ -1554,6 +1557,7 @@ function PriceGroupRow({
             samples={group.sevenDaySamples}
             firstCheckedAt={group.firstCheckedAt}
             lastCheckedAt={group.lastCheckedAt}
+            recentSamples={group.recentSamples}
           />
         </div>
         <div className="mt-2 break-words text-xs font-semibold text-[#2d3435]">{group.priceSource || "未公开"}</div>
@@ -1637,6 +1641,7 @@ function buildPriceGroup(
     sevenDaySamples: availabilitySamples,
     firstCheckedAt,
     lastCheckedAt,
+    recentSamples: getRecentTransitAvailabilitySamples(prices),
     latestLatencyMs: latestLatencyFromPrices(prices),
     avgLatency7dMs: weightedAverageLatencyFromPrices(prices),
     latestVerifiedAt,
@@ -1721,6 +1726,7 @@ function AvailabilityTable({ station }: { station: TransitStation }) {
       sevenDaySamples: stationAvailability.sevenDaySamples,
       firstCheckedAt: stationAvailability.firstCheckedAt,
       lastCheckedAt: stationAvailability.lastCheckedAt,
+      recentSamples: stationAvailability.recentSamples,
       latestLatencyMs: stationAvailability.latestLatencyMs ?? null,
       avgLatency7dMs: stationAvailability.avgLatency7dMs ?? null,
       monitorModel: families.length
@@ -1737,6 +1743,7 @@ function AvailabilityTable({ station }: { station: TransitStation }) {
         sevenDaySamples: summary.sevenDaySamples,
         firstCheckedAt: summary.firstCheckedAt,
         lastCheckedAt: summary.lastCheckedAt,
+        recentSamples: summary.recentSamples,
         latestLatencyMs: summary.latestLatencyMs,
         avgLatency7dMs: summary.avgLatency7dMs,
         monitorModel: getFamilyMonitorModelLabel(station, family),
@@ -1788,26 +1795,27 @@ function AvailabilityTable({ station }: { station: TransitStation }) {
           </thead>
           <tbody>
             {rows.map((row) => (
-                <tr key={row.label} className="border-b border-[#dfe4e5]">
-                  <td className="px-4 py-3 text-xs font-semibold text-[#202829]">{row.label}</td>
-                  <td className="px-4 py-3">
-                    <AvailabilityStatus
-                      rate={row.rate}
-                      samples={row.sevenDaySamples}
-                      firstCheckedAt={row.firstCheckedAt}
-                      lastCheckedAt={row.lastCheckedAt}
-                    />
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-[#2d3435]">{row.sevenDaySamples}</td>
-                  <td className="px-4 py-3 text-xs text-[#5a6061]">{formatMonitoringWindow(row)}</td>
-                  <td className="px-4 py-3 text-xs font-semibold text-[#5a6061]">{formatLatencySummary(row) || "未记录"}</td>
-                  <td className="px-4 py-3 text-xs text-[#5a6061]">{row.monitorModel}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <ProbePolicyTag label={row.source.label} title={row.source.title} href={row.source.url} />
-                  </td>
-                  <td className="px-4 py-3 text-xs text-[#5a6061]">{row.note}</td>
-                </tr>
-              ))}
+              <tr key={row.label} className="border-b border-[#dfe4e5]">
+                <td className="px-4 py-3 text-xs font-semibold text-[#202829]">{row.label}</td>
+                <td className="px-4 py-3">
+                  <AvailabilityStatus
+                    rate={row.rate}
+                    samples={row.sevenDaySamples}
+                    firstCheckedAt={row.firstCheckedAt}
+                    lastCheckedAt={row.lastCheckedAt}
+                    recentSamples={row.recentSamples}
+                  />
+                </td>
+                <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-[#2d3435]">{row.sevenDaySamples}</td>
+                <td className="px-4 py-3 text-xs text-[#5a6061]">{formatMonitoringWindow(row)}</td>
+                <td className="px-4 py-3 text-xs font-semibold text-[#5a6061]">{formatLatencySummary(row) || "未记录"}</td>
+                <td className="px-4 py-3 text-xs text-[#5a6061]">{row.monitorModel}</td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  <ProbePolicyTag label={row.source.label} title={row.source.title} href={row.source.url} />
+                </td>
+                <td className="px-4 py-3 text-xs text-[#5a6061]">{row.note}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -1832,6 +1840,7 @@ type AvailabilityRow = {
   sevenDaySamples: number;
   firstCheckedAt?: string | null;
   lastCheckedAt: string | null;
+  recentSamples?: TransitModelPrice["availability"]["recentSamples"];
   latestLatencyMs: number | null;
   avgLatency7dMs: number | null;
   monitorModel: string;
@@ -1852,6 +1861,7 @@ function AvailabilityMobileCard({ row }: { row: AvailabilityRow }) {
           samples={row.sevenDaySamples}
           firstCheckedAt={row.firstCheckedAt}
           lastCheckedAt={row.lastCheckedAt}
+          recentSamples={row.recentSamples}
         />
       </div>
       <div className="mt-3 grid gap-2">
@@ -1879,11 +1889,13 @@ function AvailabilityStatus({
   samples,
   firstCheckedAt,
   lastCheckedAt,
+  recentSamples,
 }: {
   rate: number | null;
   samples: number;
   firstCheckedAt?: string | null;
   lastCheckedAt: string | null;
+  recentSamples?: TransitModelPrice["availability"]["recentSamples"];
 }) {
   return (
     <div className="min-w-[126px]">
@@ -1896,6 +1908,7 @@ function AvailabilityStatus({
         samples={samples}
         firstCheckedAt={firstCheckedAt}
         lastCheckedAt={lastCheckedAt}
+        recentSamples={recentSamples}
         className="mt-1"
       />
     </div>

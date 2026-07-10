@@ -787,6 +787,7 @@ function AvailabilityCell({
         samples={availability.sevenDaySamples}
         firstCheckedAt={availability.firstCheckedAt}
         lastCheckedAt={availability.lastCheckedAt}
+        recentSamples={availability.recentSamples}
         className="mt-1"
       />
       <div className="mt-1 flex min-w-0 items-center gap-1.5 whitespace-nowrap text-[10px] text-[#7f8889]">

@@ -1,6 +1,7 @@
 import "server-only";
 
 import type {
+  TransitAvailability,
   TransitAvailabilitySourceType,
   TransitModelFamily,
   TransitMultiplierHistoryPoint,
@@ -29,6 +30,9 @@ const API_TRANSIT_SNAPSHOT_MAX_STALE_MS = 10 * 60 * 1000;
 const NEXT_PRODUCTION_BUILD_PHASE = "phase-production-build";
 const TRANSIT_HISTORY_DAYS = 45;
 const TRANSIT_HISTORY_STATION_LIMIT = 320;
+const TRANSIT_RECENT_AVAILABILITY_SAMPLE_LIMIT = 60;
+const TRANSIT_RECENT_AVAILABILITY_SAMPLE_LIST_ROW_LIMIT = 6000;
+const TRANSIT_RECENT_AVAILABILITY_SAMPLE_DETAIL_ROW_LIMIT = 2400;
 const STATION_CORE_BASE_COLUMNS = [
   "id",
   "slug",
@@ -392,12 +396,21 @@ async function readStationsFromSupabase(): Promise<TransitStation[]> {
 
     const stationRows = stationsResult;
     if (!stationRows.length) return [];
-    const enhancementRows = await readStationEnhancementRows();
+    const stationIds = stationRows.map((row) => stringValue(row.id)).filter(Boolean);
+    const sampleRowLimit = Math.min(
+      TRANSIT_RECENT_AVAILABILITY_SAMPLE_LIST_ROW_LIMIT,
+      Math.max(stationRows.length + offerRows.length, 1) * TRANSIT_RECENT_AVAILABILITY_SAMPLE_LIMIT
+    );
+    const [enhancementRows, recentSampleRows] = await Promise.all([
+      readStationEnhancementRows(),
+      readRecentAvailabilitySampleRows(supabase, stationIds, sampleRowLimit),
+    ]);
     const enhancementsByStation = new Map<string, DbRow>();
     for (const row of enhancementRows) {
       const id = stringValue(row.id);
       if (id) enhancementsByStation.set(id, row);
     }
+    const recentSamplesByKey = buildRecentAvailabilitySamplesByKey(recentSampleRows);
 
     const offersByStation = new Map<string, DbRow[]>();
     for (const offer of offerRows) {
@@ -411,7 +424,9 @@ async function readStationsFromSupabase(): Promise<TransitStation[]> {
       return mapStationRow(
         row,
         offersByStation.get(id) || [],
-        enhancementsByStation.get(id)
+        enhancementsByStation.get(id),
+        new Map(),
+        recentSamplesByKey
       );
     });
   } catch (error) {
@@ -472,12 +487,23 @@ async function readStationFromSupabaseBySlug(slug: string): Promise<TransitStati
     if (!stationId) return undefined;
 
     const signal = publicTransitReadSignal();
-    const [offerRows, enhancementRow] = await Promise.all([
+    const [offerRows, enhancementRow, recentSampleRows] = await Promise.all([
       readPublicOfferRows(supabase, signal, stationId),
       readStationEnhancementRow(supabase, stationId, signal),
+      readRecentAvailabilitySampleRows(
+        supabase,
+        [stationId],
+        TRANSIT_RECENT_AVAILABILITY_SAMPLE_DETAIL_ROW_LIMIT
+      ),
     ]);
 
-    const station = mapStationRow(stationRow, offerRows, enhancementRow);
+    const station = mapStationRow(
+      stationRow,
+      offerRows,
+      enhancementRow,
+      new Map(),
+      buildRecentAvailabilitySamplesByKey(recentSampleRows)
+    );
     cachedBySlug.set(station.slug, { station, cachedAt: Date.now() });
     return station;
   } catch (error) {
@@ -686,7 +712,7 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
 
   const cutoff = new Date(Date.now() - TRANSIT_HISTORY_DAYS * 24 * 60 * 60 * 1000).toISOString();
   try {
-    const [historyResult, samplesResult] = await Promise.all([
+    const [historyResult, samplesResult, recentSampleRows] = await Promise.all([
       supabase
         .from("api_transit_multiplier_history")
         .select(
@@ -716,6 +742,11 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
         .order("checked_at", { ascending: true })
         .limit(1200)
         .abortSignal(publicTransitReadSignal()),
+      readRecentAvailabilitySampleRows(
+        supabase,
+        [station.id],
+        TRANSIT_RECENT_AVAILABILITY_SAMPLE_DETAIL_ROW_LIMIT
+      ),
     ]);
     if (historyResult.error) throw historyResult.error;
     if (samplesResult.error && !isMissingTableError(samplesResult.error)) throw samplesResult.error;
@@ -731,6 +762,7 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
     }
 
     const availabilityWindows = buildAvailabilityWindows(dbRows(samplesResult.data), station.id);
+    const recentSamplesByKey = buildRecentAvailabilitySamplesByKey(recentSampleRows);
     const stationWindow = availabilityWindows.get(`${station.id}|station||`);
 
     return {
@@ -739,6 +771,15 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
         ...station.availability,
         firstCheckedAt: earliestTimestamp(station.availability.firstCheckedAt, stationWindow?.first),
         lastCheckedAt: station.availability.lastCheckedAt || stationWindow?.last || null,
+        recentSamples:
+          getRecentAvailabilitySamplesForScope(
+            recentSamplesByKey,
+            station.id,
+            "station",
+            "",
+            "",
+            station.availability.sourceType
+          ) || station.availability.recentSamples,
       },
       prices: station.prices.map((price) => ({
         ...price,
@@ -752,6 +793,15 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
             price.availability.lastCheckedAt ||
             availabilityWindows.get(availabilityWindowKey(station.id, "offer", price.standardModel, price.groupName))?.last ||
             null,
+          recentSamples:
+            getRecentAvailabilitySamplesForScope(
+              recentSamplesByKey,
+              station.id,
+              "offer",
+              price.standardModel,
+              price.groupName,
+              price.availability.sourceType
+            ) || price.availability.recentSamples,
         },
         history: historyByOffer.get(historyKey({
           station_id: station.id,
@@ -794,6 +844,117 @@ function buildAvailabilityWindows(rows: DbRow[], stationId: string): Map<string,
   return windows;
 }
 
+type RecentAvailabilitySamplesByKey = Map<string, NonNullable<TransitAvailability["recentSamples"]>>;
+
+async function readRecentAvailabilitySampleRows(
+  client: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
+  stationIds: string[],
+  rowLimit: number
+): Promise<DbRow[]> {
+  const ids = Array.from(new Set(stationIds.filter(Boolean)));
+  if (!ids.length || rowLimit <= 0) return [];
+
+  const query = () => client
+    .from("api_transit_availability_samples")
+    .select("station_id,scope,standard_model,group_name,ok,checked_at,source_type")
+    .in("station_id", ids)
+    .order("checked_at", { ascending: false })
+    .limit(rowLimit)
+    .abortSignal(publicTransitReadSignal());
+
+  const { data, error } = await query();
+
+  if (error && isMissingColumnError(error)) {
+    const fallback = await client
+      .from("api_transit_availability_samples")
+      .select("station_id,scope,standard_model,group_name,ok,checked_at")
+      .in("station_id", ids)
+      .order("checked_at", { ascending: false })
+      .limit(rowLimit)
+      .abortSignal(publicTransitReadSignal());
+    if (fallback.error) {
+      if (isMissingTableError(fallback.error) || isMissingColumnError(fallback.error)) return [];
+      throw fallback.error;
+    }
+    return dbRows(fallback.data);
+  }
+
+  if (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+
+  return dbRows(data);
+}
+
+function buildRecentAvailabilitySamplesByKey(rows: DbRow[]): RecentAvailabilitySamplesByKey {
+  const samplesByKey: RecentAvailabilitySamplesByKey = new Map();
+
+  for (const row of rows) {
+    const stationId = stringValue(row.station_id);
+    const checkedAt = nullableTimestamp(row.checked_at);
+    if (!stationId || !checkedAt) continue;
+    const key = availabilityWindowKey(
+      stationId,
+      stringValue(row.scope) === "offer" ? "offer" : "station",
+      stringValue(row.standard_model),
+      stringValue(row.group_name)
+    );
+    const sourceType = availabilitySourceType(stringValue(row.source_type));
+    const scopedKey = recentAvailabilitySampleKey(key, sourceType === "unknown" ? null : sourceType);
+    samplesByKey.set(scopedKey, [
+      ...(samplesByKey.get(scopedKey) || []),
+      {
+        ok: booleanValue(row.ok),
+        checkedAt,
+      },
+    ]);
+  }
+
+  for (const [key, samples] of samplesByKey.entries()) {
+    samplesByKey.set(key, normalizeRecentAvailabilitySamples(samples));
+  }
+
+  return samplesByKey;
+}
+
+function getRecentAvailabilitySamplesForScope(
+  samplesByKey: RecentAvailabilitySamplesByKey,
+  stationId: string,
+  scope: "station" | "offer",
+  standardModel: string,
+  groupName: string,
+  sourceType: TransitAvailabilitySourceType
+): TransitAvailability["recentSamples"] {
+  const key = availabilityWindowKey(stationId, scope, standardModel, groupName);
+  if (sourceType !== "unknown") {
+    const sourceSamples = samplesByKey.get(recentAvailabilitySampleKey(key, sourceType));
+    if (sourceSamples?.length) return sourceSamples;
+  }
+  return samplesByKey.get(recentAvailabilitySampleKey(key, null));
+}
+
+function recentAvailabilitySampleKey(baseKey: string, sourceType: TransitAvailabilitySourceType | null): string {
+  return `${baseKey}|${sourceType || ""}`;
+}
+
+function normalizeRecentAvailabilitySamples(
+  samples: NonNullable<TransitAvailability["recentSamples"]>
+): NonNullable<TransitAvailability["recentSamples"]> {
+  return samples
+    .map((sample, index) => ({
+      ok: sample.ok,
+      checkedAt: sample.checkedAt,
+      index,
+    }))
+    .sort((left, right) => {
+      const diff = timestampSortValue(left.checkedAt) - timestampSortValue(right.checkedAt);
+      return diff || left.index - right.index;
+    })
+    .slice(-TRANSIT_RECENT_AVAILABILITY_SAMPLE_LIMIT)
+    .map(({ ok, checkedAt }) => ({ ok, checkedAt }));
+}
+
 function availabilityWindowKey(
   stationId: string,
   scope: "station" | "offer",
@@ -819,12 +980,21 @@ function mapStationRow(
   row: DbRow,
   offerRows: DbRow[],
   enhancementRow?: DbRow,
-  historyByOffer: Map<string, TransitMultiplierHistoryPoint[]> = new Map()
+  historyByOffer: Map<string, TransitMultiplierHistoryPoint[]> = new Map(),
+  recentSamplesByKey: RecentAvailabilitySamplesByKey = new Map()
 ): TransitStation {
   const id = stringValue(row.id);
   const updatedAt = timestampValue(row.last_updated_at || row.updated_at);
   const enhancement = enhancementRow || {};
   const source = availabilitySourceFromRow(row);
+  const stationRecentSamples = getRecentAvailabilitySamplesForScope(
+    recentSamplesByKey,
+    id,
+    "station",
+    "",
+    "",
+    source.type
+  );
 
   return {
     id,
@@ -858,6 +1028,7 @@ function mapStationRow(
       sevenDaySamples: integerValue(row.availability_seven_day_samples) || 0,
       firstCheckedAt: nullableTimestamp(row.availability_first_checked_at),
       lastCheckedAt: nullableTimestamp(row.availability_last_checked_at),
+      recentSamples: stationRecentSamples,
       latestLatencyMs: integerValue(row.availability_latest_latency_ms),
       avgLatency7dMs: integerValue(row.availability_avg_latency_7d_ms),
       note: nullableString(row.availability_note) || undefined,
@@ -865,7 +1036,7 @@ function mapStationRow(
       sourceLabel: source.label,
       sourceUrl: source.url,
     },
-    prices: offerRows.map((offer) => mapOfferRow(offer, historyByOffer)).filter((price): price is TransitModelPrice => Boolean(price)),
+    prices: offerRows.map((offer) => mapOfferRow(offer, historyByOffer, recentSamplesByKey)).filter((price): price is TransitModelPrice => Boolean(price)),
     feedback: {
       pendingCount: integerValue(row.feedback_pending_count) || 0,
       verifiedRiskCount: integerValue(row.feedback_verified_risk_count) || 0,
@@ -882,13 +1053,23 @@ function mapStationRow(
 
 function mapOfferRow(
   row: DbRow,
-  historyByOffer: Map<string, TransitMultiplierHistoryPoint[]> = new Map()
+  historyByOffer: Map<string, TransitMultiplierHistoryPoint[]> = new Map(),
+  recentSamplesByKey: RecentAvailabilitySamplesByKey = new Map()
 ): TransitModelPrice | null {
   const family = modelFamily(row.family);
   const standardModel = standardModelValue(row.standard_model);
   if (!family || !standardModel) return null;
   const groupName = stringValue(row.group_name) || "默认分组";
   const source = availabilitySourceFromRow(row, nullableString(row.source_url));
+  const stationId = stringValue(row.station_id);
+  const recentSamples = getRecentAvailabilitySamplesForScope(
+    recentSamplesByKey,
+    stationId,
+    "offer",
+    standardModel,
+    groupName,
+    source.type
+  );
 
   return {
     family,
@@ -911,6 +1092,7 @@ function mapOfferRow(
       sevenDaySamples: integerValue(row.availability_seven_day_samples) || 0,
       firstCheckedAt: nullableTimestamp(row.availability_first_checked_at),
       lastCheckedAt: nullableTimestamp(row.availability_last_checked_at),
+      recentSamples,
       latestLatencyMs: integerValue(row.availability_latest_latency_ms),
       avgLatency7dMs: integerValue(row.availability_avg_latency_7d_ms),
       note: nullableString(row.availability_note) || undefined,
@@ -986,6 +1168,13 @@ function numberValue(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function booleanValue(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.trim().toLowerCase() === "true";
+  if (typeof value === "number") return value === 1;
+  return false;
 }
 
 function transitCacheUsageFromRow(row: DbRow): TransitModelPrice["cacheUsage"] {
@@ -1068,6 +1257,13 @@ function nullableTimestamp(value: unknown): string | null {
   const text = nullableString(value);
   if (!text) return null;
   return text;
+}
+
+function timestampSortValue(value: string | null | undefined): number {
+  if (!value) return Number.NEGATIVE_INFINITY;
+  const normalized = /^\d{4}-\d{2}-\d{2} /.test(value) ? value.replace(" ", "T") : value;
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
 }
 
 function earliestTimestamp(...values: Array<string | null | undefined>): string | null {

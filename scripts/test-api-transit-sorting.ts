@@ -1,4 +1,5 @@
 import {
+  buildTransitAvailabilityBars,
   compareStations,
   getActiveTransitCommercialOffers,
   getFamilyRateSummary,
@@ -163,6 +164,59 @@ assertEqual(stationOnlyPublishedAvailability.sevenDaySamples, 0);
 assertEqual(stationOnlyPublishedAvailability.sevenDayRate, null);
 assertEqual(stationOnlyPublishedAvailability.firstCheckedAt, null);
 assertEqual(stationOnlyPublishedAvailability.lastCheckedAt, null);
+
+const recentTimeline = Array.from({ length: 63 }, (_, index) => ({
+  ok:
+    index < 3 ? false :
+      index < 6 ? true :
+        index < 9 ? false :
+          index < 12 ? index !== 10 :
+            true,
+  checkedAt: new Date(Date.UTC(2026, 6, 2, 7, index)).toISOString(),
+})).reverse();
+const recentBars = buildTransitAvailabilityBars({
+  rate: 0.98,
+  samples: 63,
+  recentSamples: recentTimeline,
+});
+assertEqual(recentBars.length, 20);
+assertDeepEqual(recentBars.slice(0, 4), ["good", "bad", "warn", "good"]);
+
+const partialRecentBars = buildTransitAvailabilityBars({
+  rate: 1,
+  samples: 2,
+  recentSamples: [
+    { ok: true, checkedAt: "2026-07-02T07:00:00.000Z" },
+    { ok: false, checkedAt: "2026-07-02T07:01:00.000Z" },
+  ],
+});
+assertEqual(partialRecentBars.length, 20);
+assertDeepEqual(partialRecentBars.slice(0, 19), Array(19).fill("empty"));
+assertEqual(partialRecentBars[19], "warn");
+
+const fallbackAvailabilityBars = buildTransitAvailabilityBars({
+  rate: 1,
+  samples: 16,
+  firstCheckedAt: now,
+  lastCheckedAt: now,
+});
+assertEqual(fallbackAvailabilityBars.length, 16);
+
+mixedAvailabilityStation.prices[0]!.availability.recentSamples = [
+  { ok: true, checkedAt: "2026-07-02T06:00:00.000Z" },
+  { ok: false, checkedAt: "2026-07-02T06:01:00.000Z" },
+];
+mixedAvailabilityStation.prices[1]!.availability.recentSamples = [
+  { ok: true, checkedAt: "2026-07-02T06:02:00.000Z" },
+];
+assertDeepEqual(
+  getStationPublishedAvailabilitySummary(mixedAvailabilityStation).recentSamples,
+  [
+    { ok: true, checkedAt: "2026-07-02T06:00:00.000Z" },
+    { ok: false, checkedAt: "2026-07-02T06:01:00.000Z" },
+    { ok: true, checkedAt: "2026-07-02T06:02:00.000Z" },
+  ],
+);
 
 const mixedClaudeGroupStation = station({
   id: "mixed-claude-group",

@@ -29,6 +29,11 @@ import { seedStations } from "@/data/api-transit/stations";
 let cached: TransitStation[] | null = null;
 let cachedAt = 0;
 const CACHE_TTL_MS = 30_000;
+const TRANSIT_RECENT_AVAILABILITY_SAMPLE_LIMIT = 60;
+const TRANSIT_RECENT_AVAILABILITY_BAR_COUNT = 20;
+const TRANSIT_RECENT_AVAILABILITY_GROUP_SIZE = 3;
+const TRANSIT_AVAILABILITY_WINDOW_DAYS = 7;
+const TRANSIT_EXPECTED_PROBE_INTERVAL_MINUTES = 60;
 const sourceChannelPriority: TransitChannelType[] = [
   "official_api",
   "cloud",
@@ -573,6 +578,7 @@ export type TransitFamilyRateSummary = {
   sevenDaySamples: number;
   firstCheckedAt: string | null;
   lastCheckedAt: string | null;
+  recentSamples?: TransitAvailability["recentSamples"];
   latestLatencyMs: number | null;
   avgLatency7dMs: number | null;
 };
@@ -583,6 +589,7 @@ export type TransitAvailabilityRollup = Pick<
   | "sevenDaySamples"
   | "firstCheckedAt"
   | "lastCheckedAt"
+  | "recentSamples"
   | "latestLatencyMs"
   | "avgLatency7dMs"
   | "sourceType"
@@ -591,6 +598,174 @@ export type TransitAvailabilityRollup = Pick<
 > & {
   note?: string;
 };
+
+export type TransitAvailabilityBarTone = "good" | "warn" | "bad" | "empty";
+
+export function getRecentTransitAvailabilitySamples(
+  prices: TransitModelPrice[]
+): TransitAvailability["recentSamples"] {
+  return normalizeRecentAvailabilitySamples(
+    prices.flatMap((price) => price.availability.recentSamples || [])
+  );
+}
+
+function getRecentTransitAvailabilitySamplesFromSummaries(
+  summaries: Array<Pick<TransitFamilyRateSummary, "recentSamples">>
+): TransitAvailability["recentSamples"] {
+  return normalizeRecentAvailabilitySamples(
+    summaries.flatMap((summary) => summary.recentSamples || [])
+  );
+}
+
+function normalizeRecentAvailabilitySamples(
+  samples: NonNullable<TransitAvailability["recentSamples"]>
+): TransitAvailability["recentSamples"] {
+  if (!samples.length) return undefined;
+  return samples
+    .map((sample, index) => ({
+      ok: sample.ok,
+      checkedAt: sample.checkedAt,
+      index,
+    }))
+    .sort((left, right) => {
+      const diff = timestampSortValue(left.checkedAt) - timestampSortValue(right.checkedAt);
+      return diff || left.index - right.index;
+    })
+    .slice(-TRANSIT_RECENT_AVAILABILITY_SAMPLE_LIMIT)
+    .map(({ ok, checkedAt }) => ({ ok, checkedAt }));
+}
+
+export function buildTransitAvailabilityBars({
+  rate,
+  samples,
+  firstCheckedAt = null,
+  lastCheckedAt = null,
+  recentSamples,
+}: {
+  rate: number | null;
+  samples: number;
+  firstCheckedAt?: string | null;
+  lastCheckedAt?: string | null;
+  recentSamples?: TransitAvailability["recentSamples"];
+}): TransitAvailabilityBarTone[] {
+  if (recentSamples?.length) return buildRecentAvailabilityBars(recentSamples);
+
+  const total = 16;
+  if (rate === null || samples <= 0) return Array(total).fill("empty");
+  const monitoredBars = observedAvailabilityBarCount({
+    samples,
+    firstCheckedAt,
+    lastCheckedAt,
+    total,
+  });
+  if (monitoredBars <= 0) return Array(total).fill("empty");
+
+  const clamped = Math.max(0, Math.min(1, rate));
+  return Array.from({ length: total }, (_, index) => {
+    if (index >= monitoredBars) return "empty";
+    const expectedGoodCount = Math.round(clamped * (index + 1));
+    const previousGoodCount = Math.round(clamped * index);
+    if (expectedGoodCount > previousGoodCount) return "good";
+    return clamped >= 0.75 ? "warn" : "bad";
+  });
+}
+
+function buildRecentAvailabilityBars(
+  samples: NonNullable<TransitAvailability["recentSamples"]>
+): TransitAvailabilityBarTone[] {
+  const recent = normalizeRecentAvailabilitySamples(samples) || [];
+  const bars: TransitAvailabilityBarTone[] = Array(TRANSIT_RECENT_AVAILABILITY_BAR_COUNT).fill("empty");
+  if (!recent.length) return bars;
+
+  const groupCount = Math.ceil(recent.length / TRANSIT_RECENT_AVAILABILITY_GROUP_SIZE);
+  const offset = Math.max(0, TRANSIT_RECENT_AVAILABILITY_BAR_COUNT - groupCount);
+  const firstGroupSize = recent.length % TRANSIT_RECENT_AVAILABILITY_GROUP_SIZE || TRANSIT_RECENT_AVAILABILITY_GROUP_SIZE;
+  let cursor = 0;
+
+  for (let groupIndex = 0; groupIndex < groupCount; groupIndex += 1) {
+    const groupSize = groupIndex === 0 ? firstGroupSize : TRANSIT_RECENT_AVAILABILITY_GROUP_SIZE;
+    const group = recent.slice(cursor, cursor + groupSize);
+    bars[offset + groupIndex] = availabilityToneForSampleGroup(group);
+    cursor += groupSize;
+  }
+
+  return bars;
+}
+
+function availabilityToneForSampleGroup(
+  group: NonNullable<TransitAvailability["recentSamples"]>
+): TransitAvailabilityBarTone {
+  if (!group.length) return "empty";
+  const okCount = group.filter((sample) => sample.ok).length;
+  if (okCount === group.length) return "good";
+  if (okCount === 0) return "bad";
+  return "warn";
+}
+
+function observedAvailabilityBarCount({
+  samples,
+  firstCheckedAt,
+  lastCheckedAt,
+  total,
+}: {
+  samples: number;
+  firstCheckedAt: string | null;
+  lastCheckedAt: string | null;
+  total: number;
+}) {
+  const sampleBars = Math.max(0, Math.min(total, samples));
+  const lastCheckedMs = parseAvailabilityTimestamp(lastCheckedAt);
+  if (!lastCheckedMs) return sampleBars;
+
+  const nowMs = roundedAvailabilityNowMs();
+  const trailingBlankBars = trailingUnmonitoredAvailabilityBars({
+    lastCheckedMs,
+    nowMs,
+    total,
+  });
+  const activeWindowBars = Math.max(0, total - trailingBlankBars);
+  const firstCheckedMs = parseAvailabilityTimestamp(firstCheckedAt);
+
+  if (!firstCheckedMs) return Math.min(sampleBars, activeWindowBars);
+
+  const windowMs = TRANSIT_AVAILABILITY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const monitoringSpanMs = Math.max(0, Math.min(nowMs, lastCheckedMs) - Math.max(nowMs - windowMs, firstCheckedMs));
+  const spanBars = Math.max(1, Math.ceil((monitoringSpanMs / windowMs) * total));
+
+  return Math.min(sampleBars, activeWindowBars, spanBars);
+}
+
+function trailingUnmonitoredAvailabilityBars({
+  lastCheckedMs,
+  nowMs,
+  total,
+}: {
+  lastCheckedMs: number;
+  nowMs: number;
+  total: number;
+}) {
+  const windowMs = TRANSIT_AVAILABILITY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const graceMs = TRANSIT_EXPECTED_PROBE_INTERVAL_MINUTES * 60 * 1000;
+  const staleMs = Math.max(0, nowMs - lastCheckedMs - graceMs);
+  if (staleMs <= 0) return 0;
+  return Math.max(0, Math.min(total, Math.ceil((staleMs / windowMs) * total)));
+}
+
+function roundedAvailabilityNowMs() {
+  const bucketMs = TRANSIT_EXPECTED_PROBE_INTERVAL_MINUTES * 60 * 1000;
+  return Math.floor(Date.now() / bucketMs) * bucketMs;
+}
+
+function parseAvailabilityTimestamp(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2} /.test(value) ? value.replace(" ", "T") : value;
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function timestampSortValue(value: string | null | undefined): number {
+  return parseAvailabilityTimestamp(value) ?? Number.NEGATIVE_INFINITY;
+}
 
 function summarizeRateScope(
   station: TransitStation,
@@ -630,6 +805,7 @@ function summarizeRateScope(
       .at(0) ?? null;
   const latestLatencyMs = latestLatencyFromPrices(prices);
   const avgLatency7dMs = weightedAverageLatency(prices);
+  const recentSamples = getRecentTransitAvailabilitySamples(prices);
 
   return {
     family,
@@ -643,6 +819,7 @@ function summarizeRateScope(
     sevenDaySamples: availabilitySamples,
     firstCheckedAt,
     lastCheckedAt,
+    recentSamples,
     latestLatencyMs,
     avgLatency7dMs,
   };
@@ -803,6 +980,7 @@ export function getStationPublishedAvailabilitySummary(station: TransitStation):
     sevenDaySamples: samples,
     firstCheckedAt,
     lastCheckedAt,
+    recentSamples: getRecentTransitAvailabilitySamplesFromSummaries(summaries),
     latestLatencyMs: latestLatencyFromSummaries(summaries),
     avgLatency7dMs: weightedAverageLatencyFromSummaries(summaries),
     note: `按当前公开模型分组汇总：${formatPercent(roundAvailabilityRate(weightedRate))} · 样本 ${samples}`,

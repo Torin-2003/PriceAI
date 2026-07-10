@@ -48,6 +48,10 @@ export interface TransitAvailability {
   sevenDaySamples: number;
   firstCheckedAt?: string | null;
   lastCheckedAt: string | null;
+  recentSamples?: Array<{
+    ok: boolean;
+    checkedAt: string | null;
+  }>;
   latestLatencyMs?: number | null;
   avgLatency7dMs?: number | null;
   note?: string;
