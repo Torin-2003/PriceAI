@@ -12,20 +12,40 @@ const emptyMiddlewareManifest = {
   sortedMiddleware: [],
 };
 
-assertEmptyMiddlewareManifest();
+assertPatchableMiddlewareManifest();
 patchHandler();
 
-console.log("OpenNext Worker runtime patch complete: empty middleware manifest is inlined.");
+console.log("OpenNext Worker runtime patch complete: server middleware manifest require is disabled.");
 
-function assertEmptyMiddlewareManifest() {
+function assertPatchableMiddlewareManifest() {
   if (!existsSync(manifestFile)) {
     throw new Error(`Missing middleware manifest: ${manifestFile}`);
   }
 
   const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
-  if (JSON.stringify(manifest) !== JSON.stringify(emptyMiddlewareManifest)) {
-    throw new Error("Refusing to patch non-empty middleware manifest for Cloudflare Worker runtime.");
+  if (isEmptyMiddlewareManifest(manifest) || isEdgeMiddlewareManifest(manifest)) {
+    return;
   }
+
+  throw new Error("Refusing to patch unsupported middleware manifest for Cloudflare Worker runtime.");
+}
+
+function isEmptyMiddlewareManifest(manifest) {
+  return JSON.stringify(manifest) === JSON.stringify(emptyMiddlewareManifest);
+}
+
+function isEdgeMiddlewareManifest(manifest) {
+  return Boolean(
+    manifest &&
+      manifest.version === 3 &&
+      manifest.middleware &&
+      typeof manifest.middleware === "object" &&
+      Object.keys(manifest.middleware).length > 0 &&
+      manifest.functions &&
+      typeof manifest.functions === "object" &&
+      Object.keys(manifest.functions).length === 0 &&
+      Array.isArray(manifest.sortedMiddleware),
+  );
 }
 
 function patchHandler() {

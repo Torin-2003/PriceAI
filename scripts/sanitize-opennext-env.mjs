@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 
 const root = process.cwd();
@@ -32,8 +32,12 @@ function listEnvFiles(directory) {
   const files = [];
 
   for (const entry of readdirSync(directory)) {
+    if (entry === "node_modules") continue;
+
     const path = join(directory, entry);
-    const stats = statSync(path);
+    const stats = lstatSync(path);
+
+    if (stats.isSymbolicLink()) continue;
 
     if (stats.isDirectory()) {
       files.push(...listEnvFiles(path));
