@@ -169,6 +169,7 @@ const OFFER_BASE_COLUMNS = [
   "availability_source_url",
 ];
 const OFFER_COLUMNS = OFFER_BASE_COLUMNS.join(",");
+const OFFER_COLUMNS_WITH_RAW_PAYLOAD = `${OFFER_COLUMNS},raw_payload`;
 const OFFER_COLUMNS_WITHOUT_CACHE_HIT = withoutColumns(OFFER_BASE_COLUMNS, "cache_hit_rate", "cache_hit_sample_tokens");
 const OFFER_COLUMNS_WITHOUT_LATENCY = withoutColumns(
   OFFER_BASE_COLUMNS,
@@ -368,7 +369,9 @@ export async function getTransitStationBySlug(
   slug: string,
   options: { includeHistory?: boolean } = {}
 ): Promise<TransitStation | undefined> {
-  const station = getCachedStationBySlug(slug) ?? await readStationFromSupabaseBySlug(slug);
+  const station = options.includeHistory
+    ? await readStationFromSupabaseBySlug(slug)
+    : getCachedStationBySlug(slug) ?? await readStationFromSupabaseBySlug(slug);
   if (!station || !options.includeHistory) return station;
   return getTransitStationDetailData(station);
 }
@@ -493,7 +496,7 @@ async function readStationFromSupabaseBySlug(slug: string): Promise<TransitStati
 
     const signal = publicTransitReadSignal();
     const [offerRows, enhancementRow, recentSampleRows] = await Promise.all([
-      readPublicOfferRows(supabase, signal, stationId),
+      readPublicOfferRows(supabase, signal, stationId, { includeRawPayload: true }),
       readStationEnhancementRow(supabase, stationId, signal),
       readRecentAvailabilitySampleRows(
         supabase,
@@ -521,9 +524,11 @@ async function readStationFromSupabaseBySlug(slug: string): Promise<TransitStati
 async function readPublicOfferRows(
   client: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
   signal: AbortSignal,
-  stationId?: string
+  stationId?: string,
+  options: { includeRawPayload?: boolean } = {}
 ): Promise<DbRow[]> {
   const attempts = [
+    ...(options.includeRawPayload ? [OFFER_COLUMNS_WITH_RAW_PAYLOAD] : []),
     OFFER_COLUMNS,
     OFFER_COLUMNS_WITHOUT_LATENCY,
     OFFER_COLUMNS_WITHOUT_CACHE_HIT,
@@ -1091,6 +1096,7 @@ function mapOfferRow(
     groupName,
     rechargeRatio: nullableString(row.recharge_ratio),
     modelMultiplier: numberValue(row.model_multiplier),
+    stationGroupMultiplier: stationGroupMultiplierFromRawPayload(row.raw_payload),
     inputPrice: numberValue(row.input_price),
     outputPrice: numberValue(row.output_price),
     cacheReadPrice: numberValue(row.cache_read_price),
@@ -1122,6 +1128,13 @@ function mapOfferRow(
       group_name: groupName,
     })) || [],
   };
+}
+
+function stationGroupMultiplierFromRawPayload(value: unknown): number | null {
+  if (!value || typeof value !== "object") return null;
+  const group = (value as { group?: unknown }).group;
+  if (!group || typeof group !== "object") return null;
+  return numberValue((group as { rate_multiplier?: unknown }).rate_multiplier);
 }
 
 function dbRows(value: unknown): DbRow[] {

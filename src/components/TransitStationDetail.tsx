@@ -101,6 +101,7 @@ type TransitPriceGroup = {
   modelMultiplierMin: number | null;
   modelMultiplierMax: number | null;
   modelMultiplierLabel: string;
+  stationGroupMultiplierLabel: string | null;
   cacheUsage: TransitModelPrice["cacheUsage"];
   sevenDayRate: number | null;
   sevenDaySamples: number;
@@ -1398,6 +1399,13 @@ function PriceGroupMobileCard({
 
       <div className="mt-3 grid grid-cols-2 gap-2">
         <MobilePriceFact label="充值倍率" value={formatRate(group.rechargeCoefficient)} />
+        {group.stationGroupMultiplierLabel ? (
+          <MobilePriceFact
+            label="站方倍率"
+            value={group.stationGroupMultiplierLabel}
+            title="站方公开快照中的分组倍率，未乘官方模型价差。"
+          />
+        ) : null}
         <MobilePriceFact label="模型倍率" value={group.modelMultiplierLabel} />
         <MobilePriceFact
           label="缓存命中率"
@@ -1524,6 +1532,11 @@ function PriceGroupRow({
         </span>
         <div className="mt-2 space-y-1 text-[11px] font-semibold text-[#5a6061]">
           <div title={TRANSIT_RECHARGE_COEFFICIENT_EXPLANATION}>充值倍率 {formatRate(group.rechargeCoefficient)}</div>
+          {group.stationGroupMultiplierLabel ? (
+            <div title="站方公开快照中的分组倍率，未乘官方模型价差。">
+              站方倍率 {group.stationGroupMultiplierLabel}
+            </div>
+          ) : null}
           <div title={TRANSIT_MODEL_MULTIPLIER_EXPLANATION}>模型倍率 {group.modelMultiplierLabel}</div>
           <div>{group.prices.length} 个模型</div>
         </div>
@@ -1602,6 +1615,9 @@ function buildPriceGroup(
   const modelMultipliers = prices
     .map((price) => price.modelMultiplier)
     .filter((value): value is number => value !== null && Number.isFinite(value));
+  const stationGroupMultipliers = prices
+    .map((price) => price.stationGroupMultiplier)
+    .filter((value): value is number => value !== null && value !== undefined && Number.isFinite(value));
   const availabilitySamples = prices.reduce((total, price) => total + price.availability.sevenDaySamples, 0);
   const weightedAvailability =
     availabilitySamples > 0
@@ -1636,6 +1652,7 @@ function buildPriceGroup(
     modelMultiplierMin: modelMultipliers.length ? Math.min(...modelMultipliers) : null,
     modelMultiplierMax: modelMultipliers.length ? Math.max(...modelMultipliers) : null,
     modelMultiplierLabel: formatModelGroupMultiplierLabel(primaryPrice, modelMultipliers),
+    stationGroupMultiplierLabel: formatOptionalModelRateRange(stationGroupMultipliers),
     cacheUsage: getRepresentativeCacheUsage(prices),
     sevenDayRate: weightedAvailability,
     sevenDaySamples: availabilitySamples,
@@ -2043,6 +2060,11 @@ function formatModelGroupMultiplierLabel(primaryPrice: TransitModelPrice, values
   const min = Math.min(...values);
   const max = Math.max(...values);
   return formatModelRateRange(min, max);
+}
+
+function formatOptionalModelRateRange(values: number[]): string | null {
+  if (!values.length) return null;
+  return formatModelRateRange(Math.min(...values), Math.max(...values));
 }
 
 function formatModelRateRange(min: number | null, max: number | null): string {

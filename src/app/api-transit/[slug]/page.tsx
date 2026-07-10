@@ -1,14 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Suspense } from "react";
-import { getTransitStationDetailData, getTransitStations, getTransitStationBySlug } from "@/lib/api-transit-db";
+import { getTransitStations, getTransitStationBySlug } from "@/lib/api-transit-db";
 import { SiteHeader } from "@/components/SiteHeader";
 import TransitStationDetail, {
   TransitStationPricingPanels,
-  TransitStationPricingSkeleton,
 } from "@/components/TransitStationDetail";
 import { JsonLd } from "@/components/JsonLd";
-import type { TransitStation } from "@/data/api-transit/types";
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -44,7 +41,7 @@ export default async function ApiTransitDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const station = await getTransitStationBySlug(slug);
+  const station = await getTransitStationBySlug(slug, { includeHistory: true });
 
   if (!station) notFound();
 
@@ -73,16 +70,9 @@ export default async function ApiTransitDetailPage({
 
       <main className="mx-auto max-w-[1500px] px-4 py-6 pb-20 sm:px-5 sm:py-7">
         <TransitStationDetail station={station}>
-          <Suspense fallback={<TransitStationPricingSkeleton />}>
-            <TransitStationPricingData station={station} />
-          </Suspense>
+          <TransitStationPricingPanels station={station} />
         </TransitStationDetail>
       </main>
     </div>
   );
-}
-
-async function TransitStationPricingData({ station }: { station: TransitStation }) {
-  const detailedStation = await getTransitStationDetailData(station);
-  return <TransitStationPricingPanels station={detailedStation} />;
 }

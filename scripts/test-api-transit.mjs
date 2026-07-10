@@ -771,6 +771,7 @@ assert.equal(aiTransitSnapshot.offers.length, 2);
 const aiTransitGpt = aiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.5");
 assert.equal(aiTransitGpt.recharge_ratio, "1:1");
 assert.equal(aiTransitGpt.model_multiplier, 0.1);
+assert.equal(aiTransitGpt.raw_payload.group.rate_multiplier, 0.1);
 assert.equal(aiTransitGpt.input_price, 0.1);
 assert.equal(aiTransitGpt.output_price, 0.1);
 assert.equal(aiTransitGpt.cache_read_price, 0.1);
@@ -783,12 +784,63 @@ assert.equal(aiTransitGpt.availability_avg_latency_7d_ms, 1005);
 assert.equal(aiTransitGpt.availability_source_type, "public_status");
 const aiTransitImage = aiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT Image 2");
 assert.equal(aiTransitImage.family, "image");
-assert.equal(aiTransitImage.image_output_price, 0.000001);
+assert.equal(aiTransitImage.image_output_price, 1);
 assert.equal(aiTransitSnapshot.availabilitySamples.length, 4);
 assert.equal(aiTransitSnapshot.station.availability_seven_day_rate, 0.965);
 assert.equal(aiTransitSnapshot.station.availability_seven_day_samples, 2);
 assert.equal(aiTransitSnapshot.station.availability_latest_latency_ms, 1985);
 assert.equal(aiTransitSnapshot.station.availability_avg_latency_7d_ms, 1005);
+
+const aiTransitGroupRateSnapshot = __test.parsePricingPayload(
+  configuredApinodeSource,
+  {
+    schema_version: "ai-transit.v1",
+    system: "sub2api",
+    generated_at: "2026-07-10T16:53:18.000Z",
+    station: {
+      name: "APINode",
+      homepage_url: "https://apinode.ltd/home",
+      price_url: "https://apinode.ltd/public/transit",
+      monitor_url: "https://apinode.ltd/public/transit?view=monitoring",
+      system_type: "sub2api",
+    },
+    billing: {
+      currency: "CNY",
+      credit_currency: "USD",
+      recharge_ratio: "1 CNY = 1 USD balance",
+      recharge_multiplier: 1,
+      minimum_top_up: 1,
+    },
+    groups: [
+      {
+        name: "Plus-经济通道",
+        platform: "openai",
+        rate_multiplier: 0.19,
+        models: [
+          {
+            standard_model: "gpt-5.6-sol",
+            raw_model: "gpt-5.6-sol",
+            platform: "openai",
+            billing_mode: "token",
+            price: {
+              input_usd_per_token: 0.0000025,
+              output_usd_per_token: 0.000015,
+              cache_write_usd_per_token: 0.000003125,
+              cache_read_usd_per_token: 0.00000025,
+            },
+          },
+        ],
+      },
+    ],
+  },
+  "2026-07-10T16:54:00.000Z",
+);
+const aiTransitGroupRateGpt = aiTransitGroupRateSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.6 Sol");
+assert.equal(aiTransitGroupRateGpt.model_multiplier, 0.19);
+assert.equal(aiTransitGroupRateGpt.input_price, 0.19);
+assert.equal(aiTransitGroupRateGpt.output_price, 0.19);
+assert.equal(aiTransitGroupRateGpt.raw_payload.group.rate_multiplier, 0.19);
+assert.equal(aiTransitGroupRateGpt.raw_payload.multiplier_basis, "ai_transit_group_rate_multiplier");
 
 const callaiAiTransitSnapshot = __test.parsePricingPayload(
   configuredCallaiSource,

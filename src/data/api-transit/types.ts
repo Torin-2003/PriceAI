@@ -136,6 +136,7 @@ export interface TransitModelPrice {
   groupName: string;
   rechargeRatio: string | null;
   modelMultiplier: number | null;
+  stationGroupMultiplier?: number | null;
   inputPrice: number | null;
   outputPrice: number | null;
   cacheReadPrice: number | null;

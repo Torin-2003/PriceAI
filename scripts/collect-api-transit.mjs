@@ -863,19 +863,19 @@ function buildAiTransitSnapshotOfferRow({
 function getAiTransitSnapshotSplitMultipliers(unitPricesUsd, official, groupMultiplierValue) {
   const groupMultiplier = numberValue(groupMultiplierValue) ?? 1;
   if (official && hasComparableOfficialPrice(official)) {
-    const input = ratioValue(unitPricesUsd.input, official.input, groupMultiplier);
-    const output = ratioValue(unitPricesUsd.output, official.output, groupMultiplier);
-    const cacheRead = ratioValue(unitPricesUsd.cacheRead, official.cacheRead, groupMultiplier);
-    const cacheWrite = ratioValue(unitPricesUsd.cacheWrite, official.cacheWrite, groupMultiplier);
-    const imageOutput = ratioValue(unitPricesUsd.imageOutput, official.imageOutput, groupMultiplier);
+    const input = aiTransitMetricRate(unitPricesUsd.input, official.input, groupMultiplier);
+    const output = aiTransitMetricRate(unitPricesUsd.output, official.output, groupMultiplier);
+    const cacheRead = aiTransitMetricRate(unitPricesUsd.cacheRead, official.cacheRead, groupMultiplier);
+    const cacheWrite = aiTransitMetricRate(unitPricesUsd.cacheWrite, official.cacheWrite, groupMultiplier);
+    const imageOutput = aiTransitMetricRate(unitPricesUsd.imageOutput, official.imageOutput, groupMultiplier);
     return {
-      model: input ?? output ?? cacheRead ?? cacheWrite ?? imageOutput,
+      model: groupMultiplier,
       input,
       output,
       cacheRead,
       cacheWrite,
       imageOutput,
-      basis: "ai_transit_unit_price_against_official",
+      basis: "ai_transit_group_rate_multiplier",
     };
   }
 
@@ -888,6 +888,11 @@ function getAiTransitSnapshotSplitMultipliers(unitPricesUsd, official, groupMult
     imageOutput: null,
     basis: "ai_transit_group_rate_multiplier",
   };
+}
+
+function aiTransitMetricRate(value, officialValue, groupMultiplier) {
+  if (value === null || officialValue === null || officialValue <= 0) return null;
+  return value === 0 ? 0 : groupMultiplier;
 }
 
 function aiTransitUnitPricesUsd(price) {
