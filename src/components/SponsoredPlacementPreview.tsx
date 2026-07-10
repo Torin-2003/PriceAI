@@ -20,6 +20,7 @@ type SponsoredPlacementPreviewProps = {
   kind: SponsorPlacementKind;
   settings?: SponsorSettingsSummary | null;
   className?: string;
+  reserveWhenEmpty?: boolean;
 };
 
 type PlacementCopy = {
@@ -130,7 +131,7 @@ const placementCopy: Record<SponsorPlacementKind, PlacementCopy> = {
   },
 };
 
-export function SponsoredPlacementPreview({ kind, settings = null, className = "" }: SponsoredPlacementPreviewProps) {
+export function SponsoredPlacementPreview({ kind, settings = null, className = "", reserveWhenEmpty = false }: SponsoredPlacementPreviewProps) {
   const copy = placementCopy[kind];
   const dismissStorageKey = `${dismissStoragePrefix}.${copy.id}.v2`;
   const pathname = usePathname();
@@ -169,7 +170,11 @@ export function SponsoredPlacementPreview({ kind, settings = null, className = "
     });
   }, [copy.id, creatives.length, dismissed, impressionKey, kind, pathname]);
 
-  if (!creatives.length || dismissed) return null;
+  if (dismissed) return null;
+
+  if (!creatives.length) {
+    return reserveWhenEmpty && kind === "topBanner" ? <TopNoticeAdPlaceholder className={className} /> : null;
+  }
 
   if (kind === "topBanner") {
     return <TopNoticeAd copy={copy} creative={creatives[0]} kind={kind} className={className} onDismiss={dismiss} pathname={pathname} />;
@@ -180,6 +185,17 @@ export function SponsoredPlacementPreview({ kind, settings = null, className = "
   }
 
   return <DisplayAdCard copy={copy} creative={creatives[0]} kind={kind} className={className} onDismiss={dismiss} pathname={pathname} />;
+}
+
+function TopNoticeAdPlaceholder({ className }: { className: string }) {
+  return (
+    <section
+      aria-hidden="true"
+      className={`border-b border-[#d8e3df] bg-[#edf7f3] ${className}`}
+    >
+      <div className="mx-auto min-h-11 max-w-[1500px] px-4 sm:px-8" />
+    </section>
+  );
 }
 
 function useSponsorPreviewEnabled() {
