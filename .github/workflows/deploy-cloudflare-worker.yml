@@ -7,6 +7,23 @@ on:
         description: "URL to smoke test after deployment"
         required: false
         default: "https://priceai.cc"
+      collector_runtime_base_ref:
+        description: "Base ref for collector runtime watchlist preflight"
+        required: false
+        default: ""
+      collector_runtime_sync_ref:
+        description: "Workflow URL, manifest SHA, or release SHA proving Huoshan2 runtime sync"
+        required: false
+        default: ""
+      allow_unsynced_collector_runtime:
+        description: "Allow deploy despite collector runtime changes; requires override reason"
+        required: false
+        type: boolean
+        default: false
+      collector_runtime_override_reason:
+        description: "Explicit reason for deploying without collector runtime sync"
+        required: false
+        default: ""
 
 jobs:
   deploy-cloudflare-worker:
@@ -43,6 +60,35 @@ jobs:
         with:
           node-version: 24
           cache: npm
+
+      - name: Collector runtime preflight
+        env:
+          COLLECTOR_RUNTIME_BASE_REF: ${{ inputs.collector_runtime_base_ref }}
+          COLLECTOR_RUNTIME_SYNC_REF: ${{ inputs.collector_runtime_sync_ref }}
+          ALLOW_UNSYNCED_COLLECTOR_RUNTIME: ${{ inputs.allow_unsynced_collector_runtime }}
+          COLLECTOR_RUNTIME_OVERRIDE_REASON: ${{ inputs.collector_runtime_override_reason }}
+        run: |
+          set -euo pipefail
+
+          args=(--target-ref "$GITHUB_SHA")
+
+          if [ -n "${COLLECTOR_RUNTIME_BASE_REF:-}" ]; then
+            args+=(--base-ref "$COLLECTOR_RUNTIME_BASE_REF")
+          fi
+
+          if [ -n "${COLLECTOR_RUNTIME_SYNC_REF:-}" ]; then
+            args+=(--collector-runtime-sync-ref "$COLLECTOR_RUNTIME_SYNC_REF")
+          fi
+
+          if [ "${ALLOW_UNSYNCED_COLLECTOR_RUNTIME:-false}" = "true" ]; then
+            if [ -z "${COLLECTOR_RUNTIME_OVERRIDE_REASON:-}" ]; then
+              echo "collector_runtime_override_reason is required when allow_unsynced_collector_runtime is true."
+              exit 1
+            fi
+            args+=(--allow-collector-runtime-drift "$COLLECTOR_RUNTIME_OVERRIDE_REASON")
+          fi
+
+          node scripts/check-collector-runtime-guard.mjs "${args[@]}"
 
       - run: npm ci
 

@@ -6,6 +6,10 @@ import {
   loadCloudflareLocalEnv,
   missingEnv,
 } from "./cloudflare-env.mjs";
+import {
+  evaluateCollectorRuntimeGuard,
+  formatCollectorRuntimeGuardReport,
+} from "./collector-runtime-policy.mjs";
 
 const DEFAULT_BASE_URL = "https://priceai.cc";
 const DEFAULT_REF = "main";
@@ -42,6 +46,10 @@ if (untrackedChanges.length > 0) {
 if (options.mode === "check") {
   await checkProductionTarget(options.smokeBaseUrl);
   printLocalEnvSummary(localMissingEnv);
+  enforceCollectorRuntimePreflight(options, {
+    targetRef: options.ref,
+    warnOnly: true,
+  });
   process.exit(0);
 }
 
@@ -61,6 +69,10 @@ function parseArgs(args) {
     dryRun: false,
     allowTrackedChanges: false,
     allowRemoteRefMismatch: false,
+    collectorRuntimeBase: process.env.PRICEAI_COLLECTOR_RUNTIME_BASE_REF || "",
+    collectorRuntimeSyncRef: process.env.PRICEAI_COLLECTOR_RUNTIME_SYNC_REF || "",
+    allowUnsyncedCollectorRuntime: false,
+    collectorRuntimeOverrideReason: process.env.PRICEAI_ALLOW_COLLECTOR_RUNTIME_DRIFT_REASON || "",
   };
 
   for (const arg of args) {
@@ -71,7 +83,20 @@ function parseArgs(args) {
     else if (arg === "--dry-run") parsed.dryRun = true;
     else if (arg === "--allow-tracked-changes") parsed.allowTrackedChanges = true;
     else if (arg === "--allow-remote-ref-mismatch") parsed.allowRemoteRefMismatch = true;
+    else if (arg === "--allow-unsynced-collector-runtime") parsed.allowUnsyncedCollectorRuntime = true;
     else if (arg.startsWith("--ref=")) parsed.ref = arg.slice("--ref=".length) || DEFAULT_REF;
+    else if (arg.startsWith("--collector-runtime-base-ref=")) {
+      parsed.collectorRuntimeBase = arg.slice("--collector-runtime-base-ref=".length);
+    } else if (arg.startsWith("--collector-runtime-base=")) {
+      parsed.collectorRuntimeBase = arg.slice("--collector-runtime-base=".length);
+    } else if (arg.startsWith("--collector-runtime-sync-ref=")) {
+      parsed.collectorRuntimeSyncRef = arg.slice("--collector-runtime-sync-ref=".length);
+    } else if (arg.startsWith("--allow-collector-runtime-drift=")) {
+      parsed.collectorRuntimeOverrideReason = arg.slice("--allow-collector-runtime-drift=".length);
+      parsed.allowUnsyncedCollectorRuntime = true;
+    } else if (arg.startsWith("--collector-runtime-override-reason=")) {
+      parsed.collectorRuntimeOverrideReason = arg.slice("--collector-runtime-override-reason=".length);
+    }
     else if (arg.startsWith("--smoke-base-url=")) {
       parsed.smokeBaseUrl = arg.slice("--smoke-base-url=".length) || DEFAULT_BASE_URL;
     } else if (arg === "--help" || arg === "-h") {
@@ -80,6 +105,10 @@ function parseArgs(args) {
     } else {
       fail(`Unknown argument: ${arg}`);
     }
+  }
+
+  if (parsed.allowUnsyncedCollectorRuntime && !parsed.collectorRuntimeOverrideReason.trim()) {
+    fail("--allow-unsynced-collector-runtime requires --collector-runtime-override-reason=<reason>.");
   }
 
   return parsed;
@@ -107,6 +136,16 @@ Options:
   --smoke-base-url=<url>          Smoke target, default: ${DEFAULT_BASE_URL}
   --allow-tracked-changes         Allow GitHub deploy while tracked files are modified locally
   --allow-remote-ref-mismatch     Allow GitHub deploy when the local ref differs from origin
+  --collector-runtime-base-ref=<ref>
+                                  Base ref for collector runtime guard
+  --collector-runtime-sync-ref=<ref-or-url>
+                                  Evidence that Huoshan2 collector runtime sync is handled
+  --allow-collector-runtime-drift=<reason>
+                                  Allow deploy despite collector runtime changes, with explicit reason
+  --allow-unsynced-collector-runtime
+                                  Legacy alias; requires --collector-runtime-override-reason
+  --collector-runtime-override-reason=<reason>
+                                  Legacy reason flag for --allow-unsynced-collector-runtime
 `);
 }
 
@@ -143,22 +182,47 @@ async function runGithubCloudflareDeploy(trackedChanges, runOptions) {
     `smoke_base_url=${runOptions.smokeBaseUrl}`,
   ];
 
-  if (runOptions.dryRun) {
-    console.log(`Dry run: gh ${args.join(" ")}`);
-    return;
-  }
-
   const deploySha = resolveRemoteGitRef(runOptions.ref) || resolveGitRef(runOptions.ref);
   const localSha = resolveGitRef(runOptions.ref);
 
   if (localSha && deploySha && localSha !== deploySha && !runOptions.allowRemoteRefMismatch) {
-    fail(
-      [
-        `Local ref "${runOptions.ref}" differs from origin/${runOptions.ref}.`,
-        "GitHub Actions deploys the remote ref, so local committed-but-unpushed changes would be missing from production.",
-        "Push or sync the branch first, or pass --allow-remote-ref-mismatch if you intentionally want to deploy the current remote ref.",
-      ].join("\n"),
-    );
+    const message = [
+      `Local ref "${runOptions.ref}" differs from origin/${runOptions.ref}.`,
+      "GitHub Actions deploys the remote ref, so local committed-but-unpushed changes would be missing from production.",
+      "Push or sync the branch first, or pass --allow-remote-ref-mismatch if you intentionally want to deploy the current remote ref.",
+    ].join("\n");
+
+    if (runOptions.dryRun) console.log(`Warning: ${message}`);
+    else fail(message);
+  }
+
+  const collectorRuntimeBase =
+    runOptions.collectorRuntimeBase ||
+    (await latestSuccessfulWorkflowHeadSha(runOptions.ref, { excludeHeadSha: deploySha })) ||
+    resolveGitRef(`${runOptions.ref}^`) ||
+    resolveGitRef(`${deploySha}^`);
+  enforceCollectorRuntimePreflight(runOptions, {
+    baseRef: collectorRuntimeBase,
+    targetRef: deploySha || runOptions.ref,
+    fetchRef: runOptions.ref,
+  });
+
+  if (collectorRuntimeBase) {
+    args.push("-f", `collector_runtime_base_ref=${collectorRuntimeBase}`);
+  }
+  if (runOptions.collectorRuntimeSyncRef) {
+    args.push("-f", `collector_runtime_sync_ref=${runOptions.collectorRuntimeSyncRef}`);
+  }
+  if (runOptions.allowUnsyncedCollectorRuntime) {
+    args.push("-f", "allow_unsynced_collector_runtime=true");
+  }
+  if (runOptions.collectorRuntimeOverrideReason) {
+    args.push("-f", `collector_runtime_override_reason=${runOptions.collectorRuntimeOverrideReason}`);
+  }
+
+  if (runOptions.dryRun) {
+    console.log(`Dry run: gh ${args.join(" ")}`);
+    return;
   }
 
   const triggerStartedAt = new Date(Date.now() - 5000).toISOString();
@@ -189,6 +253,40 @@ async function runGithubCloudflareDeploy(trackedChanges, runOptions) {
   runChecked("npm", ["run", "smoke:cloudflare", "--", runOptions.smokeBaseUrl]);
 }
 
+async function latestSuccessfulWorkflowHeadSha(ref, filter = {}) {
+  const result = spawnSync(
+    "gh",
+    [
+      "run",
+      "list",
+      "--workflow",
+      WORKFLOW_FILE,
+      "--branch",
+      ref,
+      "--limit",
+      "20",
+      "--json",
+      "conclusion,headSha,status",
+    ],
+    { encoding: "utf8" },
+  );
+
+  if (result.status !== 0) return "";
+
+  try {
+    const runs = JSON.parse(result.stdout);
+    const candidates = Array.isArray(runs) ? runs : [];
+    return candidates.find((run) =>
+      run.status === "completed" &&
+      run.conclusion === "success" &&
+      run.headSha &&
+      run.headSha !== filter.excludeHeadSha
+    )?.headSha || "";
+  } catch {
+    return "";
+  }
+}
+
 async function runLocalCloudflareDeploy(missing, runOptions) {
   if (missing.length > 0) {
     fail(
@@ -200,6 +298,11 @@ async function runLocalCloudflareDeploy(missing, runOptions) {
     );
   }
 
+  enforceCollectorRuntimePreflight(runOptions, {
+    targetRef: "HEAD",
+    includeWorkingTree: true,
+  });
+
   if (runOptions.dryRun) {
     console.log("Dry run: npm run lint && npm run build && npm run build:cloudflare && npm run deploy:cloudflare && npm run smoke:cloudflare");
     return;
@@ -210,6 +313,38 @@ async function runLocalCloudflareDeploy(missing, runOptions) {
   runChecked("npm", ["run", "build:cloudflare"]);
   runChecked("npm", ["run", "deploy:cloudflare"]);
   runChecked("npm", ["run", "smoke:cloudflare", "--", runOptions.smokeBaseUrl]);
+}
+
+function enforceCollectorRuntimePreflight(
+  runOptions,
+  { baseRef = "", targetRef = "HEAD", includeWorkingTree = false, fetchRef = "", warnOnly = false } = {},
+) {
+  const result = evaluateCollectorRuntimeGuard({
+    baseRef: baseRef || runOptions.collectorRuntimeBase,
+    targetRef,
+    includeWorkingTree,
+    fetchRef,
+  });
+
+  console.log(
+    formatCollectorRuntimeGuardReport(result, {
+      syncRef: runOptions.collectorRuntimeSyncRef,
+      overrideReason: runOptions.collectorRuntimeOverrideReason,
+      dryRun: runOptions.dryRun || warnOnly,
+    }),
+  );
+
+  if (!result.changedFiles.length) return;
+  if (runOptions.collectorRuntimeSyncRef || runOptions.collectorRuntimeOverrideReason) return;
+  if (runOptions.dryRun || warnOnly) return;
+
+  fail(
+    [
+      "Collector runtime watched files changed in this deployment ref.",
+      "Sync Huoshan2 collector runtime first and pass --collector-runtime-sync-ref=<workflow-url-or-manifest-sha>,",
+      "or pass --allow-collector-runtime-drift=<explicit-reason> for an intentional exception.",
+    ].join("\n"),
+  );
 }
 
 async function checkProductionTarget(baseUrl) {
