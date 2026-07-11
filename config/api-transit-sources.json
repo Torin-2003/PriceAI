@@ -185,7 +185,7 @@
     "accountPools": ["plus", "pro", "max", "kiro", "mixed", "undisclosed"],
     "supportChannels": ["qq群：1073408363"],
     "riskLabels": ["mixed_pool", "insufficient_samples", "pending_feedback"],
-    "summary": "WAWA ZZ API 使用 Sub2API 系统，公开 ai-transit.v1 快照可读取 Claude、GPT 和生图分组倍率、7 日缓存命中率和公开监测时间线；该快照未公开逐模型价格，PriceAI 按已知分组模型对应关系将最新分组倍率映射到标准模型。可用率来自站点公开监测与 PriceAI 实测合并，PriceAI 实测优先。",
+    "summary": "WAWA ZZ API 使用 Sub2API 系统，公开 ai-transit.v1 快照可读取 Claude、GPT 和生图分组倍率、7 日缓存命中率和公开监测时间线；该快照未公开逐模型价格，PriceAI 按已知分组模型对应关系将最新分组倍率映射到标准模型。可用率优先展示站点公开监测，缺失时使用 PriceAI 实测补充。",
     "strengths": [
       "公开 /.well-known/ai-transit.json 可发现结构化快照，/api/public/transit/v1/snapshot 返回分组倍率、缓存命中率和监控时间线。",
       "gpt-plus、gpt-pro、claude-krio 等分组可与 PriceAI 已有 WAWA 标准模型对应，适合补充最新公开价格和 7 日缓存命中率。"
