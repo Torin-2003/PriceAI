@@ -6,7 +6,9 @@ import {
   getStationComparisonSummary,
   getStationPublishedAvailabilitySummary,
   getStandardModelRateSummary,
+  getTransitAvailabilityRollupPrices,
   getTransitModelSummaries,
+  getTransitPriceAvailabilitySourceMeta,
   normalizedTransitCommercialOfferDisclosure,
   getRechargeCoefficientFromRatio,
   scoreTransitCombinedRate,
@@ -158,6 +160,56 @@ publicMonitorCompatibilityStation.availability.sourceUrl =
 const publicMonitorCompatibilityAvailability = getStationPublishedAvailabilitySummary(publicMonitorCompatibilityStation);
 assertEqual(publicMonitorCompatibilityAvailability.sourceType, "public_status");
 assertEqual(publicMonitorCompatibilityAvailability.sourceUrl, publicMonitorCompatibilityStation.monitorUrl);
+
+const duplicateAvailabilityStation = station({
+  id: "duplicate-availability",
+  name: "Duplicate Availability",
+  claudeRate: 0.8,
+  availabilityRate: 0.99,
+  availabilitySamples: 130,
+});
+duplicateAvailabilityStation.monitorUrl = "https://duplicate-availability.example.test/public/transit";
+const duplicateProbePrice = {
+  ...duplicateAvailabilityStation.prices[0]!,
+  family: "gpt" as const,
+  standardModel: "GPT 5.5" as const,
+  groupName: "gpt-plus",
+  modelMultiplier: 0.1,
+  availability: {
+    ...availability(0.99, 130),
+    recentSamples: [
+      { ok: true, checkedAt: "2026-07-02T06:00:00.000Z" },
+      { ok: true, checkedAt: "2026-07-02T06:01:00.000Z" },
+    ],
+  },
+};
+const duplicatePublicStatusPrice = {
+  ...duplicateProbePrice,
+  availability: {
+    ...availability(0.95, 60),
+    sourceType: "public_status" as const,
+    sourceLabel: "公开监测页",
+    sourceUrl: "https://duplicate-availability.example.test/public/transit",
+    recentSamples: [
+      { ok: true, checkedAt: "2026-07-02T06:02:00.000Z" },
+      { ok: false, checkedAt: "2026-07-02T06:03:00.000Z" },
+      { ok: true, checkedAt: "2026-07-02T06:04:00.000Z" },
+    ],
+  },
+};
+duplicateAvailabilityStation.prices.push(duplicateProbePrice, duplicatePublicStatusPrice);
+const duplicateRollupPrices = getTransitAvailabilityRollupPrices(duplicateAvailabilityStation, duplicateAvailabilityStation.prices);
+assertEqual(duplicateRollupPrices.filter((price) => price.standardModel === "GPT 5.5").length, 1);
+assertEqual(duplicateRollupPrices.find((price) => price.standardModel === "GPT 5.5")?.availability.sourceType, "public_status");
+const duplicateGptSummary = getFamilyRateSummary(duplicateAvailabilityStation, "gpt");
+assertEqual(duplicateGptSummary.sevenDaySamples, 60);
+assertEqual(duplicateGptSummary.sevenDayRate, 0.95);
+assertDeepEqual(duplicateGptSummary.recentSamples, duplicatePublicStatusPrice.availability.recentSamples);
+const duplicateModelSummary = getTransitModelSummaries([duplicateAvailabilityStation], "gpt")
+  .find((summary) => summary.standardModel === "GPT 5.5");
+assertEqual(duplicateModelSummary?.prices.length, 1);
+assertEqual(duplicateModelSummary?.prices[0]?.price.availability.sourceType, "public_status");
+assertEqual(getTransitPriceAvailabilitySourceMeta(duplicateAvailabilityStation, duplicateProbePrice).label, "站方公开");
 
 const stationOnlyProbeAvailability = station({
   id: "station-only-probe",

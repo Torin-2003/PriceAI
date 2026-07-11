@@ -1377,7 +1377,14 @@ function isPublicSiteInfoAvailability(row: DbRow): boolean {
 
 function isPublicMonitorAvailabilityUrl(value: string | null | undefined): boolean {
   const text = value?.toLowerCase() || "";
-  return Boolean(text && (text.includes("view=monitoring") || text.includes("/status") || text.includes("status.") || text.includes("monitor")));
+  return Boolean(
+    text &&
+      (text.includes("view=monitoring") ||
+        text.includes("/public/transit") ||
+        text.includes("/status") ||
+        text.includes("status.") ||
+        text.includes("monitor"))
+  );
 }
 
 function isTransitAvailabilitySourceType(value: string): value is TransitAvailabilitySourceType {

@@ -70,6 +70,8 @@ import {
   getRecentTransitAvailabilitySamples,
   getStationRechargeCoefficient,
   getStationPublishedAvailabilitySummary,
+  getTransitAvailabilityRollupPrices,
+  getTransitPriceAvailabilitySource,
   getTransitVerificationEvents,
   getTransitReviewTags,
   getTransitStationSystemLabel,
@@ -1605,6 +1607,7 @@ function buildPriceGroup(
   prices: TransitModelPrice[],
 ): TransitPriceGroup {
   const primaryPrice = getRepresentativeTransitPrice(prices) ?? prices[0];
+  const availabilityPrices = getTransitAvailabilityRollupPrices(station, prices);
   const sortedPrices = [
     primaryPrice,
     ...prices.filter((price) => price !== primaryPrice).sort(comparePricePriority),
@@ -1618,19 +1621,22 @@ function buildPriceGroup(
   const stationGroupMultipliers = prices
     .map((price) => price.stationGroupMultiplier)
     .filter((value): value is number => value !== null && value !== undefined && Number.isFinite(value));
-  const availabilitySamples = prices.reduce((total, price) => total + price.availability.sevenDaySamples, 0);
+  const availabilitySamples = availabilityPrices.reduce((total, price) => total + price.availability.sevenDaySamples, 0);
   const weightedAvailability =
     availabilitySamples > 0
-      ? prices.reduce((total, price) => total + (price.availability.sevenDayRate ?? 0) * price.availability.sevenDaySamples, 0) / availabilitySamples
+      ? availabilityPrices.reduce(
+          (total, price) => total + (price.availability.sevenDayRate ?? 0) * price.availability.sevenDaySamples,
+          0
+        ) / availabilitySamples
       : null;
   const lastCheckedAt =
-    prices
+    availabilityPrices
       .map((price) => price.availability.lastCheckedAt)
       .filter((value): value is string => Boolean(value))
       .sort()
       .at(-1) ?? null;
   const firstCheckedAt =
-    prices
+    availabilityPrices
       .map((price) => price.availability.firstCheckedAt)
       .filter((value): value is string => Boolean(value))
       .sort()
@@ -1641,7 +1647,8 @@ function buildPriceGroup(
       .filter(Boolean)
       .sort()
       .at(-1) ?? primaryPrice.lastVerifiedAt;
-  const sourceMeta = getAvailabilitySourceMeta(primaryPrice.availability);
+  const availabilitySource = getTransitPriceAvailabilitySource(station, primaryPrice);
+  const sourceMeta = getAvailabilitySourceMeta(availabilitySource);
 
   return {
     groupName,
@@ -1658,15 +1665,15 @@ function buildPriceGroup(
     sevenDaySamples: availabilitySamples,
     firstCheckedAt,
     lastCheckedAt,
-    recentSamples: getRecentTransitAvailabilitySamples(prices),
-    latestLatencyMs: latestLatencyFromPrices(prices),
-    avgLatency7dMs: weightedAverageLatencyFromPrices(prices),
+    recentSamples: getRecentTransitAvailabilitySamples(availabilityPrices),
+    latestLatencyMs: latestLatencyFromPrices(availabilityPrices),
+    avgLatency7dMs: weightedAverageLatencyFromPrices(availabilityPrices),
     latestVerifiedAt,
     priceSource: primaryPrice.priceSource,
     availabilitySourceLabel: sourceMeta.label,
     availabilitySourceTitle: sourceMeta.title,
     availabilitySourceUrl: sourceMeta.url,
-    availabilitySourceType: primaryPrice.availability.sourceType,
+    availabilitySourceType: availabilitySource.sourceType,
     history: normalizedGroupHistory(station, primaryPrice),
   };
 }

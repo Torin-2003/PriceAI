@@ -10,6 +10,7 @@ import {
   SearchField,
   StatusChip,
 } from "@/components/ComparisonUi";
+import { TransitAvailabilityStrip } from "@/components/TransitAvailabilityStrip";
 import { TransitModelIcon } from "@/components/TransitModelIcon";
 import { TransitPriceBreakdown } from "@/components/TransitPriceBreakdown";
 import { TransitViewTabs } from "@/components/TransitViewTabs";
@@ -37,6 +38,7 @@ import {
   getRateBadgeClass,
   getTransitModelSummaries,
   getTransitModelDetectionBadgeClass,
+  getTransitPriceAvailabilitySourceMeta,
   getTransitPriceDetectionSummary,
   getTransitStationSystemLabel,
   getUsageAdviceBadgeClass,
@@ -486,11 +488,19 @@ function RateAndCacheCell({ entry }: { entry: TransitModelPriceEntry }) {
 
 function PriceAvailabilityCell({ entry }: { entry: TransitModelPriceEntry }) {
   const availability = entry.price.availability;
-  const source = getAvailabilitySourceMeta(availability);
+  const source = getTransitPriceAvailabilitySourceMeta(entry.station, entry.price);
 
   return (
     <div className="min-w-0" title={source.title}>
       <p className="font-semibold text-[#202829]">{formatAvailability(availability)}</p>
+      <TransitAvailabilityStrip
+        rate={availability.sevenDayRate}
+        samples={availability.sevenDaySamples}
+        firstCheckedAt={availability.firstCheckedAt}
+        lastCheckedAt={availability.lastCheckedAt}
+        recentSamples={availability.recentSamples}
+        className="mt-1"
+      />
       <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[10px] text-[#7f8889]">
         <span>{formatDateMinute(availability.lastCheckedAt)}</span>
         <AvailabilitySourcePill source={source} />

@@ -528,7 +528,7 @@ export function getFamilyAvailabilitySourceMeta(
       availabilitySourcePriority(left.availability.sourceType)
   );
   const price = sorted.find((item) => item.availability.sourceType !== "unknown") || sorted[0];
-  return price ? getAvailabilitySourceMeta(price.availability) : getAvailabilitySourceMeta(station.availability);
+  return price ? getTransitPriceAvailabilitySourceMeta(station, price) : getAvailabilitySourceMeta(station.availability);
 }
 
 export function getStandardModelAvailabilitySourceMeta(
@@ -542,7 +542,7 @@ export function getStandardModelAvailabilitySourceMeta(
       availabilitySourcePriority(left.availability.sourceType)
   );
   const price = sorted.find((item) => item.availability.sourceType !== "unknown") || sorted[0];
-  return price ? getAvailabilitySourceMeta(price.availability) : getAvailabilitySourceMeta(station.availability);
+  return price ? getTransitPriceAvailabilitySourceMeta(station, price) : getAvailabilitySourceMeta(station.availability);
 }
 
 function availabilitySourcePriority(sourceType: TransitModelPrice["availability"]["sourceType"]): number {
@@ -562,6 +562,76 @@ function availabilitySourcePriority(sourceType: TransitModelPrice["availability"
     default:
       return 0;
   }
+}
+
+export function getTransitPriceAvailabilitySource(
+  station: TransitStation,
+  price: TransitModelPrice
+): Pick<TransitAvailability, "sourceType" | "sourceLabel" | "sourceUrl"> {
+  if (price.availability.sourceType === "public_status") {
+    return {
+      sourceType: price.availability.sourceType,
+      sourceLabel: price.availability.sourceLabel,
+      sourceUrl: price.availability.sourceUrl,
+    };
+  }
+
+  const publicMonitorUrl = publicMonitorAvailabilityUrl(station);
+  if (publicMonitorUrl) {
+    return {
+      sourceType: "public_status",
+      sourceLabel: station.availability.sourceType === "public_status" ? station.availability.sourceLabel : "公开监测页",
+      sourceUrl: publicMonitorUrl,
+    };
+  }
+
+  return {
+    sourceType: price.availability.sourceType,
+    sourceLabel: price.availability.sourceLabel,
+    sourceUrl: price.availability.sourceUrl,
+  };
+}
+
+export function getTransitPriceAvailabilitySourceMeta(
+  station: TransitStation,
+  price: TransitModelPrice
+): ReturnType<typeof getAvailabilitySourceMeta> {
+  return getAvailabilitySourceMeta(getTransitPriceAvailabilitySource(station, price));
+}
+
+export function getTransitAvailabilityRollupPrices(
+  station: TransitStation,
+  prices: TransitModelPrice[]
+): TransitModelPrice[] {
+  const grouped = new Map<string, TransitModelPrice[]>();
+  for (const price of prices) {
+    const key = [price.standardModel, price.groupName || "默认分组"].join("|");
+    grouped.set(key, [...(grouped.get(key) || []), price]);
+  }
+
+  return Array.from(grouped.values())
+    .map((group) => [...group].sort((left, right) => compareTransitAvailabilityRollupPrice(station, left, right))[0])
+    .filter((price): price is TransitModelPrice => Boolean(price));
+}
+
+function compareTransitAvailabilityRollupPrice(
+  station: TransitStation,
+  left: TransitModelPrice,
+  right: TransitModelPrice
+): number {
+  return (
+    availabilitySourcePriority(right.availability.sourceType) -
+      availabilitySourcePriority(left.availability.sourceType) ||
+    right.availability.sevenDaySamples - left.availability.sevenDaySamples ||
+    timestampSortValue(right.availability.lastCheckedAt || right.lastVerifiedAt) -
+      timestampSortValue(left.availability.lastCheckedAt || left.lastVerifiedAt) ||
+    compareTransitModelPriority(left, right) ||
+    compareNullableNumber(
+      getCombinedRateForPrice(station, left),
+      getCombinedRateForPrice(station, right),
+      "asc"
+    )
+  );
 }
 
 export type TransitFamilyRateSummary = {
@@ -725,38 +795,39 @@ function summarizeRateScope(
   options: { rollupByGroup?: boolean } = {}
 ): TransitFamilyRateSummary {
   const scopePrices = options.rollupByGroup ? getRepresentativePricesByGroup(prices) : prices;
+  const availabilityPrices = getTransitAvailabilityRollupPrices(station, prices);
   const multipliers = scopePrices
     .map((price) => price.modelMultiplier)
     .filter((value): value is number => value !== null && Number.isFinite(value));
   const combinedRates = scopePrices
     .map((price) => getCombinedRateForPrice(station, price))
     .filter((value): value is number => value !== null && Number.isFinite(value));
-  const availabilitySamples = prices.reduce(
+  const availabilitySamples = availabilityPrices.reduce(
     (total, price) => total + price.availability.sevenDaySamples,
     0
   );
   const weightedAvailability =
     availabilitySamples > 0
-      ? prices.reduce((total, price) => {
+      ? availabilityPrices.reduce((total, price) => {
           const rate = price.availability.sevenDayRate ?? 0;
           return total + rate * price.availability.sevenDaySamples;
         }, 0) / availabilitySamples
       : null;
   const lastCheckedAt =
-    prices
+    availabilityPrices
       .map((price) => price.availability.lastCheckedAt)
       .filter((value): value is string => Boolean(value))
       .sort()
       .at(-1) ?? null;
   const firstCheckedAt =
-    prices
+    availabilityPrices
       .map((price) => price.availability.firstCheckedAt)
       .filter((value): value is string => Boolean(value))
       .sort()
       .at(0) ?? null;
-  const latestLatencyMs = latestLatencyFromPrices(prices);
-  const avgLatency7dMs = weightedAverageLatency(prices);
-  const recentSamples = getRecentTransitAvailabilitySamples(prices);
+  const latestLatencyMs = latestLatencyFromPrices(availabilityPrices);
+  const avgLatency7dMs = weightedAverageLatency(availabilityPrices);
+  const recentSamples = getRecentTransitAvailabilitySamples(availabilityPrices);
 
   return {
     family,
@@ -997,7 +1068,14 @@ function publicMonitorAvailabilityUrl(station: TransitStation): string | null {
 
 function isPublicMonitorAvailabilityUrl(value: string | null | undefined): value is string {
   const text = value?.toLowerCase() || "";
-  return Boolean(text && (text.includes("view=monitoring") || text.includes("/status") || text.includes("status.") || text.includes("monitor")));
+  return Boolean(
+    text &&
+      (text.includes("view=monitoring") ||
+        text.includes("/public/transit") ||
+        text.includes("/status") ||
+        text.includes("status.") ||
+        text.includes("monitor"))
+  );
 }
 
 function roundAvailabilityRate(value: number): number {
@@ -1390,7 +1468,7 @@ export function getTransitModelSummaries(
   );
 
   stations.forEach((station) => {
-    station.prices.forEach((price) => {
+    getTransitAvailabilityRollupPrices(station, station.prices).forEach((price) => {
       if (family !== "all" && !transitModelPriceMatchesFamily(price, family)) return;
 
       const entry: TransitModelPriceEntry = {
