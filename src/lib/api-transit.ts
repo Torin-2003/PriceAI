@@ -677,6 +677,34 @@ export function getRecentTransitAvailabilitySamples(
   );
 }
 
+export type TransitRecentAvailabilitySampleLookupScope = {
+  standardModel: string;
+  groupName: string;
+};
+
+export function getTransitRecentAvailabilitySampleLookupScopes(
+  standardModel: string,
+  groupName: string
+): TransitRecentAvailabilitySampleLookupScope[] {
+  const scopes: TransitRecentAvailabilitySampleLookupScope[] = [];
+  const seen = new Set<string>();
+  const normalizedStandardModel = standardModel || "";
+  const normalizedGroupName = groupName || "";
+  const pushScope = (nextStandardModel: string, nextGroupName: string) => {
+    const key = `${nextStandardModel}|${nextGroupName}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    scopes.push({ standardModel: nextStandardModel, groupName: nextGroupName });
+  };
+
+  pushScope(normalizedStandardModel, normalizedGroupName);
+  if (normalizedGroupName) pushScope("", normalizedGroupName);
+  if (normalizedStandardModel && normalizedGroupName) pushScope(normalizedStandardModel, "");
+  if (normalizedStandardModel || normalizedGroupName) pushScope("", "");
+
+  return scopes;
+}
+
 function getRecentTransitAvailabilitySamplesFromSummaries(
   summaries: Array<Pick<TransitFamilyRateSummary, "recentSamples">>
 ): TransitAvailability["recentSamples"] {

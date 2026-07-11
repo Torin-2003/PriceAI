@@ -207,6 +207,7 @@ assert(/PUBLIC_OFFER_MAX_QUERY_LENGTH\s*=\s*80/.test(publicOfferQueryText), "src
 assert(/normalizePublicOfferQuery/.test(publicOfferQueryText), "src/lib/public-offer-query.ts: public offer search query normalization must stay centralized.");
 
 const transitPublicText = read("src/lib/api-transit-db.ts");
+const transitLogicText = read("src/lib/api-transit.ts");
 assert(!/api_transit_detection_runs/.test(transitPublicText), "src/lib/api-transit-db.ts: public API transit reads must not query detection runs.");
 assert(!/raw_snapshot/.test(transitPublicText), "src/lib/api-transit-db.ts: public API transit reads must not parse raw snapshots.");
 assert(/PUBLIC_TRANSIT_READ_TIMEOUT_MS\s*=\s*2_500/.test(transitPublicText), "src/lib/api-transit-db.ts: normal API transit public reads must keep the 2.5s fallback timeout.");
@@ -216,7 +217,8 @@ assert(/function\s+publicTransitRefreshReadSignal\(\):\s*AbortSignal\s*\{\s*retu
 assert(/readRecentAvailabilitySampleRows\(\s*supabase,\s*stationIds,\s*sampleRowLimit,\s*signal\s*\)/.test(transitPublicText), "src/lib/api-transit-db.ts: API transit list recent sample reads must inherit the caller read signal.");
 assert(/readRecentAvailabilitySampleRows\([\s\S]{0,300}signal:\s*AbortSignal\s*=\s*publicTransitReadSignal\(\)/.test(transitPublicText), "src/lib/api-transit-db.ts: recent sample reads must accept a caller signal while defaulting normal pages to 2.5s.");
 assert(/preferPublicStatusSamples[\s\S]{0,400}return undefined/.test(transitPublicText), "src/lib/api-transit-db.ts: public-monitor rows must not fall back to stale priceai_probe recent samples.");
-assert(/appendRecentAvailabilitySample[\s\S]{0,500}availabilityWindowKey\(stationId,[\s\S]{0,120}\"\", \"\"\)/.test(transitPublicText), "src/lib/api-transit-db.ts: recent public samples must populate station-level aggregate keys for list stability bars.");
+assert(/for\s*\(const lookupScope of getTransitRecentAvailabilitySampleLookupScopes\(standardModel, groupName\)\)[\s\S]{0,300}appendRecentAvailabilitySample/.test(transitPublicText), "src/lib/api-transit-db.ts: recent public samples must use the shared lookup scopes when populating aggregate keys.");
+assert(/pushScope\(normalizedStandardModel, normalizedGroupName\);[\s\S]{0,200}if \(normalizedGroupName\) pushScope\("", normalizedGroupName\);[\s\S]{0,200}if \(normalizedStandardModel && normalizedGroupName\) pushScope\(normalizedStandardModel, ""\);[\s\S]{0,200}if \(normalizedStandardModel \|\| normalizedGroupName\) pushScope\("", ""\);/.test(transitLogicText), "src/lib/api-transit.ts: recent sample lookup scopes must preserve exact, group-only, model-only, station aggregate fallback order.");
 assert(!/\.abortSignal\(publicTransitReadSignal\(\)\)/.test(transitPublicText), "src/lib/api-transit-db.ts: nested API transit queries must not silently recreate the short 2.5s signal.");
 
 const transitAdminText = read("src/lib/api-transit-admin.ts");

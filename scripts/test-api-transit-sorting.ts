@@ -6,6 +6,7 @@ import {
   getStationComparisonSummary,
   getStationPublishedAvailabilitySummary,
   getStandardModelRateSummary,
+  getTransitRecentAvailabilitySampleLookupScopes,
   getTransitAvailabilityRollupPrices,
   getTransitModelSummaries,
   getTransitPriceAvailabilitySourceMeta,
@@ -210,6 +211,29 @@ const duplicateModelSummary = getTransitModelSummaries([duplicateAvailabilitySta
 assertEqual(duplicateModelSummary?.prices.length, 1);
 assertEqual(duplicateModelSummary?.prices[0]?.price.availability.sourceType, "public_status");
 assertEqual(getTransitPriceAvailabilitySourceMeta(duplicateAvailabilityStation, duplicateProbePrice).label, "站方公开");
+assertDeepEqual(
+  getTransitRecentAvailabilitySampleLookupScopes("GPT 5.5", "gpt-plus"),
+  [
+    { standardModel: "GPT 5.5", groupName: "gpt-plus" },
+    { standardModel: "", groupName: "gpt-plus" },
+    { standardModel: "GPT 5.5", groupName: "" },
+    { standardModel: "", groupName: "" },
+  ],
+);
+assertDeepEqual(
+  getTransitRecentAvailabilitySampleLookupScopes("GPT 5.5", ""),
+  [
+    { standardModel: "GPT 5.5", groupName: "" },
+    { standardModel: "", groupName: "" },
+  ],
+);
+assertDeepEqual(
+  getTransitRecentAvailabilitySampleLookupScopes("", "gpt-plus"),
+  [
+    { standardModel: "", groupName: "gpt-plus" },
+    { standardModel: "", groupName: "" },
+  ],
+);
 
 const stationOnlyProbeAvailability = station({
   id: "station-only-probe",

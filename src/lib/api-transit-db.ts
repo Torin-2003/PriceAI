@@ -13,7 +13,10 @@ import {
   isTransitStandardModel,
 } from "@/data/api-transit/types";
 import { seedStations } from "@/data/api-transit/stations";
-import { withTransitCommercialOfferDisclosure } from "@/lib/api-transit";
+import {
+  getTransitRecentAvailabilitySampleLookupScopes,
+  withTransitCommercialOfferDisclosure,
+} from "@/lib/api-transit";
 import { readPublicApiSnapshot, writePublicApiSnapshot } from "@/lib/public-api-snapshots";
 import { getSupabaseServerClient } from "@/lib/supabase";
 
@@ -921,31 +924,15 @@ function buildRecentAvailabilitySamplesByKey(rows: DbRow[]): RecentAvailabilityS
     const scope = stringValue(row.scope) === "offer" ? "offer" : "station";
     const standardModel = stringValue(row.standard_model);
     const groupName = stringValue(row.group_name);
-    const key = availabilityWindowKey(
-      stationId,
-      scope,
-      standardModel,
-      groupName
-    );
     const sourceType = availabilitySourceType(stringValue(row.source_type));
     const sample = {
       ok: booleanValue(row.ok),
       checkedAt,
     };
-    appendRecentAvailabilitySample(samplesByKey, key, sourceType, sample);
-
-    if (standardModel || groupName) {
+    for (const lookupScope of getTransitRecentAvailabilitySampleLookupScopes(standardModel, groupName)) {
       appendRecentAvailabilitySample(
         samplesByKey,
-        availabilityWindowKey(stationId, scope, "", ""),
-        sourceType,
-        sample
-      );
-    }
-    if (standardModel && groupName) {
-      appendRecentAvailabilitySample(
-        samplesByKey,
-        availabilityWindowKey(stationId, scope, standardModel, ""),
+        availabilityWindowKey(stationId, scope, lookupScope.standardModel, lookupScope.groupName),
         sourceType,
         sample
       );
@@ -1003,10 +990,8 @@ function recentAvailabilitySampleBaseKeys(
   standardModel: string,
   groupName: string
 ): string[] {
-  const keys = [availabilityWindowKey(stationId, scope, standardModel, groupName)];
-  if (standardModel && groupName) keys.push(availabilityWindowKey(stationId, scope, standardModel, ""));
-  if (standardModel || groupName) keys.push(availabilityWindowKey(stationId, scope, "", ""));
-  return Array.from(new Set(keys));
+  return getTransitRecentAvailabilitySampleLookupScopes(standardModel, groupName)
+    .map((lookupScope) => availabilityWindowKey(stationId, scope, lookupScope.standardModel, lookupScope.groupName));
 }
 
 function getRecentAvailabilitySamplesBySource(
