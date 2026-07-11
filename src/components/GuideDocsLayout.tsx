@@ -19,12 +19,12 @@ export function GuideDocsLayout({
         <SiteHeader activeSection="guides" />
       </div>
 
-      <div className="mx-auto max-w-[1500px] px-5 pb-14 pt-4 sm:px-8 lg:pt-6">
+      <div className="mx-auto max-w-[1320px] px-5 pb-14 pt-4 sm:px-8 lg:pt-6">
         <div className="mb-5 lg:hidden">
           <GuideMobileNav currentHref={currentHref} />
         </div>
 
-        <div className="grid gap-8 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,940px)_240px]">
+        <div className="grid gap-8 lg:grid-cols-[240px_minmax(0,680px)] lg:justify-center xl:grid-cols-[240px_minmax(0,680px)_220px]">
           <aside className="hidden lg:block">
             <div className="sticky top-28 max-h-[calc(100vh-8rem)] overflow-y-auto pr-1">
               <GuideSidebar currentHref={currentHref} />
