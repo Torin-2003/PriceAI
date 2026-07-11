@@ -1,0 +1,8 @@
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"模型页和站点页均为公开表格型 UI，需要遵守 PriceAI 组件结构、表格优先、8px 圆角和可访问性约定。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"用于约束本次 UI 改动的验收命令、公开路径质量和窄屏不溢出要求。"}
+{"file":".trellis/spec/frontend/state-management.md","reason":"确认本次只改派生展示层，不引入全局状态或新的客户端数据请求。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"模型检测摘要和缓存样本量属于跨组件 DTO/format helper，需要保持显式类型和共享 helper。"}
+{"file":".trellis/spec/priceai/data-contracts.md","reason":"API 中转公开数据展示应继续基于现有前端 DTO 和公开数据契约，不绕过到原始数据。"}
+{"file":".trellis/spec/priceai/public-api-cache.md","reason":"确认本次不改 Route Handler/cache；后续模型检测 rollup 规划需遵守公开 API 缓存边界。"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"本次涉及多个相似 badge/metric 展示，优先复用已有格式化和 tone helper。"}
+{"file":".trellis/tasks/07-10-api-transit-model-detection-ui-polish/research/current-state.md","reason":"记录主站与 detector service 当前边界，确保分级检测只进入规划、不混入本次实现。"}

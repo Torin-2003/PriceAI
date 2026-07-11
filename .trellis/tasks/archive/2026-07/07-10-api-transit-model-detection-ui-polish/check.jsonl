@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"检查倍率、缓存、检测列是否符合表格优先、状态文字+颜色、中文标签不溢出等 UI 规范。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"执行 lint/build/performance 与公开路径 UI 检查。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"检查新增或调整的展示 helper、props 和类型是否未使用 any。"}
+{"file":".trellis/spec/priceai/data-contracts.md","reason":"确认没有引入公开读取契约之外的数据读取或无界数据加载。"}
+{"file":".trellis/spec/priceai/public-api-cache.md","reason":"确认本次没有误改公开 API 缓存或 Route Handler。"}
+{"file":".trellis/tasks/07-10-api-transit-model-detection-ui-polish/research/current-state.md","reason":"检查分级检测规划是否作为文档边界保留，未被误实现为半成品。"}
