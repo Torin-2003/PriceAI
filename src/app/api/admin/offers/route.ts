@@ -4,7 +4,7 @@ import { requireAdminRequest } from "@/lib/env";
 import { z } from "zod";
 
 const querySchema = z.object({
-  scope: z.enum(["visible", "hidden"]).default("visible"),
+  scope: z.enum(["visible", "hidden", "manual_hidden", "system_hidden", "legacy_hidden", "all"]).default("visible"),
   q: z.string().max(200).optional().default(""),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
@@ -21,8 +21,9 @@ export async function GET(request: Request) {
       limit: url.searchParams.get("limit") || undefined,
       offset: url.searchParams.get("offset") || undefined,
     });
+    const scope = input.scope === "hidden" ? "manual_hidden" : input.scope;
     const page = await listAdminOfferMaintenancePage({
-      scope: input.scope,
+      scope,
       query: input.q,
       limit: input.limit,
       offset: input.offset,

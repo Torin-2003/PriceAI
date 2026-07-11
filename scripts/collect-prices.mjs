@@ -289,6 +289,7 @@ async function collectOneTarget(target, options, logger, lockOwner, familyState,
         collectedAt,
         attempts: collection.attempts,
         maxAttempts: collection.maxAttempts,
+        ...(collection.details || {}),
       }, writeQueue);
       if (posted.queued) {
         logger?.log(`Queued ${posted.successCount} offers for batched write.`);
@@ -566,7 +567,9 @@ async function collectTargetWithRetries(target, options = {}, logger = null) {
     const startedAt = Date.now();
 
     try {
-      const offers = dedupeOffers(await collectTarget(target, options));
+      const collected = await collectTarget(target, options);
+      const collectionDetails = collected?.collectionDetails || null;
+      const offers = dedupeOffers(collected);
       const message = offers.length ? `采集到 ${offers.length} 条报价。` : "采集结果为空。";
       attempts.push({
         attempt,
@@ -576,7 +579,9 @@ async function collectTargetWithRetries(target, options = {}, logger = null) {
         message,
       });
 
-      if (offers.length || isEmptyResultFullSnapshotTarget(target)) return { offers, attempts, maxAttempts };
+      if (offers.length || isEmptyResultFullSnapshotTarget(target)) {
+        return { offers, attempts, maxAttempts, details: collectionDetails };
+      }
 
       lastError = new Error(message);
     } catch (error) {
@@ -704,6 +709,10 @@ async function collectShopApi(target, options = {}) {
   const base = target.baseUrl;
   const tokens = await discoverShopTokens(target, options);
   const offers = [];
+  const rawSeenOfferIds = new Set();
+  const partialReasons = [];
+  let fetchedItemCount = 0;
+  let publishedItemCount = 0;
 
   if (!tokens.length) {
     throw new Error("No shop token found. Need at least one /shop/<token> or /item/<goods_key> URL.");
@@ -711,7 +720,10 @@ async function collectShopApi(target, options = {}) {
 
   for (const token of tokens) {
     const shopInfo = await postJson(`${base}/shopApi/Shop/info`, { token, category_key: "" }, `${base}/shop/${token}`);
-    if (shopInfo.code !== 1 || !shopInfo.data) continue;
+    if (shopInfo.code !== 1 || !shopInfo.data) {
+      partialReasons.push(`Shop info unavailable for token ${token}.`);
+      continue;
+    }
 
     const shopAvailability = shopApiShopAvailability(shopInfo.data);
     const storeName = cleanText(shopInfo.data.nickname || target.sourceStoreName || target.sourceName);
@@ -723,6 +735,9 @@ async function collectShopApi(target, options = {}) {
       { token, goods_type: "card", category_key: "" },
       sourceUrl,
     );
+    if (categoriesPayload.code !== 1 || !Array.isArray(categoriesPayload.data)) {
+      partialReasons.push(`Category list unavailable for token ${token}.`);
+    }
     const categories = Array.isArray(categoriesPayload.data) ? categoriesPayload.data : [];
     const selectedCategories = categories.filter((category) => Number(category.goods_count || 0) > 0 && Number(category.id) !== 0);
     const categoryIds = selectedCategories.length
@@ -746,10 +761,20 @@ async function collectShopApi(target, options = {}) {
           },
           sourceUrl,
         );
-        const items = Array.isArray(listPayload.data?.list) ? listPayload.data.list : [];
+        if (listPayload.code !== 1 || !Array.isArray(listPayload.data?.list)) {
+          partialReasons.push(`Goods list unavailable for category ${categoryId} page ${page}.`);
+          break;
+        }
+
+        const items = listPayload.data.list;
         if (!items.length) break;
+        fetchedItemCount += items.length;
 
         for (const item of items) {
+          const itemUrl = item.link || (item.goods_key ? `${base}/item/${item.goods_key}` : "");
+          const rawSeenOfferId = stableShopApiOfferIdFromUrl(itemUrl);
+          if (rawSeenOfferId) rawSeenOfferIds.add(rawSeenOfferId);
+
           const title = cleanText(item.name);
           const listedPrice = numberOrNull(item.price ?? item.real_price);
           if (!title || listedPrice === null || isNonComparableTitle(title)) continue;
@@ -785,7 +810,7 @@ async function collectShopApi(target, options = {}) {
                 effectiveStatus: shopAvailability.closed ? "unavailable" : "available",
                 failureReason: shopAvailability.closed ? shopAvailability.reason : null,
                 stockCount,
-                url: item.link || `${base}/item/${item.goods_key}`,
+                url: itemUrl,
                 tags: compact([
                   categoryName,
                   item.goods_type === "card" ? "卡密" : null,
@@ -794,12 +819,22 @@ async function collectShopApi(target, options = {}) {
               },
             ),
           );
+          publishedItemCount += 1;
         }
 
         if (items.length < 100) break;
       }
     }
   }
+
+  offers.collectionDetails = {
+    fullSnapshot: partialReasons.length === 0,
+    seenOfferIds: Array.from(rawSeenOfferIds),
+    rawSeenOfferCount: rawSeenOfferIds.size,
+    fetchedItemCount,
+    publishedItemCount,
+    partialReason: partialReasons.join(" "),
+  };
 
   return offers;
 }
@@ -1866,21 +1901,21 @@ function crawlLogPayloadFor(target, offers, status, message, options = {}, detai
 }
 
 function crawlLogPayloadsFor(target, offers, status, message, options = {}, details = {}) {
-  const fullSnapshot = shouldIncludeFullSnapshot(target, offers, status, options);
+  const fullSnapshot = details.fullSnapshot !== false && shouldIncludeFullSnapshot(target, offers, status, options);
+  const seenOfferIds = fullSnapshot ? seenOfferIdsForSnapshot(offers, details) : undefined;
 
   if (status !== "success" || offers.length <= postBatchSizeFor(options)) {
     return [
       crawlLogPayloadFor(target, offers, status, message, options, {
         ...details,
         fullSnapshot,
-        seenOfferIds: fullSnapshot ? offerIdsForSnapshot(offers) : undefined,
+        seenOfferIds,
         deferredFullSnapshot: status === "success" && !fullSnapshot,
       }),
     ];
   }
 
   const batches = chunks(offers, postBatchSizeFor(options));
-  const seenOfferIds = offerIdsForSnapshot(offers);
 
   return batches.map((batch, index) => {
     const isLast = index === batches.length - 1;
@@ -2480,6 +2515,20 @@ function compactObject(value) {
 
 function offerIdsForSnapshot(offers) {
   return offers.map((offer) => stableOfferInputId(offer));
+}
+
+function seenOfferIdsForSnapshot(offers, details = {}) {
+  if (Array.isArray(details.seenOfferIds)) {
+    const ids = details.seenOfferIds.map((value) => String(value || "").trim()).filter(Boolean);
+    if (ids.length) return ids;
+  }
+
+  return offerIdsForSnapshot(offers);
+}
+
+function stableShopApiOfferIdFromUrl(value) {
+  const shopItemUrl = normalizeShopApiItemOfferUrl(value);
+  return shopItemUrl ? stableId("shop-api-offer", shopItemUrl) : null;
 }
 
 function stableOfferInputId(offer) {

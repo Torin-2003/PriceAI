@@ -243,6 +243,10 @@ async function runCycle(startedAt = new Date().toISOString()) {
           collectedAt,
           durationMs: Date.now() - startedAt,
           fullSnapshot: status === "success" && collection.fullSnapshot,
+          seenOfferIds: collection.fullSnapshot ? collection.seenOfferIds : null,
+          rawSeenOfferCount: collection.rawSeenOfferCount,
+          fetchedItemCount: collection.fetchedItemCount,
+          publishedItemCount: collection.publishedItemCount,
           partialReason: collection.partialReason || null,
           failurePhase: status === "success" ? null : "collect",
           collectionJobId: target.collectionJobId || null,
@@ -319,7 +323,10 @@ async function collectShopApi(target) {
   const discovery = await discoverShopTokens(target);
   const tokens = discovery.tokens;
   const offers = [];
+  const rawSeenOfferIds = new Set();
   const partialReasons = [];
+  let fetchedItemCount = 0;
+  let publishedItemCount = 0;
 
   if (!tokens.length) {
     throw new Error("No shop token found. Need /shop/<token> URL or existing /item/<goods_key> URL.");
@@ -334,7 +341,10 @@ async function collectShopApi(target) {
       { token, category_key: "" },
       `${target.baseUrl}/shop/${token}`,
     );
-    if (shopInfo.code !== 1 || !shopInfo.data) continue;
+    if (shopInfo.code !== 1 || !shopInfo.data) {
+      partialReasons.push(`Shop info unavailable for token ${token}.`);
+      continue;
+    }
 
     const shopAvailability = shopApiShopAvailability(shopInfo.data);
     const storeName = cleanText(shopInfo.data.nickname || target.sourceStoreName || target.sourceName);
@@ -346,6 +356,9 @@ async function collectShopApi(target) {
       { token, goods_type: "card", category_key: "" },
       sourceUrl,
     );
+    if (categoriesPayload.code !== 1 || !Array.isArray(categoriesPayload.data)) {
+      partialReasons.push(`Category list unavailable for token ${token}.`);
+    }
     const categories = Array.isArray(categoriesPayload.data) ? categoriesPayload.data : [];
     const selectedCategories = categories.filter((category) => Number(category.goods_count || 0) > 0 && Number(category.id) !== 0);
     const categoryIds = selectedCategories.length
@@ -369,13 +382,23 @@ async function collectShopApi(target) {
           },
           sourceUrl,
         );
-        const items = Array.isArray(listPayload.data?.list) ? listPayload.data.list : [];
+        if (listPayload.code !== 1 || !Array.isArray(listPayload.data?.list)) {
+          partialReasons.push(`Goods list unavailable for category ${categoryId} page ${page}.`);
+          break;
+        }
+
+        const items = listPayload.data.list;
         if (!items.length) break;
+        fetchedItemCount += items.length;
         if (page === MAX_CATEGORY_PAGES && items.length >= 100) {
           partialReasons.push(`Category ${categoryId} reached page cap ${MAX_CATEGORY_PAGES}.`);
         }
 
         for (const item of items) {
+          const itemUrl = item.link || (item.goods_key ? `${target.baseUrl}/item/${item.goods_key}` : "");
+          const rawSeenOfferId = stableShopApiOfferIdFromUrl(itemUrl);
+          if (rawSeenOfferId) rawSeenOfferIds.add(rawSeenOfferId);
+
           const title = cleanText(item.name);
           const listedPrice = numberOrNull(item.price ?? item.real_price);
           if (!title || listedPrice === null || isNonComparableTitle(title)) continue;
@@ -408,7 +431,7 @@ async function collectShopApi(target) {
                 effectiveStatus: shopAvailability.closed ? "unavailable" : "available",
                 failureReason: shopAvailability.closed ? shopAvailability.reason : null,
                 stockCount,
-                url: item.link || `${target.baseUrl}/item/${item.goods_key}`,
+                url: itemUrl,
                 tags: compact([
                   categoryName,
                   item.goods_type === "card" ? "卡密" : null,
@@ -417,6 +440,7 @@ async function collectShopApi(target) {
               },
             ),
           );
+          publishedItemCount += 1;
         }
       }
     }
@@ -426,6 +450,10 @@ async function collectShopApi(target) {
     offers,
     fullSnapshot: partialReasons.length === 0,
     partialReason: partialReasons.join(" "),
+    seenOfferIds: Array.from(rawSeenOfferIds),
+    rawSeenOfferCount: rawSeenOfferIds.size,
+    fetchedItemCount,
+    publishedItemCount,
   };
 }
 
@@ -497,20 +525,20 @@ async function postCrawlRunPayloads(payloads, options = {}) {
 
 function crawlRunPayloads(target, status, message, offers, extraDetails = {}) {
   const fullSnapshot = shouldIncludeFullSnapshot(status, offers, extraDetails);
+  const seenOfferIds = fullSnapshot ? seenOfferIdsForSnapshot(offers, extraDetails) : null;
 
   if (status !== "success" || offers.length <= config.postBatchSize) {
     return [
       crawlRunPayload(target, status, message, offers, compactObject({
         ...extraDetails,
         fullSnapshot,
-        seenOfferIds: fullSnapshot ? offerIdsForSnapshot(offers) : null,
+        seenOfferIds,
         deferredFullSnapshot: status === "success" && !fullSnapshot,
       })),
     ];
   }
 
   const batches = chunks(offers, config.postBatchSize);
-  const seenOfferIds = fullSnapshot ? offerIdsForSnapshot(offers) : null;
 
   return batches.map((batch, index) => {
     const batchIndex = index + 1;
@@ -937,7 +965,10 @@ function goodsKeyFromUrl(value) {
 }
 
 function isNonComparableTitle(title) {
-  return /公告|售后|规则|须知|教程|交流群|通知|免责声明|补差价|测试商品/.test(String(title || ""));
+  const value = String(title || "");
+  return ["Logo", "打赏", "测试", "公告", "请查看上方店铺", "其他（直接联系客服"].some((keyword) =>
+    value.includes(keyword),
+  );
 }
 
 function statusFromStock(stockCount) {
@@ -963,6 +994,20 @@ function dedupeOffers(offers) {
 
 function offerIdsForSnapshot(offers) {
   return offers.map((offer) => stableOfferInputId(offer));
+}
+
+function seenOfferIdsForSnapshot(offers, extraDetails = {}) {
+  if (Array.isArray(extraDetails.seenOfferIds)) {
+    const ids = extraDetails.seenOfferIds.map((value) => String(value || "").trim()).filter(Boolean);
+    if (ids.length) return ids;
+  }
+
+  return offerIdsForSnapshot(offers);
+}
+
+function stableShopApiOfferIdFromUrl(value) {
+  const shopItemUrl = normalizeShopApiItemOfferUrl(value);
+  return shopItemUrl ? stableId("shop-api-offer", shopItemUrl) : null;
 }
 
 function stableOfferInputId(offer) {

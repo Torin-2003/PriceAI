@@ -86,8 +86,15 @@ type Message = {
 };
 
 type AdminProduct = AdminSummary["products"][number];
-type OfferMaintenanceScope = "visible" | "hidden";
+type OfferMaintenanceScope = "visible" | "manual_hidden" | "all";
 type AdminOfferHideMode = "manual" | "temporary";
+type OfferEmergencyListAction = {
+  label: string;
+  tone: "danger" | "success";
+  hidden: boolean;
+  mode: AdminOfferHideMode;
+};
+const ADMIN_MANUAL_HIDE_REASON_PREFIX = "管理员手动下架";
 const SOURCE_DISABLE_REASON_PREFIX = "后台停用原因：";
 const SOURCE_DISABLE_TIME_PREFIX = "后台停用时间：";
 type OfferMaintenanceListState = {
@@ -376,9 +383,17 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       error: null,
       query: "",
     },
-    hidden: {
+    manual_hidden: {
       offers: data.hiddenRawOffers || [],
       total: data.hiddenRawOfferTotal,
+      loading: false,
+      loadingMore: false,
+      error: null,
+      query: "",
+    },
+    all: {
+      offers: [],
+      total: 0,
       loading: false,
       loadingMore: false,
       error: null,
@@ -684,8 +699,24 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
 
   useEffect(() => {
     if (!authed || activeTab !== "manual") return;
-    void loadOfferMaintenancePage("visible", { reset: true, query: debouncedOfferSearchQuery });
-    void loadOfferMaintenancePage("hidden", { reset: true, query: debouncedOfferSearchQuery });
+    if (debouncedOfferSearchQuery) {
+      void loadOfferMaintenancePage("all", { reset: true, query: debouncedOfferSearchQuery });
+      return;
+    }
+
+    setOfferMaintenance((prev) => ({
+      ...prev,
+      all: {
+        offers: [],
+        total: 0,
+        loading: false,
+        loadingMore: false,
+        error: null,
+        query: "",
+      },
+    }));
+    void loadOfferMaintenancePage("visible", { reset: true, query: "" });
+    void loadOfferMaintenancePage("manual_hidden", { reset: true, query: "" });
   }, [activeTab, authed, debouncedOfferSearchQuery, loadOfferMaintenancePage]);
 
   const showRowFeedback = useCallback((id: string, type: RowFeedback["type"], text: string) => {
@@ -1413,7 +1444,10 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
           : "报价已恢复，前台可重新展示。",
       });
       void loadOfferMaintenancePage("visible", { reset: true, query: offerMaintenanceRef.current.visible.query });
-      void loadOfferMaintenancePage("hidden", { reset: true, query: offerMaintenanceRef.current.hidden.query });
+      void loadOfferMaintenancePage("manual_hidden", { reset: true, query: offerMaintenanceRef.current.manual_hidden.query });
+      if (offerMaintenanceRef.current.all.query) {
+        void loadOfferMaintenancePage("all", { reset: true, query: offerMaintenanceRef.current.all.query });
+      }
       router.refresh();
     } else {
       setGlobalMessage({ type: "error", text: result.message || (hidden ? "下架报价失败。" : "恢复报价失败。") });
@@ -3515,7 +3549,9 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                   <Panel title="报价应急处置" icon={<AlertTriangle size={17} />}>
                     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="text-sm leading-6 text-[#5a6061]">
-                        可临时下架单条异常报价；下架后前台立即隐藏，后续采集重新确认后会自动恢复。恢复只影响管理员手动下架的报价。
+                        {debouncedOfferSearchQuery
+                          ? "当前按关键词进行全状态诊断搜索；系统隐藏和历史隐藏只展示原因，不直接恢复。"
+                          : "可临时下架单条异常报价；下架后前台立即隐藏，后续采集重新确认后会自动恢复。恢复只影响管理员手动下架的报价。"}
                       </div>
                       <div className="relative w-full sm:w-80">
                         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#adb3b4]" />
@@ -3527,42 +3563,59 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                         />
                       </div>
                     </div>
-                    <div className="grid gap-4 lg:grid-cols-2">
+                    {debouncedOfferSearchQuery ? (
                       <OfferEmergencyList
-                        title="当前可见报价"
-                        emptyText="没有匹配的可见报价。"
-                        offers={offerMaintenance.visible.offers}
+                        title="全状态搜索结果"
+                        emptyText="没有匹配的数据库报价。"
+                        offers={offerMaintenance.all.offers}
                         productByKey={productByKey}
-                        totalCount={offerMaintenance.visible.total}
-                        loading={offerMaintenance.visible.loading}
-                        loadingMore={offerMaintenance.visible.loadingMore}
-                        error={offerMaintenance.visible.error}
+                        totalCount={offerMaintenance.all.total}
+                        loading={offerMaintenance.all.loading}
+                        loadingMore={offerMaintenance.all.loadingMore}
+                        error={offerMaintenance.all.error}
                         loadingAction={loadingAction}
-                        actionLabel="临时下架"
-                        actionTone="danger"
-                        hiddenAction
-                        hideMode="temporary"
-                        onLoadMore={() => loadOfferMaintenancePage("visible")}
+                        getAction={adminOfferDiagnosticAction}
+                        onLoadMore={() => loadOfferMaintenancePage("all")}
                         onToggleHidden={toggleOfferHidden}
                       />
-                      <OfferEmergencyList
-                        title="手动下架报价"
-                        emptyText="没有匹配的手动下架报价。"
-                        offers={offerMaintenance.hidden.offers}
-                        productByKey={productByKey}
-                        totalCount={offerMaintenance.hidden.total}
-                        loading={offerMaintenance.hidden.loading}
-                        loadingMore={offerMaintenance.hidden.loadingMore}
-                        error={offerMaintenance.hidden.error}
-                        loadingAction={loadingAction}
-                        actionLabel="恢复"
-                        actionTone="success"
-                        hiddenAction={false}
-                        hideMode="manual"
-                        onLoadMore={() => loadOfferMaintenancePage("hidden")}
-                        onToggleHidden={toggleOfferHidden}
-                      />
-                    </div>
+                    ) : (
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <OfferEmergencyList
+                          title="当前可见报价"
+                          emptyText="没有匹配的可见报价。"
+                          offers={offerMaintenance.visible.offers}
+                          productByKey={productByKey}
+                          totalCount={offerMaintenance.visible.total}
+                          loading={offerMaintenance.visible.loading}
+                          loadingMore={offerMaintenance.visible.loadingMore}
+                          error={offerMaintenance.visible.error}
+                          loadingAction={loadingAction}
+                          actionLabel="临时下架"
+                          actionTone="danger"
+                          hiddenAction
+                          hideMode="temporary"
+                          onLoadMore={() => loadOfferMaintenancePage("visible")}
+                          onToggleHidden={toggleOfferHidden}
+                        />
+                        <OfferEmergencyList
+                          title="手动下架报价"
+                          emptyText="没有匹配的手动下架报价。"
+                          offers={offerMaintenance.manual_hidden.offers}
+                          productByKey={productByKey}
+                          totalCount={offerMaintenance.manual_hidden.total}
+                          loading={offerMaintenance.manual_hidden.loading}
+                          loadingMore={offerMaintenance.manual_hidden.loadingMore}
+                          error={offerMaintenance.manual_hidden.error}
+                          loadingAction={loadingAction}
+                          actionLabel="恢复"
+                          actionTone="success"
+                          hiddenAction={false}
+                          hideMode="manual"
+                          onLoadMore={() => loadOfferMaintenancePage("manual_hidden")}
+                          onToggleHidden={toggleOfferHidden}
+                        />
+                      </div>
+                    )}
                   </Panel>
                 </div>
               </div>
@@ -8399,6 +8452,7 @@ function OfferEmergencyList({
   actionTone,
   hiddenAction,
   hideMode,
+  getAction,
   onLoadMore,
   onToggleHidden,
 }: {
@@ -8411,17 +8465,14 @@ function OfferEmergencyList({
   loadingMore: boolean;
   error: string | null;
   loadingAction: string | null;
-  actionLabel: string;
-  actionTone: "danger" | "success";
-  hiddenAction: boolean;
-  hideMode: AdminOfferHideMode;
+  actionLabel?: string;
+  actionTone?: "danger" | "success";
+  hiddenAction?: boolean;
+  hideMode?: AdminOfferHideMode;
+  getAction?: (offer: RawOffer) => OfferEmergencyListAction | null;
   onLoadMore: () => void;
   onToggleHidden: (offer: RawOffer, hidden: boolean, mode?: AdminOfferHideMode) => void;
 }) {
-  const actionClass =
-    actionTone === "danger"
-      ? "border-[#9b3328]/20 text-[#9b3328] hover:bg-[#fbe9e7]"
-      : "border-[#2f7a4b]/20 text-[#2f7a4b] hover:bg-[#e8f3ec]";
   const hasMore = offers.length < totalCount;
 
   const handleScroll = useCallback(
@@ -8449,7 +8500,18 @@ function OfferEmergencyList({
         <>
           <div className="max-h-[520px] divide-y divide-[#adb3b4]/15 overflow-auto" onScroll={handleScroll}>
             {offers.map((offer) => {
-              const actionLoading = loadingAction === `${hiddenAction ? (hideMode === "temporary" ? "temp-hide" : "hide") : "restore"}-offer-${offer.id}`;
+              const action = getAction
+                ? getAction(offer)
+                : {
+                    label: actionLabel || "",
+                    tone: actionTone || "danger",
+                    hidden: Boolean(hiddenAction),
+                    mode: hideMode || "manual",
+                  };
+              const actionLoading = action
+                ? loadingAction === `${action.hidden ? (action.mode === "temporary" ? "temp-hide" : "hide") : "restore"}-offer-${offer.id}`
+                : false;
+              const state = adminOfferState(offer);
               const storedProduct = resolveAdminOfferProduct(productByKey, offer.storedCanonicalProductId);
               const ruleProduct = resolveAdminOfferProduct(productByKey, offer.canonicalProductId);
               const storedProductLabel = adminOfferProductLabel(storedProduct, offer.storedCanonicalProductId, offer.storedCategorySlug);
@@ -8462,6 +8524,7 @@ function OfferEmergencyList({
                   <div className="min-w-0">
                     <p className="line-clamp-2 text-sm font-medium text-[#2d3435]">{offer.sourceTitle}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-[#adb3b4]">
+                      <span className={`rounded-full px-1.5 py-0.5 font-medium ${state.className}`}>{state.label}</span>
                       <span>{offer.sourceStoreName || offer.sourceName || "未记录渠道"}</span>
                       <span>{formatCurrency(offer.price, offer.currency)}</span>
                       <span>{offer.status === "out_of_stock" ? "缺货" : "有货"}</span>
@@ -8492,15 +8555,21 @@ function OfferEmergencyList({
                       <p className="mt-1 line-clamp-2 text-xs text-[#9b3328]">{offer.failureReason}</p>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    disabled={actionLoading}
-                    onClick={() => onToggleHidden(offer, hiddenAction, hideMode)}
-                    className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border bg-white px-3 text-xs font-medium transition-colors disabled:opacity-60 ${actionClass}`}
-                  >
-                    {actionLoading ? <Loader2 size={14} className="animate-spin" /> : null}
-                    {actionLabel}
-                  </button>
+                  {action ? (
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => onToggleHidden(offer, action.hidden, action.mode)}
+                      className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border bg-white px-3 text-xs font-medium transition-colors disabled:opacity-60 ${offerEmergencyActionClass(action.tone)}`}
+                    >
+                      {actionLoading ? <Loader2 size={14} className="animate-spin" /> : null}
+                      {action.label}
+                    </button>
+                  ) : (
+                    <span className="inline-flex h-8 items-center justify-center rounded-lg border border-[#adb3b4]/20 bg-[#f7f9f9] px-3 text-xs font-medium text-[#5a6061]">
+                      仅诊断
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -8532,6 +8601,54 @@ function OfferEmergencyList({
       )}
     </div>
   );
+}
+
+function adminOfferDiagnosticAction(offer: RawOffer): OfferEmergencyListAction | null {
+  if (!offer.hidden) {
+    return {
+      label: "临时下架",
+      tone: "danger",
+      hidden: true,
+      mode: "temporary",
+    };
+  }
+
+  if (isAdminManualHiddenOffer(offer)) {
+    return {
+      label: "恢复",
+      tone: "success",
+      hidden: false,
+      mode: "manual",
+    };
+  }
+
+  return null;
+}
+
+function adminOfferState(offer: RawOffer): { label: string; className: string } {
+  if (!offer.hidden) {
+    return { label: "当前可见", className: "bg-[#e8f3ec] text-[#2f7a4b]" };
+  }
+
+  if (isAdminManualHiddenOffer(offer)) {
+    return { label: "手动下架", className: "bg-[#fbe9e7] text-[#9b3328]" };
+  }
+
+  if (offer.failureReason) {
+    return { label: "系统隐藏", className: "bg-[#eef2f6] text-[#47657a]" };
+  }
+
+  return { label: "历史隐藏", className: "bg-[#f2f4f4] text-[#5a6061]" };
+}
+
+function isAdminManualHiddenOffer(offer: RawOffer): boolean {
+  return Boolean(offer.hidden && offer.failureReason?.startsWith(ADMIN_MANUAL_HIDE_REASON_PREFIX));
+}
+
+function offerEmergencyActionClass(tone: "danger" | "success"): string {
+  return tone === "danger"
+    ? "border-[#9b3328]/20 text-[#9b3328] hover:bg-[#fbe9e7]"
+    : "border-[#2f7a4b]/20 text-[#2f7a4b] hover:bg-[#e8f3ec]";
 }
 
 function resolveAdminOfferProduct(

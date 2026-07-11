@@ -337,7 +337,7 @@ type MerchantListFilters = {
   offset?: number;
 };
 
-export type AdminOfferMaintenanceScope = "visible" | "hidden";
+export type AdminOfferMaintenanceScope = "visible" | "manual_hidden" | "system_hidden" | "legacy_hidden" | "all";
 
 export type AdminOfferMaintenancePage = {
   offers: RawOffer[];
@@ -1434,12 +1434,23 @@ export async function listAdminOfferMaintenancePage(options: {
   const supabase = getSupabaseServerClient();
   const limit = Math.min(Math.max(options.limit || ADMIN_OFFER_SAMPLE_LIMIT, 1), 100);
   const offset = Math.max(options.offset || 0, 0);
+  const queryText = (options.query || "").trim();
+
+  if (adminOfferMaintenanceScopeRequiresQuery(options.scope) && !isAdminOfferDiagnosticSearchAllowed(queryText)) {
+    return {
+      offers: [],
+      total: 0,
+      limit,
+      offset,
+      scope: options.scope,
+    };
+  }
 
   if (!supabase) {
-    const offers = options.scope === "visible"
-      ? seedRawOffers.filter((offer) => !offer.hidden)
-      : seedRawOffers.filter((offer) => offer.hidden);
-    const matched = filterAdminOfferMaintenanceRows(offers, options.query || "");
+    const matched = filterAdminOfferMaintenanceRows(
+      filterAdminOfferMaintenanceRowsByScope(seedRawOffers, options.scope),
+      queryText,
+    );
     return {
       offers: matched.slice(offset, offset + limit),
       total: matched.length,
@@ -1453,18 +1464,31 @@ export async function listAdminOfferMaintenancePage(options: {
     .from("raw_offers")
     .select(RAW_OFFER_ADMIN_SELECT, { count: "exact" });
 
-  if (options.scope === "hidden") {
+  if (options.scope === "manual_hidden") {
     query = query
       .eq("hidden", true)
       .ilike("failure_reason", `${ADMIN_MANUAL_HIDE_REASON_PREFIX}%`)
       .order("updated_at", { ascending: false });
+  } else if (options.scope === "system_hidden") {
+    query = query
+      .eq("hidden", true)
+      .not("failure_reason", "is", null)
+      .not("failure_reason", "ilike", `${ADMIN_MANUAL_HIDE_REASON_PREFIX}%`)
+      .order("updated_at", { ascending: false });
+  } else if (options.scope === "legacy_hidden") {
+    query = query
+      .eq("hidden", true)
+      .is("failure_reason", null)
+      .order("updated_at", { ascending: false });
+  } else if (options.scope === "all") {
+    query = query.order("updated_at", { ascending: false });
   } else {
     query = query
       .eq("hidden", false)
       .order("captured_at", { ascending: false });
   }
 
-  const search = toAdminOfferSearchPattern(options.query || "");
+  const search = toAdminOfferSearchPattern(queryText);
   if (search) {
     query = query.or(
       [
@@ -2222,6 +2246,39 @@ function filterAdminOfferMaintenanceRows(offers: RawOffer[], query: string): Raw
       .toLowerCase()
       .includes(normalized),
   );
+}
+
+function filterAdminOfferMaintenanceRowsByScope(
+  offers: RawOffer[],
+  scope: AdminOfferMaintenanceScope,
+): RawOffer[] {
+  if (scope === "all") return offers;
+  if (scope === "visible") return offers.filter((offer) => !offer.hidden);
+  if (scope === "manual_hidden") return offers.filter(isAdminManualHiddenOffer);
+  if (scope === "system_hidden") return offers.filter(isAdminSystemHiddenOffer);
+  return offers.filter(isAdminLegacyHiddenOffer);
+}
+
+function adminOfferMaintenanceScopeRequiresQuery(scope: AdminOfferMaintenanceScope): boolean {
+  return scope === "system_hidden" || scope === "legacy_hidden" || scope === "all";
+}
+
+function isAdminOfferDiagnosticSearchAllowed(query: string): boolean {
+  if (!query) return false;
+  if (query.length >= 3) return true;
+  return query.length >= 2 && /[^\x00-\x7F]/.test(query);
+}
+
+function isAdminManualHiddenOffer(offer: RawOffer): boolean {
+  return Boolean(offer.hidden && offer.failureReason?.startsWith(ADMIN_MANUAL_HIDE_REASON_PREFIX));
+}
+
+function isAdminSystemHiddenOffer(offer: RawOffer): boolean {
+  return Boolean(offer.hidden && offer.failureReason && !offer.failureReason.startsWith(ADMIN_MANUAL_HIDE_REASON_PREFIX));
+}
+
+function isAdminLegacyHiddenOffer(offer: RawOffer): boolean {
+  return Boolean(offer.hidden && !offer.failureReason);
 }
 
 function stripProductOffersForAdmin(product: ProductGroup): ProductGroup {
@@ -3679,6 +3736,7 @@ async function loadPublicOffers(filters: OfferListFilters & { skipSnapshot?: boo
         offer.sourceTitle,
         offer.sourceName,
         offer.sourceStoreName || "",
+        offer.url,
         product.displayName,
         product.platform,
         product.productType,
