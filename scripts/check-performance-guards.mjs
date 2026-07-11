@@ -180,8 +180,8 @@ for (const componentFile of [
 for (const routeStateFile of [
   "src/app/channels/loading.tsx",
   "src/app/channels/error.tsx",
-  "src/app/api-models/loading.tsx",
-  "src/app/api-models/error.tsx",
+  "src/app/official-api/loading.tsx",
+  "src/app/official-api/error.tsx",
   "src/app/official-prices/loading.tsx",
   "src/app/official-prices/error.tsx",
   "src/app/api-transit/models/loading.tsx",

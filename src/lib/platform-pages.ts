@@ -380,13 +380,13 @@ export const platformPageConfigs = {
     badge: "API / CDK 平台价格页",
     title: "模型 API、CDK 与额度获取入口",
     intro:
-      "这里把订阅渠道里的 API / CDK / 额度商品和 PriceAI 模型 API 雷达串起来。适合想把模型接入 Codex、Cursor、OpenCode、自建应用或自动化脚本的用户。",
-    primaryHref: "/api-models",
-    primaryLabel: "查看模型 API 雷达",
+      "这里把订阅渠道里的 API / CDK / 额度商品和 PriceAI 官方 API 串起来。适合想把模型接入 Codex、Cursor、OpenCode、自建应用或自动化脚本的用户。",
+    primaryHref: "/official-api",
+    primaryLabel: "查看官方 API",
     secondaryHref: "/api-transit",
     secondaryLabel: "查看中转 API",
     tableTitle: "当前收录的 API / CDK 标准商品",
-    tableDescription: "这里的有货最低价来自渠道报价；更完整的官方 API、免费 API 和 Token Plan 信息请进入模型 API 雷达。",
+    tableDescription: "这里的有货最低价来自渠道报价；更完整的官方 API、免费 API 和 Token Plan 信息请进入官方 API。",
     optionsEyebrow: "Token access",
     optionsTitle: "API 需求先分清官方 API、免费 API 和渠道额度。",
     optionsIntro:
@@ -439,7 +439,7 @@ export const platformPageConfigs = {
       ],
       [
         "为什么 API 平台页还要保留渠道报价？",
-        "因为一部分用户搜索的是 API/CDK 或额度商品，一部分用户搜索的是官方 API 和免费 API。PriceAI 会把两类入口分清楚，并引导到模型 API 雷达做更细对比。",
+        "因为一部分用户搜索的是 API/CDK 或额度商品，一部分用户搜索的是官方 API 和免费 API。PriceAI 会把两类入口分清楚，并引导到官方 API 做更细对比。",
       ],
       [
         "PriceAI 会收录灰色中转 API 吗？",
@@ -447,9 +447,9 @@ export const platformPageConfigs = {
       ],
     ],
     relatedTitle: "准备接入模型 API？",
-    relatedDescription: "先进入模型 API 雷达看官方 API、免费 API 和 Token Plan，再回到渠道报价判断是否需要 CDK 或额度商品。",
+    relatedDescription: "先进入官方 API 看官方价格、免费额度和 Token Plan，再回到渠道报价判断是否需要 CDK 或额度商品。",
     relatedLinks: [
-      { label: "模型 API 雷达", href: "/api-models" },
+      { label: "官方 API", href: "/official-api" },
       { label: "指南目录", href: "/guides" },
       { label: "ChatGPT 获取方式", href: "/guides/chatgpt-subscription-options" },
     ],

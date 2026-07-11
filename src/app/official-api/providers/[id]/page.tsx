@@ -51,15 +51,15 @@ export async function generateMetadata({
   }
 
   return {
-    title: `${summary.provider.name} API 模型覆盖`,
+    title: `${summary.provider.name} 模型覆盖`,
     description: `查看 ${summary.provider.name} 覆盖的 API 模型、Token Plan、价格和限制。`,
     alternates: {
-      canonical: `/api-models/providers/${id}`,
+      canonical: `/official-api/providers/${id}`,
     },
     openGraph: {
-      title: `${summary.provider.name} API 模型覆盖`,
+      title: `${summary.provider.name} 模型覆盖`,
       description: `对比 ${summary.provider.name} 的公开模型、Token Plan 和限制。`,
-      url: `https://priceai.cc/api-models/providers/${id}`,
+      url: `https://priceai.cc/official-api/providers/${id}`,
     },
   };
 }
@@ -92,8 +92,8 @@ export default async function ApiProviderDetailPage({
         <div className="mb-5">
           <ReturnToListLink
             allowedKeys={API_MODELS_RETURN_KEYS}
-            basePath="/api-models"
-            label="返回 API 模型"
+            basePath="/official-api"
+            label="返回官方 API"
           />
         </div>
 
@@ -201,7 +201,7 @@ function ApiOfferMobileList({ rows, currency }: { rows: ApiModelOfferWithRelatio
           <article key={offer.id} className="rounded-lg bg-white p-4 shadow-[0_16px_45px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
             <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0">
-                <Link href={`/api-models/${offer.modelId}`} className="block truncate text-base font-bold leading-6 text-[#202829]">
+                <Link href={`/official-api/${offer.modelId}`} className="block truncate text-base font-bold leading-6 text-[#202829]">
                   {offer.model.displayName}
                 </Link>
                 <p className="mt-0.5 text-sm text-[#5a6061]">{offer.model.family}</p>
@@ -287,7 +287,7 @@ function ApiOfferRow({ offer, currency }: { offer: ApiModelOfferWithRelations; c
   return (
     <tr className="align-top transition hover:bg-[#f7f9f9]">
       <td className="px-5 py-4">
-        <Link href={`/api-models/${offer.modelId}`} className="block truncate font-semibold leading-6 text-[#202829] hover:text-[#2f7a4b]">
+        <Link href={`/official-api/${offer.modelId}`} className="block truncate font-semibold leading-6 text-[#202829] hover:text-[#2f7a4b]">
           {offer.model.displayName}
         </Link>
         <p className="mt-1 text-xs font-medium text-[#5a6061]">{offer.model.family}</p>

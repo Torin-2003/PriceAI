@@ -13,7 +13,7 @@ const pageUrl = "https://priceai.cc/guides";
 export const metadata: Metadata = {
   title: "PriceAI 快速入门：如何比价、判断渠道、提交渠道和反馈问题",
   description:
-    "PriceAI 快速入门，了解这个 AI 订阅比价工具能做什么，如何查卡网渠道、官方地区价、模型 API，以及如何提交渠道、举报商品和反馈建议。",
+    "PriceAI 快速入门，了解这个 AI 订阅比价工具能做什么，如何查卡网订阅、官方订阅、官方 API，以及如何提交渠道、举报商品和反馈建议。",
   alternates: {
     canonical: "/guides",
   },
@@ -36,9 +36,9 @@ const productEntrances = [
     href: "/official-prices",
   },
   {
-    title: "找模型 API 渠道",
+    title: "看官方 API",
     text: "适合想比较模型 API、免费额度、官方或公开 API 渠道的人。先看供应商、模型、计价方式和额度，再决定是否深入了解。",
-    href: "/api-models",
+    href: "/official-api",
   },
 ];
 

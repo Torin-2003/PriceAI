@@ -35,7 +35,7 @@ const themeInitScript = `
 export const metadata: Metadata = {
   metadataBase: new URL("https://priceai.cc"),
   title: {
-    default: "PriceAI | AI 订阅与 API 购买前决策入口",
+    default: "PriceAI | AI 低价卡网订阅与中转 API 比价雷达",
     template: "%s | PriceAI",
   },
   description: "购买 AI 订阅或接入 API 前，比较卡网订阅、官方订阅、官方 API 和中转 API 的价格、来源、库存和更新时间。",
@@ -44,7 +44,7 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   openGraph: {
-    title: "PriceAI | AI 订阅与 API 购买前决策入口",
+    title: "PriceAI | AI 低价卡网订阅与中转 API 比价雷达",
     description: "把卡网订阅、官方订阅、官方 API 和中转 API 整理成可搜索、可比较、可核验的购买前参考。",
     url: "https://priceai.cc",
     siteName: "PriceAI",
@@ -53,7 +53,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "PriceAI | AI 订阅与 API 购买前决策入口",
+    title: "PriceAI | AI 低价卡网订阅与中转 API 比价雷达",
     description: "查看 AI 订阅和 API 获取方式的价格、来源、库存和更新时间。",
   },
   icons: {

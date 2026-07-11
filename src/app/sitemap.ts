@@ -57,7 +57,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.75,
     },
     {
-      url: `${siteUrl}/api-models`,
+      url: `${siteUrl}/official-api`,
       lastModified: now,
       changeFrequency: "daily",
       priority: 0.75,
@@ -171,14 +171,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }));
 
   const apiModelRoutes: MetadataRoute.Sitemap = getApiModelSummaries("all", apiDataset).map((model) => ({
-    url: `${siteUrl}/api-models/${model.id}`,
+    url: `${siteUrl}/official-api/${model.id}`,
     lastModified: model.latestUpdatedAt ? new Date(model.latestUpdatedAt) : now,
     changeFrequency: "daily",
     priority: 0.65,
   }));
 
   const apiProviderRoutes: MetadataRoute.Sitemap = getApiProviderSummaries("all", apiDataset).map((provider) => ({
-    url: `${siteUrl}/api-models/providers/${provider.id}`,
+    url: `${siteUrl}/official-api/providers/${provider.id}`,
     lastModified: provider.latestUpdatedAt ? new Date(provider.latestUpdatedAt) : now,
     changeFrequency: "daily",
     priority: 0.6,

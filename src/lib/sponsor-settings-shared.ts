@@ -58,7 +58,7 @@ export const sponsorPlacementLabels: Record<SponsorPlacementKind, string> = {
   home: "首页生态合作位",
   apiTransit: "中转 API 频道赞助位",
   apiTransitModels: "中转 API 模型页赞助位",
-  apiModels: "API 模型页赞助位",
+  apiModels: "官方 API 页赞助位",
   listFooter: "底部赞助展示区",
 };
 

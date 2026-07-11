@@ -104,11 +104,11 @@ const placementCopy: Record<SponsorPlacementKind, PlacementCopy> = {
   apiModels: {
     id: "api-models",
     label: "广告",
-    eyebrow: "API 模型雷达合作位",
+    eyebrow: "官方 API 合作位",
     title: "模型 API 与开发者工具赞助",
     body: "面向正在比较官方 API、Token Plan、模型路由和开发工具的用户，适合展示 API 周边服务与可核验资料。",
     cta: "查看合作入口",
-    slot: "API 模型页",
+    slot: "官方 API 页",
     fit: "开发者入口",
     visualTitle: "API Toolkit",
     visualBody: "Token Plan、路由、监控、SDK",

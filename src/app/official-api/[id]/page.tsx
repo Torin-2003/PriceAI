@@ -46,7 +46,7 @@ export async function generateMetadata({
 
   if (!summary) {
     return {
-      title: "API 模型详情",
+      title: "官方 API 详情",
     };
   }
 
@@ -54,12 +54,12 @@ export async function generateMetadata({
     title: `${summary.displayName} API 渠道`,
     description: `查看 ${summary.displayName} 的官方 API、Token Plan 和免费测试入口。`,
     alternates: {
-      canonical: `/api-models/${id}`,
+      canonical: `/official-api/${id}`,
     },
     openGraph: {
       title: `${summary.displayName} API 渠道`,
       description: `对比 ${summary.displayName} 的公开 API 渠道和限制。`,
-      url: `https://priceai.cc/api-models/${id}`,
+      url: `https://priceai.cc/official-api/${id}`,
     },
   };
 }
@@ -92,8 +92,8 @@ export default async function ApiModelDetailPage({
         <div className="mb-5">
           <ReturnToListLink
             allowedKeys={API_MODELS_RETURN_KEYS}
-            basePath="/api-models"
-            label="返回 API 模型"
+            basePath="/official-api"
+            label="返回官方 API"
           />
         </div>
 
@@ -187,7 +187,7 @@ function ApiOfferMobileList({ rows, currency }: { rows: ApiModelOfferWithRelatio
           <article key={offer.id} className="rounded-lg bg-white p-4 shadow-[0_16px_45px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15">
             <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0">
-                <Link href={`/api-models/providers/${offer.providerId}`} className="block truncate text-base font-bold leading-6 text-[#202829]">
+                <Link href={`/official-api/providers/${offer.providerId}`} className="block truncate text-base font-bold leading-6 text-[#202829]">
                   {offer.provider.name}
                 </Link>
                 <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-[#5a6061]">调用：{offer.routeModelId ?? offer.model.modelId}</p>
@@ -272,7 +272,7 @@ function ApiOfferRow({ offer, currency }: { offer: ApiModelOfferWithRelations; c
   return (
     <tr className="align-top transition hover:bg-[#f7f9f9]">
       <td className="px-5 py-4">
-        <Link href={`/api-models/providers/${offer.providerId}`} className="block truncate font-semibold leading-6 text-[#202829] transition hover:text-[#2f7a4b]">
+        <Link href={`/official-api/providers/${offer.providerId}`} className="block truncate font-semibold leading-6 text-[#202829] transition hover:text-[#2f7a4b]">
           {offer.provider.name}
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-2">

@@ -89,6 +89,11 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: "/api-models/:path*",
+        destination: "/official-api/:path*",
+        permanent: true,
+      },
+      {
         source: "/$",
         destination: "/",
         permanent: true,

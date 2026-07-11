@@ -171,9 +171,9 @@ export function ApiModelsExplorer({
 
   useEffect(() => {
     if (!urlStateReady) return;
-    if (window.location.pathname !== "/api-models") return;
+    if (window.location.pathname !== "/official-api") return;
 
-    const nextUrl = explorerQueryString ? `/api-models?${explorerQueryString}` : "/api-models";
+    const nextUrl = explorerQueryString ? `/official-api?${explorerQueryString}` : "/official-api";
     const currentUrl = `${window.location.pathname}${window.location.search}`;
 
     if (currentUrl !== nextUrl) {
@@ -1243,7 +1243,7 @@ function ApiMobileFilterSheet({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="API 模型筛选">
+    <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="官方 API 筛选">
       <button
         type="button"
         aria-label="关闭筛选"
@@ -1403,20 +1403,21 @@ function buildTitle(family: ApiModelScope, scopeMode: ScopeMode, typeFilter: Typ
     return family === "all" ? "官方订阅与 Token Plan" : `${label} 官方订阅与 Token Plan`;
   }
 
-  const suffix = {
-    models: "标准模型",
-    offers: "全部报价",
-    providers: "来源渠道",
-  }[scopeMode];
-  return `${label} ${suffix}`;
+  if (scopeMode === "models") {
+    return family === "all" ? "官方 API" : `${label} 官方 API`;
+  }
+  if (scopeMode === "offers") {
+    return family === "all" ? "官方 API 报价" : `${label} API 报价`;
+  }
+  return family === "all" ? "API 来源渠道" : `${label} API 来源渠道`;
 }
 
 function apiModelDetailHref(id: string, returnQuery: string): string {
-  return listDetailHref(`/api-models/${id}`, returnQuery);
+  return listDetailHref(`/official-api/${id}`, returnQuery);
 }
 
 function apiProviderDetailHref(id: string, returnQuery: string): string {
-  return listDetailHref(`/api-models/providers/${id}`, returnQuery);
+  return listDetailHref(`/official-api/providers/${id}`, returnQuery);
 }
 
 function listDetailClickHandler(path: string, returnQuery: string) {

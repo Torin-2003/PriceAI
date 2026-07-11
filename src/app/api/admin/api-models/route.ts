@@ -252,8 +252,8 @@ export async function PATCH(request: Request) {
 function clearApiModelCaches() {
   clearApiModelDatasetCache();
   clearAdminDataCache();
-  revalidatePath("/api-models");
-  revalidatePath("/api-models/[id]", "page");
-  revalidatePath("/api-models/providers/[id]", "page");
+  revalidatePath("/official-api");
+  revalidatePath("/official-api/[id]", "page");
+  revalidatePath("/official-api/providers/[id]", "page");
   revalidatePath("/sitemap.xml");
 }

@@ -398,10 +398,10 @@ function getRelatedCta(product: ExplorerProductSummary): RelatedCta | null {
   if (product.platform === "API/CDK" || product.id === "openai-api-cdk") {
     return {
       title: "想接入 Codex、Cursor 或自建工具？",
-      description: "可以先看 API 平台页和模型 API 雷达，分清官方 API、免费 API、Token Plan 和渠道额度。",
+      description: "可以先看 API 平台页和官方 API，分清官方 API、免费 API、Token Plan 和渠道额度。",
       links: [
         { label: "API 平台页", href: "/platforms/api" },
-        { label: "模型 API 雷达", href: "/api-models", tone: "primary" },
+        { label: "官方 API", href: "/official-api", tone: "primary" },
       ],
     };
   }

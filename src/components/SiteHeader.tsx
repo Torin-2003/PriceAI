@@ -15,7 +15,7 @@ import { supportPagePath } from "@/lib/support";
 const navItems = [
   { key: "channels", href: "/channels", label: "卡网订阅", mobileLabel: "卡网", match: (pathname: string) => pathname.startsWith("/channels") || pathname.startsWith("/products") },
   { key: "official", href: "/official-prices", label: "官方订阅", mobileLabel: "订阅", match: (pathname: string) => pathname.startsWith("/official-prices") },
-  { key: "api", href: "/api-models", label: "官方 API", mobileLabel: "API", match: (pathname: string) => pathname.startsWith("/api-models") },
+  { key: "api", href: "/official-api", label: "官方 API", mobileLabel: "API", match: (pathname: string) => pathname.startsWith("/official-api") },
   { key: "transit", href: "/api-transit", label: "中转 API", mobileLabel: "中转", match: (pathname: string) => pathname.startsWith("/api-transit") },
 ];
 

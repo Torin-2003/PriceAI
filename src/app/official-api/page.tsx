@@ -5,15 +5,15 @@ import { getApiModelDataset } from "@/lib/api-models-db";
 import { getSponsorSettingsSummary } from "@/lib/sponsor-settings";
 
 export const metadata: Metadata = {
-  title: "官方模型成本基准",
+  title: "官方 API",
   description: "对照 ChatGPT/OpenAI、Claude、Gemini、DeepSeek、Qwen 等官方 API 价格、官方订阅月费、Token Plan 额度和使用边界。",
   alternates: {
-    canonical: "/api-models",
+    canonical: "/official-api",
   },
   openGraph: {
-    title: "PriceAI 官方模型成本基准",
+    title: "PriceAI 官方 API",
     description: "一页对比官方 API 基准价、官方订阅月费、Token Plan 额度和免费测试入口。",
-    url: "https://priceai.cc/api-models",
+    url: "https://priceai.cc/official-api",
   },
 };
 
@@ -38,8 +38,8 @@ function buildApiModelsJsonLd(modelCount: number, providerCount: number, offerCo
     {
       "@context": "https://schema.org",
       "@type": "CollectionPage",
-      name: "PriceAI API 模型雷达",
-      url: "https://priceai.cc/api-models",
+      name: "PriceAI 官方 API",
+      url: "https://priceai.cc/official-api",
       inLanguage: "zh-CN",
       description:
         "整理官方 API、官方订阅、公开模型路由、免费 API、Token Plan、价格、额度和限制，帮助用户比较模型获取方式。",
@@ -48,7 +48,7 @@ function buildApiModelsJsonLd(modelCount: number, providerCount: number, offerCo
         name: "PriceAI API model access dataset",
         description:
           "A curated dataset of official model API prices, official subscription quotas, public model API providers, offers, free quotas, Token Plans, prices, and source links.",
-        url: "https://priceai.cc/api-models",
+        url: "https://priceai.cc/official-api",
         license: "https://github.com/physics-dimension/PriceAI/blob/main/LICENSE",
         creator: {
           "@type": "Organization",

@@ -46,7 +46,7 @@ const checks = [
     },
   },
   {
-    path: "/api-models",
+    path: "/official-api",
     status: 200,
     text: {
       forbidden: [...fallbackHtmlMarkers, ...staticDatasetMarkers],

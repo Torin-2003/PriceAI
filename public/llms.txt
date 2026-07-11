@@ -1,6 +1,6 @@
 # PriceAI
 
-PriceAI 是 AI 订阅与模型 API 的获取成本雷达，面向中文用户整理 AI 订阅渠道、官方订阅地区价和模型 API 获取入口。
+PriceAI 是 AI 低价卡网订阅与中转 API 比价雷达，面向中文用户整理卡网订阅、官方订阅、官方 API 和中转 API。
 
 Website: [https://priceai.cc](https://priceai.cc)
 GitHub: [physics-dimension/PriceAI](https://github.com/physics-dimension/PriceAI)
@@ -17,7 +17,7 @@ GitHub: [physics-dimension/PriceAI](https://github.com/physics-dimension/PriceAI
 - [Home](https://priceai.cc/)
 - [About](https://priceai.cc/about)
 - [Official subscription prices](https://priceai.cc/official-prices)
-- [API model radar](https://priceai.cc/api-models)
+- [Official API](https://priceai.cc/official-api)
 - [ChatGPT platform page](https://priceai.cc/platforms/chatgpt)
 - [Gemini platform page](https://priceai.cc/platforms/gemini)
 - [Claude platform page](https://priceai.cc/platforms/claude)
@@ -59,7 +59,7 @@ For official regional prices, PriceAI treats regional prices as reference anchor
 
 ## API Boundary
 
-PriceAI's API model radar focuses on official APIs, public documentation, public model routing platforms, free test quotas, and Token Plans that can be verified from public sources. It does not present private, unverified, or gray-market API resellers as primary recommendations.
+PriceAI's Official API section focuses on official APIs, public documentation, public model routing platforms, free test quotas, and Token Plans that can be verified from public sources. It does not present private, unverified, or gray-market API resellers as primary recommendations.
 
 ## Platform Pages
 
@@ -68,7 +68,7 @@ PriceAI uses platform pages as human-readable landing pages for search and AI an
 - ChatGPT platform page covers ChatGPT Free accounts, Plus, Pro 5x, Pro 20x, Team / Business, Plus CDK, account purchase, top-up and API/CDK related offers.
 - Gemini platform page covers Gemini Pro, Google AI Pro, Gemini Ultra, Google AI Ultra, Google Play subscriptions, official regional prices, CDK-like offers and third-party channels.
 - Claude platform page covers Claude Pro, Claude Max 5x, Claude Max 20x, regular accounts, exchange accounts, official reference prices and channel risk checks.
-- API/CDK platform page connects third-party API/CDK/credit offers with the API model radar, which covers official APIs, free APIs, public model routing platforms and Token Plans.
+- API/CDK platform page connects third-party API/CDK/credit offers with Official API, which covers official APIs, free APIs, public model routing platforms and Token Plans.
 
 ## Suggested Description
 

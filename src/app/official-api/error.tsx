@@ -14,7 +14,7 @@ export default function ApiModelsError({
       activeSection="api"
       error={error}
       reset={reset}
-      title="API 模型数据加载遇到问题"
+      title="官方 API 数据加载遇到问题"
       description="可以重试当前模型页，或先回到首页继续查看订阅和 API 入口。"
     />
   );

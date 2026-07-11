@@ -22,14 +22,14 @@ import { getSponsorSettingsSummary } from "@/lib/sponsor-settings";
 export const revalidate = 3600;
 
 export const metadata: Metadata = {
-  title: "PriceAI | AI 订阅与 API 购买前决策入口",
+  title: "PriceAI | AI 低价卡网订阅与中转 API 比价雷达",
   description:
     "购买 AI 订阅或接入 API 前，先理解官方订阅、卡网订阅、官方 API 和中转 API 的价格差异、来源、库存与风险边界。",
   alternates: {
     canonical: "/",
   },
   openGraph: {
-    title: "PriceAI | AI 订阅与 API 购买前决策入口",
+    title: "PriceAI | AI 低价卡网订阅与中转 API 比价雷达",
     description: "先看清 AI 订阅和 API 的购买路径，再进入卡网订阅、官方订阅、官方 API 或中转 API 比价。",
     url: "https://priceai.cc",
     siteName: "PriceAI",
@@ -51,7 +51,7 @@ const heroModules = [
   },
   {
     title: "官方 API",
-    href: "/api-models",
+    href: "/official-api",
     description: "DeepSeek、千问、Kimi、GLM 等国产模型官方 API，包含免费额度、Token Plan 和限制。",
     icon: DatabaseZap,
   },
@@ -99,7 +99,7 @@ const decisionPaths = [
     label: "开发接入",
     title: "我想接 API 做产品或工具",
     body: "先看 DeepSeek、千问、Kimi、GLM 等官方 API 的免费额度、Token Plan 和限制；再对比中转 API。",
-    primaryHref: "/api-models",
+    primaryHref: "/official-api",
     primaryLabel: "比较官方 API",
     secondaryHref: "/api-transit",
     secondaryLabel: "查看中转 API",
@@ -160,10 +160,10 @@ export default async function Home() {
         <section className="overflow-hidden border-b border-[var(--color-border)]">
           <div className="mx-auto max-w-[1500px] border-x border-[var(--color-border-soft)] px-5 pb-12 pt-10 sm:px-8 md:pb-16 md:pt-14">
             <div className="mx-auto flex max-w-5xl flex-col items-center text-center">
-              <p className="text-sm font-semibold text-[var(--color-success-text)]">为购买 AI 订阅与 API 前的判断而生</p>
+              <p className="text-sm font-semibold text-[var(--color-success-text)]">PriceAI</p>
               <h1 className="mt-5 max-w-4xl text-balance font-serif text-[2.18rem] font-semibold leading-tight tracking-normal text-[var(--color-text-primary)] sm:text-5xl md:text-6xl">
-                <span className="block">先看清价格从哪里来，</span>
-                <span className="block text-[var(--color-success-text)]">再决定怎么买。</span>
+                <span className="block">AI 低价卡网订阅</span>
+                <span className="block text-[var(--color-success-text)]">与中转 API 比价雷达</span>
               </h1>
               <p className="mt-5 max-w-[72ch] text-pretty text-base leading-8 text-[var(--color-text-muted)]">
                 PriceAI 把官方订阅、卡网订阅、官方 API 和中转 API 放在同一个入口里。你先选择购买路径，再进入对应页面比较价格、来源、库存和更新时间。

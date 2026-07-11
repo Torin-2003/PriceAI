@@ -2,10 +2,10 @@
   <img src="src/app/icon.svg" width="112" height="112" alt="PriceAI logo" />
 </p>
 
-<h1 align="center">PriceAI - AI 卡网订阅与中转 API 比价雷达</h1>
+<h1 align="center">PriceAI - AI 低价卡网订阅与中转 API 比价雷达</h1>
 
 <p align="center">
-  <strong>AI 官方地区订阅、AI 卡网低价订阅、官方 API、模型 API 和中转 API 的购买前比价雷达。</strong><br/>
+  <strong>以卡网订阅和中转 API 为核心，以官方订阅和官方 API 为价格基准。</strong><br/>
   聚合 200+ AI 订阅卡网、发卡站和低价会员渠道，比较 ChatGPT Plus / Pro / Team、Claude Pro、Gemini、Grok、DeepSeek API、Qwen API、Kimi API 和 API 中转站的价格、来源、库存、倍率与风险边界。
 </p>
 
@@ -60,10 +60,10 @@ PriceAI 不再只是一个卡网订阅比价页，而是围绕“AI 能力怎么
 
 | 模块 | 解决的问题 | 入口 |
 | --- | --- | --- |
-| AI 官方订阅地区价 | 对比 ChatGPT Plus / Pro / Team、Claude Pro、Gemini Advanced、Grok 等 AI 官方订阅价格、App Store / Google Play 地区价和人民币估算价 | [官方订阅地区价](https://priceai.cc/official-prices) |
-| AI 卡网低价订阅 | 聚合 200+ AI 订阅卡网、发卡站和低价会员渠道，覆盖链动小铺、独角数卡、Kami / 卡密类自动发货等常见卡网形态，比较代充、成品号、卡密、CDK、邮箱和低价会员的有货报价 | [卡网订阅比价](https://priceai.cc/channels) |
-| 官方 API / 模型 API | 横向比较 DeepSeek API、Qwen API、Kimi API、GLM API、免费 API、Token Plan 和 OpenAI-compatible API 入口 | [API 模型雷达](https://priceai.cc/api-models) |
-| 中转 API 比价雷达 | 对比 API 中转站、API Gateway、GPT / Claude / Gemini 中转 API 的充值系数、模型倍率、综合倍率和稳定性 | [API 中转站价格榜](https://priceai.cc/api-transit) |
+| 官方订阅 | 对比 ChatGPT Plus / Pro / Team、Claude Pro、Gemini Advanced、Grok 等 AI 官方订阅价格、App Store / Google Play 地区价和人民币估算价 | [官方订阅](https://priceai.cc/official-prices) |
+| 卡网订阅 | 聚合 200+ AI 订阅卡网、发卡站和低价会员渠道，覆盖链动小铺、独角数卡、Kami / 卡密类自动发货等常见卡网形态，比较代充、成品号、卡密、CDK、邮箱和低价会员的有货报价 | [卡网订阅](https://priceai.cc/channels) |
+| 官方 API | 横向比较 DeepSeek API、Qwen API、Kimi API、GLM API、免费 API、Token Plan 和 OpenAI-compatible API 入口 | [官方 API](https://priceai.cc/official-api) |
+| 中转 API | 对比 API 中转站、API Gateway、GPT / Claude / Gemini 中转 API 的充值系数、模型倍率、综合倍率和稳定性 | [中转 API](https://priceai.cc/api-transit) |
 | API 中转模型检测 | 输入中转接口、模型名和临时 Key，生成协议、能力、来源线路、计费和性能证据报告 | [模型检测](https://priceai.cc/api-transit/detector) |
 
 可以把它理解成几类搜索心智：
@@ -138,7 +138,7 @@ PriceAI 不卖货、不收款、不替任何渠道担保。它更像一个购买
 
 - **AI 官方订阅地区价**：整理公开地区价格、人民币估算、来源链接和更新时间。
 - **卡网订阅比价**：覆盖 200+ AI 订阅卡网、发卡站和低价会员渠道，按 ChatGPT、Claude、Gemini、Grok、邮箱、API/CDK、工具账号等整理多渠道报价。
-- **API 模型雷达**：整理官方 API、模型路由、免费/测试额度、Token Plan、价格和限制。
+- **官方 API**：整理官方 API、模型路由、免费/测试额度、Token Plan、价格和限制。
 - **中转 API 价格榜**：展示第三方中转站的充值系数、模型倍率、综合倍率、近 7 日可用性和来源渠道。
 - **API 中转模型检测**：通过独立检测服务生成中转 API 的协议、能力、来源线路、计费和性能证据报告。
 - **指南内容**：解释官方订阅、地区价、卡网渠道、交付方式和风险边界。

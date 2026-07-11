@@ -6929,7 +6929,7 @@ function ApiModelsAdminPanel({
               加入校验队列
             </button>
             <Link
-              href="/api-models"
+              href="/official-api"
               className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2d3435] px-4 text-sm font-medium text-white transition-colors hover:bg-[#202829]"
             >
               查看前台

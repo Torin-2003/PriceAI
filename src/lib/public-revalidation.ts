@@ -24,7 +24,7 @@ const sponsorPublicPaths = [
   "/channels",
   "/api-transit",
   "/api-transit/models",
-  "/api-models",
+  "/official-api",
   "/commercial",
   "/api/sponsor-settings",
 ] as const;
