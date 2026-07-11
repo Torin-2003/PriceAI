@@ -147,6 +147,19 @@ create table if not exists raw_offer_confirmations (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists raw_offer_missing_candidates (
+  raw_offer_id text primary key references raw_offers(id) on delete cascade,
+  source_id text not null references sources(id) on delete cascade,
+  first_missing_at timestamptz not null,
+  latest_missing_at timestamptz not null,
+  missing_count integer not null default 1 check (missing_count >= 1),
+  latest_seen_run_at timestamptz,
+  status text not null default 'pending' check (status in ('pending', 'resolved_seen', 'resolved_hidden', 'ignored')),
+  reason text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists offer_matches (
   id text primary key,
   raw_offer_id text not null references raw_offers(id) on delete cascade,
@@ -451,6 +464,12 @@ create index if not exists raw_offer_confirmations_source_confirmed_at_idx
 
 create index if not exists raw_offer_confirmations_expires_at_idx
   on raw_offer_confirmations(expires_at);
+
+create index if not exists raw_offer_missing_candidates_source_status_idx
+  on raw_offer_missing_candidates(source_id, status, latest_missing_at desc);
+
+create index if not exists raw_offer_missing_candidates_latest_missing_at_idx
+  on raw_offer_missing_candidates(latest_missing_at desc);
 
 drop view if exists raw_offer_public_state;
 
@@ -1470,6 +1489,11 @@ create trigger raw_offer_confirmations_set_updated_at
 before update on raw_offer_confirmations
 for each row execute function set_updated_at();
 
+drop trigger if exists raw_offer_missing_candidates_set_updated_at on raw_offer_missing_candidates;
+create trigger raw_offer_missing_candidates_set_updated_at
+before update on raw_offer_missing_candidates
+for each row execute function set_updated_at();
+
 drop trigger if exists crawl_log_ingest_runs_set_updated_at on crawl_log_ingest_runs;
 create trigger crawl_log_ingest_runs_set_updated_at
 before update on crawl_log_ingest_runs
@@ -1491,6 +1515,7 @@ alter table canonical_products enable row level security;
 alter table sources enable row level security;
 alter table raw_offers enable row level security;
 alter table raw_offer_confirmations enable row level security;
+alter table raw_offer_missing_candidates enable row level security;
 alter table offer_matches enable row level security;
 alter table crawl_runs enable row level security;
 alter table crawl_log_ingest_runs enable row level security;

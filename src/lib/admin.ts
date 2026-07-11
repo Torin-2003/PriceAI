@@ -67,6 +67,8 @@ const RAW_OFFER_WRITE_CHUNK_SIZE = 25;
 const RAW_OFFER_CONFIRMATION_WRITE_CHUNK_SIZE = 100;
 const MISSING_OFFER_HIDE_CHUNK_SIZE = 25;
 const MAX_MISSING_OFFERS_TO_HIDE_PER_COLLECTION = 100;
+const MISSING_OFFER_SYSTEM_HIDE_REASON = "连续两次完整采集未再返回该商品，疑似已下架；如源站后续重新返回会自动恢复展示。";
+const MISSING_OFFER_CANDIDATE_REASON = "完整采集首次未再返回该商品，等待下一次完整采集确认。";
 const STALE_OFFER_FAILURE_THRESHOLD = 3;
 const STALE_OFFER_FAILURE_AGE_MS = 24 * 60 * 60 * 1000;
 const MAX_STALE_OFFERS_TO_EXPIRE_PER_FAILURE = 50;
@@ -857,6 +859,19 @@ function isMissingRawOfferPublicStateError(error: unknown): boolean {
   return maybe?.code === "42P01" || /raw_offer_public_state/i.test(String(maybe?.message || ""));
 }
 
+function isMissingRawOfferMissingCandidatesTableError(error: unknown): boolean {
+  const maybe = error as { code?: string; message?: string } | null;
+  return maybe?.code === "42P01" || /raw_offer_missing_candidates/i.test(String(maybe?.message || ""));
+}
+
+function isPriorMissingCandidate(candidate: Record<string, unknown>, checkedAt: string): boolean {
+  const latestMissingAt = stringOrNull(candidate.latest_missing_at);
+  const candidateTime = latestMissingAt ? new Date(latestMissingAt).getTime() : Number.NaN;
+  const checkedTime = new Date(checkedAt).getTime();
+  if (!Number.isFinite(candidateTime) || !Number.isFinite(checkedTime)) return true;
+  return candidateTime < checkedTime;
+}
+
 function comparableValue(value: unknown): string {
   if (Array.isArray(value)) return JSON.stringify(value.map(String).sort());
   if (value === null || value === undefined) return "";
@@ -1061,12 +1076,17 @@ export async function recordSourceCollectionResult(input: {
     return { changedOfferCount };
   }
 
-  let changedOfferCount = input.seenOfferIds?.length
-    ? await clearOfferCollectionFailureForSeenOffers(input.sourceId, input.seenOfferIds)
+  const seenOfferIds = Array.isArray(input.seenOfferIds) ? uniqueOfferIds(input.seenOfferIds) : null;
+  let changedOfferCount = seenOfferIds?.length
+    ? await clearOfferCollectionFailureForSeenOffers(input.sourceId, seenOfferIds)
     : 0;
 
-  if (input.status === "success" && input.fullSnapshot && input.seenOfferIds) {
-    changedOfferCount += await hideMissingOffersAsDelisted(input.sourceId, input.seenOfferIds, input.checkedAt);
+  if (seenOfferIds?.length) {
+    await clearMissingOfferCandidatesForSeenOffers(input.sourceId, seenOfferIds, input.checkedAt);
+  }
+
+  if (input.status === "success" && input.fullSnapshot && seenOfferIds) {
+    changedOfferCount += await reconcileMissingOffersFromFullSnapshot(input.sourceId, seenOfferIds, input.checkedAt);
   }
 
   return { changedOfferCount };
@@ -1121,7 +1141,7 @@ async function expireStaleOffersAfterRepeatedFailures(
 async function clearOfferCollectionFailureForSeenOffers(sourceId: string, seenOfferIds: string[]): Promise<number> {
   const supabase = getSupabaseServerClient();
   if (!supabase) return 0;
-  const uniqueIds = Array.from(new Set(seenOfferIds.map(String).filter(Boolean)));
+  const uniqueIds = uniqueOfferIds(seenOfferIds);
   if (!uniqueIds.length) return 0;
 
   let changedCount = 0;
@@ -1144,7 +1164,45 @@ async function clearOfferCollectionFailureForSeenOffers(sourceId: string, seenOf
   return changedCount;
 }
 
-async function hideMissingOffersAsDelisted(sourceId: string, seenOfferIds: string[], checkedAt: string): Promise<number> {
+async function clearMissingOfferCandidatesForSeenOffers(
+  sourceId: string,
+  seenOfferIds: string[],
+  seenAt: string,
+): Promise<number> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return 0;
+  const uniqueIds = uniqueOfferIds(seenOfferIds);
+  if (!uniqueIds.length) return 0;
+
+  let changedCount = 0;
+  for (const ids of chunks(uniqueIds, MISSING_OFFER_HIDE_CHUNK_SIZE)) {
+    const { count, error } = await supabase
+      .from("raw_offer_missing_candidates")
+      .update({
+        status: "resolved_seen",
+        latest_seen_run_at: seenAt,
+        reason: null,
+        updated_at: seenAt,
+      }, { count: "exact" })
+      .eq("source_id", sourceId)
+      .eq("status", "pending")
+      .in("raw_offer_id", ids);
+
+    if (error) {
+      if (isMissingRawOfferMissingCandidatesTableError(error)) return changedCount;
+      throw error;
+    }
+    changedCount += count || 0;
+  }
+
+  return changedCount;
+}
+
+async function reconcileMissingOffersFromFullSnapshot(
+  sourceId: string,
+  seenOfferIds: string[],
+  checkedAt: string,
+): Promise<number> {
   const supabase = getSupabaseServerClient();
   if (!supabase) return 0;
 
@@ -1156,8 +1214,35 @@ async function hideMissingOffersAsDelisted(sourceId: string, seenOfferIds: strin
     .filter((id) => !seen.has(id))
     .slice(0, MAX_MISSING_OFFERS_TO_HIDE_PER_COLLECTION);
 
+  if (!missingIds.length) return 0;
+
+  const candidates = await selectMissingOfferCandidateRows(supabase, sourceId, missingIds);
+  if (!candidates) return 0;
+
+  const candidateByOfferId = new Map(candidates.map((row) => [String(row.raw_offer_id), row]));
+  const idsToHide: string[] = [];
+  const idsToStage: string[] = [];
+
+  for (const id of missingIds) {
+    const candidate = candidateByOfferId.get(id);
+    if (
+      candidate?.status === "pending" &&
+      Number(candidate.missing_count || 0) >= 1 &&
+      isPriorMissingCandidate(candidate, checkedAt)
+    ) {
+      idsToHide.push(id);
+    } else {
+      idsToStage.push(id);
+    }
+  }
+
+  if (idsToStage.length) {
+    const staged = await stageMissingOfferCandidates(sourceId, idsToStage, checkedAt);
+    if (!staged && !idsToHide.length) return 0;
+  }
+
   let changedCount = 0;
-  for (const ids of chunks(missingIds, MISSING_OFFER_HIDE_CHUNK_SIZE)) {
+  for (const ids of chunks(idsToHide, MISSING_OFFER_HIDE_CHUNK_SIZE)) {
     const { count, error: updateError } = await supabase
       .from("raw_offers")
       .update({
@@ -1168,16 +1253,105 @@ async function hideMissingOffersAsDelisted(sourceId: string, seenOfferIds: strin
         freshness_status: "fresh",
         verified_at: checkedAt,
         last_failed_at: null,
-        failure_reason: "完整采集未再返回该商品，疑似已下架；如源站后续重新返回会自动恢复展示。",
+        failure_reason: MISSING_OFFER_SYSTEM_HIDE_REASON,
         updated_at: checkedAt,
       }, { count: "exact" })
-      .in("id", ids);
+      .eq("source_id", sourceId)
+      .eq("hidden", false)
+      .in("id", ids)
+      .or(`failure_reason.is.null,failure_reason.not.ilike.${ADMIN_MANUAL_HIDE_REASON_PREFIX}%`);
 
     if (updateError) throw updateError;
     changedCount += count || 0;
   }
 
+  if (idsToHide.length) {
+    await markMissingOfferCandidatesHidden(sourceId, idsToHide, checkedAt);
+  }
+
   return changedCount;
+}
+
+async function selectMissingOfferCandidateRows(
+  supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
+  sourceId: string,
+  rawOfferIds: string[],
+): Promise<Array<Record<string, unknown>> | null> {
+  const output: Array<Record<string, unknown>> = [];
+  for (const ids of chunks(rawOfferIds, MISSING_OFFER_HIDE_CHUNK_SIZE)) {
+    const { data, error } = await supabase
+      .from("raw_offer_missing_candidates")
+      .select("raw_offer_id,latest_missing_at,missing_count,status")
+      .eq("source_id", sourceId)
+      .in("raw_offer_id", ids);
+
+    if (error) {
+      if (isMissingRawOfferMissingCandidatesTableError(error)) return null;
+      throw error;
+    }
+    output.push(...((data || []) as Array<Record<string, unknown>>));
+  }
+  return output;
+}
+
+async function stageMissingOfferCandidates(
+  sourceId: string,
+  rawOfferIds: string[],
+  checkedAt: string,
+): Promise<boolean> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return false;
+
+  for (const ids of chunks(rawOfferIds, MISSING_OFFER_HIDE_CHUNK_SIZE)) {
+    const rows = ids.map((id) => ({
+      raw_offer_id: id,
+      source_id: sourceId,
+      first_missing_at: checkedAt,
+      latest_missing_at: checkedAt,
+      missing_count: 1,
+      status: "pending",
+      reason: MISSING_OFFER_CANDIDATE_REASON,
+      updated_at: checkedAt,
+    }));
+    const { error } = await supabase
+      .from("raw_offer_missing_candidates")
+      .upsert(rows, { onConflict: "raw_offer_id" });
+
+    if (error) {
+      if (isMissingRawOfferMissingCandidatesTableError(error)) return false;
+      throw error;
+    }
+  }
+
+  return true;
+}
+
+async function markMissingOfferCandidatesHidden(
+  sourceId: string,
+  rawOfferIds: string[],
+  checkedAt: string,
+): Promise<void> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return;
+
+  for (const ids of chunks(rawOfferIds, MISSING_OFFER_HIDE_CHUNK_SIZE)) {
+    const { error } = await supabase
+      .from("raw_offer_missing_candidates")
+      .update({
+        status: "resolved_hidden",
+        latest_missing_at: checkedAt,
+        missing_count: 2,
+        reason: MISSING_OFFER_SYSTEM_HIDE_REASON,
+        updated_at: checkedAt,
+      })
+      .eq("source_id", sourceId)
+      .in("raw_offer_id", ids);
+
+    if (error) {
+      if (isMissingRawOfferMissingCandidatesTableError(error)) return;
+      throw error;
+    }
+  }
 }
 
 async function selectStaleOfferIdsAfterFailures(
@@ -1233,6 +1407,10 @@ function chunks<T>(items: T[], size: number): T[][] {
     output.push(items.slice(index, index + size));
   }
   return output;
+}
+
+function uniqueOfferIds(ids: string[]): string[] {
+  return Array.from(new Set(ids.map(String).filter(Boolean)));
 }
 
 export function toRawOfferRow(offer: RawOffer) {

@@ -247,6 +247,7 @@ async function runCycle(startedAt = new Date().toISOString()) {
           rawSeenOfferCount: collection.rawSeenOfferCount,
           fetchedItemCount: collection.fetchedItemCount,
           publishedItemCount: collection.publishedItemCount,
+          reportedGoodsCount: collection.reportedGoodsCount,
           partialReason: collection.partialReason || null,
           failurePhase: status === "success" ? null : "collect",
           collectionJobId: target.collectionJobId || null,
@@ -327,6 +328,8 @@ async function collectShopApi(target) {
   const partialReasons = [];
   let fetchedItemCount = 0;
   let publishedItemCount = 0;
+  let reportedGoodsCount = 0;
+  let hasReportedGoodsCount = false;
 
   if (!tokens.length) {
     throw new Error("No shop token found. Need /shop/<token> URL or existing /item/<goods_key> URL.");
@@ -368,6 +371,13 @@ async function collectShopApi(target) {
         : [];
 
     for (const categoryId of categoryIds) {
+      const expectedItemCount = reportedGoodsCountForCategory(categories, selectedCategories, categoryId);
+      let categoryFetchedItemCount = 0;
+      if (expectedItemCount !== null) {
+        reportedGoodsCount += expectedItemCount;
+        hasReportedGoodsCount = true;
+      }
+
       for (let page = 1; page <= MAX_CATEGORY_PAGES; page += 1) {
         await delay(config.pageDelayMs);
         const listPayload = await postJson(
@@ -390,6 +400,7 @@ async function collectShopApi(target) {
         const items = listPayload.data.list;
         if (!items.length) break;
         fetchedItemCount += items.length;
+        categoryFetchedItemCount += items.length;
         if (page === MAX_CATEGORY_PAGES && items.length >= 100) {
           partialReasons.push(`Category ${categoryId} reached page cap ${MAX_CATEGORY_PAGES}.`);
         }
@@ -443,6 +454,12 @@ async function collectShopApi(target) {
           publishedItemCount += 1;
         }
       }
+
+      if (expectedItemCount !== null && categoryFetchedItemCount !== expectedItemCount) {
+        partialReasons.push(
+          `Category ${categoryId} reported ${expectedItemCount} goods but fetched ${categoryFetchedItemCount}.`,
+        );
+      }
     }
   }
 
@@ -454,7 +471,17 @@ async function collectShopApi(target) {
     rawSeenOfferCount: rawSeenOfferIds.size,
     fetchedItemCount,
     publishedItemCount,
+    reportedGoodsCount: hasReportedGoodsCount ? reportedGoodsCount : null,
   };
+}
+
+function reportedGoodsCountForCategory(categories, selectedCategories, categoryId) {
+  const category =
+    selectedCategories.find((item) => Number(item.id) === Number(categoryId)) ||
+    categories.find((item) => Number(item.id) === Number(categoryId));
+  const value = Number(category?.goods_count);
+  if (!Number.isFinite(value) || value < 0) return null;
+  return Math.trunc(value);
 }
 
 async function discoverShopTokens(target) {
