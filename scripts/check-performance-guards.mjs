@@ -215,6 +215,8 @@ assert(/refreshTransitStationsSnapshot[\s\S]{0,500}readStationsFromSupabase\(\{\
 assert(/function\s+publicTransitRefreshReadSignal\(\):\s*AbortSignal\s*\{\s*return\s+AbortSignal\.timeout\(PUBLIC_TRANSIT_REFRESH_READ_TIMEOUT_MS\);\s*\}/.test(transitPublicText), "src/lib/api-transit-db.ts: API transit refresh signal must derive from PUBLIC_TRANSIT_REFRESH_READ_TIMEOUT_MS.");
 assert(/readRecentAvailabilitySampleRows\(\s*supabase,\s*stationIds,\s*sampleRowLimit,\s*signal\s*\)/.test(transitPublicText), "src/lib/api-transit-db.ts: API transit list recent sample reads must inherit the caller read signal.");
 assert(/readRecentAvailabilitySampleRows\([\s\S]{0,300}signal:\s*AbortSignal\s*=\s*publicTransitReadSignal\(\)/.test(transitPublicText), "src/lib/api-transit-db.ts: recent sample reads must accept a caller signal while defaulting normal pages to 2.5s.");
+assert(/preferPublicStatusSamples[\s\S]{0,400}return undefined/.test(transitPublicText), "src/lib/api-transit-db.ts: public-monitor rows must not fall back to stale priceai_probe recent samples.");
+assert(/appendRecentAvailabilitySample[\s\S]{0,500}availabilityWindowKey\(stationId,[\s\S]{0,120}\"\", \"\"\)/.test(transitPublicText), "src/lib/api-transit-db.ts: recent public samples must populate station-level aggregate keys for list stability bars.");
 assert(!/\.abortSignal\(publicTransitReadSignal\(\)\)/.test(transitPublicText), "src/lib/api-transit-db.ts: nested API transit queries must not silently recreate the short 2.5s signal.");
 
 const transitAdminText = read("src/lib/api-transit-admin.ts");

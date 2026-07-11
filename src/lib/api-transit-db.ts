@@ -778,6 +778,7 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
     const availabilityWindows = buildAvailabilityWindows(dbRows(samplesResult.data), station.id);
     const recentSamplesByKey = buildRecentAvailabilitySamplesByKey(recentSampleRows);
     const stationWindow = availabilityWindows.get(`${station.id}|station||`);
+    const preferPublicStatusSamples = shouldPreferPublicStatusAvailability(station.availability);
 
     return {
       ...station,
@@ -792,7 +793,8 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
             "station",
             "",
             "",
-            station.availability.sourceType
+            station.availability.sourceType,
+            { preferPublicStatusSamples }
           ) || station.availability.recentSamples,
       },
       prices: station.prices.map((price) => ({
@@ -814,7 +816,11 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
               "offer",
               price.standardModel,
               price.groupName,
-              price.availability.sourceType
+              price.availability.sourceType,
+              {
+                preferPublicStatusSamples:
+                  preferPublicStatusSamples || shouldPreferPublicStatusAvailability(price.availability),
+              }
             ) || price.availability.recentSamples,
         },
         history: historyByOffer.get(historyKey({
@@ -859,6 +865,9 @@ function buildAvailabilityWindows(rows: DbRow[], stationId: string): Map<string,
 }
 
 type RecentAvailabilitySamplesByKey = Map<string, NonNullable<TransitAvailability["recentSamples"]>>;
+type RecentAvailabilitySampleOptions = {
+  preferPublicStatusSamples?: boolean;
+};
 
 async function readRecentAvailabilitySampleRows(
   client: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
@@ -909,21 +918,38 @@ function buildRecentAvailabilitySamplesByKey(rows: DbRow[]): RecentAvailabilityS
     const stationId = stringValue(row.station_id);
     const checkedAt = nullableTimestamp(row.checked_at);
     if (!stationId || !checkedAt) continue;
+    const scope = stringValue(row.scope) === "offer" ? "offer" : "station";
+    const standardModel = stringValue(row.standard_model);
+    const groupName = stringValue(row.group_name);
     const key = availabilityWindowKey(
       stationId,
-      stringValue(row.scope) === "offer" ? "offer" : "station",
-      stringValue(row.standard_model),
-      stringValue(row.group_name)
+      scope,
+      standardModel,
+      groupName
     );
     const sourceType = availabilitySourceType(stringValue(row.source_type));
-    const scopedKey = recentAvailabilitySampleKey(key, sourceType === "unknown" ? null : sourceType);
-    samplesByKey.set(scopedKey, [
-      ...(samplesByKey.get(scopedKey) || []),
-      {
-        ok: booleanValue(row.ok),
-        checkedAt,
-      },
-    ]);
+    const sample = {
+      ok: booleanValue(row.ok),
+      checkedAt,
+    };
+    appendRecentAvailabilitySample(samplesByKey, key, sourceType, sample);
+
+    if (standardModel || groupName) {
+      appendRecentAvailabilitySample(
+        samplesByKey,
+        availabilityWindowKey(stationId, scope, "", ""),
+        sourceType,
+        sample
+      );
+    }
+    if (standardModel && groupName) {
+      appendRecentAvailabilitySample(
+        samplesByKey,
+        availabilityWindowKey(stationId, scope, standardModel, ""),
+        sourceType,
+        sample
+      );
+    }
   }
 
   for (const [key, samples] of samplesByKey.entries()) {
@@ -939,18 +965,73 @@ function getRecentAvailabilitySamplesForScope(
   scope: "station" | "offer",
   standardModel: string,
   groupName: string,
-  sourceType: TransitAvailabilitySourceType
+  sourceType: TransitAvailabilitySourceType,
+  options: RecentAvailabilitySampleOptions = {}
 ): TransitAvailability["recentSamples"] {
-  const key = availabilityWindowKey(stationId, scope, standardModel, groupName);
+  const publicStatusSamples = getRecentAvailabilitySamplesBySource(
+    samplesByKey,
+    stationId,
+    scope,
+    standardModel,
+    groupName,
+    "public_status"
+  );
+  if (publicStatusSamples?.length) return publicStatusSamples;
+  if (options.preferPublicStatusSamples) return undefined;
+
   if (sourceType !== "unknown") {
-    const sourceSamples = samplesByKey.get(recentAvailabilitySampleKey(key, sourceType));
+    const sourceSamples = getRecentAvailabilitySamplesBySource(
+      samplesByKey,
+      stationId,
+      scope,
+      standardModel,
+      groupName,
+      sourceType
+    );
     if (sourceSamples?.length) return sourceSamples;
   }
-  return samplesByKey.get(recentAvailabilitySampleKey(key, null));
+  return getRecentAvailabilitySamplesBySource(samplesByKey, stationId, scope, standardModel, groupName, null);
 }
 
 function recentAvailabilitySampleKey(baseKey: string, sourceType: TransitAvailabilitySourceType | null): string {
   return `${baseKey}|${sourceType || ""}`;
+}
+
+function recentAvailabilitySampleBaseKeys(
+  stationId: string,
+  scope: "station" | "offer",
+  standardModel: string,
+  groupName: string
+): string[] {
+  const keys = [availabilityWindowKey(stationId, scope, standardModel, groupName)];
+  if (standardModel && groupName) keys.push(availabilityWindowKey(stationId, scope, standardModel, ""));
+  if (standardModel || groupName) keys.push(availabilityWindowKey(stationId, scope, "", ""));
+  return Array.from(new Set(keys));
+}
+
+function getRecentAvailabilitySamplesBySource(
+  samplesByKey: RecentAvailabilitySamplesByKey,
+  stationId: string,
+  scope: "station" | "offer",
+  standardModel: string,
+  groupName: string,
+  sourceType: TransitAvailabilitySourceType | null
+): TransitAvailability["recentSamples"] {
+  for (const key of recentAvailabilitySampleBaseKeys(stationId, scope, standardModel, groupName)) {
+    const samples = samplesByKey.get(recentAvailabilitySampleKey(key, sourceType));
+    if (samples?.length) return samples;
+  }
+  return undefined;
+}
+
+function appendRecentAvailabilitySample(
+  samplesByKey: RecentAvailabilitySamplesByKey,
+  baseKey: string,
+  sourceType: TransitAvailabilitySourceType,
+  sample: NonNullable<TransitAvailability["recentSamples"]>[number]
+): void {
+  const scopedKey = recentAvailabilitySampleKey(baseKey, sourceType === "unknown" ? null : sourceType);
+  samplesByKey.set(scopedKey, [...(samplesByKey.get(scopedKey) || []), sample]);
 }
 
 function normalizeRecentAvailabilitySamples(
@@ -1006,13 +1087,15 @@ function mapStationRow(
   const updatedAt = timestampValue(row.last_updated_at || row.updated_at);
   const enhancement = enhancementRow || {};
   const source = availabilitySourceFromRow(row);
+  const preferPublicStatusSamples = shouldPreferPublicStatusSamples(row, enhancement, source);
   const stationRecentSamples = getRecentAvailabilitySamplesForScope(
     recentSamplesByKey,
     id,
     "station",
     "",
     "",
-    source.type
+    source.type,
+    { preferPublicStatusSamples }
   );
 
   return {
@@ -1055,7 +1138,9 @@ function mapStationRow(
       sourceLabel: source.label,
       sourceUrl: source.url,
     },
-    prices: offerRows.map((offer) => mapOfferRow(offer, historyByOffer, recentSamplesByKey)).filter((price): price is TransitModelPrice => Boolean(price)),
+    prices: offerRows
+      .map((offer) => mapOfferRow(offer, historyByOffer, recentSamplesByKey, { preferPublicStatusSamples }))
+      .filter((price): price is TransitModelPrice => Boolean(price)),
     feedback: {
       pendingCount: integerValue(row.feedback_pending_count) || 0,
       verifiedRiskCount: integerValue(row.feedback_verified_risk_count) || 0,
@@ -1073,7 +1158,8 @@ function mapStationRow(
 function mapOfferRow(
   row: DbRow,
   historyByOffer: Map<string, TransitMultiplierHistoryPoint[]> = new Map(),
-  recentSamplesByKey: RecentAvailabilitySamplesByKey = new Map()
+  recentSamplesByKey: RecentAvailabilitySamplesByKey = new Map(),
+  options: RecentAvailabilitySampleOptions = {}
 ): TransitModelPrice | null {
   const family = modelFamily(row.family);
   const standardModel = standardModelValue(row.standard_model);
@@ -1087,7 +1173,8 @@ function mapOfferRow(
     "offer",
     standardModel,
     groupName,
-    source.type
+    source.type,
+    options
   );
 
   return {
@@ -1258,6 +1345,26 @@ function availabilitySourceFromRow(
   };
 }
 
+function shouldPreferPublicStatusSamples(
+  row: DbRow,
+  enhancement: DbRow,
+  source: { type: TransitAvailabilitySourceType; url: string | null }
+): boolean {
+  return (
+    source.type === "public_status" ||
+    isPublicMonitorAvailabilityUrl(source.url) ||
+    isPublicMonitorAvailabilityUrl(nullableString(enhancement.monitor_url)) ||
+    isPublicMonitorAvailabilityUrl(nullableString(row.availability_source_url)) ||
+    isPublicSiteInfoAvailability(row)
+  );
+}
+
+function shouldPreferPublicStatusAvailability(
+  availability: Pick<TransitAvailability, "sourceType" | "sourceUrl">
+): boolean {
+  return availability.sourceType === "public_status" || isPublicMonitorAvailabilityUrl(availability.sourceUrl);
+}
+
 function isPublicSiteInfoAvailability(row: DbRow): boolean {
   const text = [
     row.station_id,
@@ -1266,6 +1373,11 @@ function isPublicSiteInfoAvailability(row: DbRow): boolean {
     row.availability_note,
   ].map(stringValue).join(" ");
   return /(?:APINode\s*(?:公开)?\s*site-info|apinode_public_site_info|sub2api_public_site_info)/i.test(text);
+}
+
+function isPublicMonitorAvailabilityUrl(value: string | null | undefined): boolean {
+  const text = value?.toLowerCase() || "";
+  return Boolean(text && (text.includes("view=monitoring") || text.includes("/status") || text.includes("status.") || text.includes("monitor")));
 }
 
 function isTransitAvailabilitySourceType(value: string): value is TransitAvailabilitySourceType {
