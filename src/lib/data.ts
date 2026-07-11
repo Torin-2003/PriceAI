@@ -651,6 +651,11 @@ function isMissingRawOfferConfirmationsTableError(error: unknown): boolean {
   return maybe?.code === "42P01" || /raw_offer_confirmations/i.test(String(maybe?.message || ""));
 }
 
+function isMissingRawOfferMissingCandidatesTableError(error: unknown): boolean {
+  const maybe = error as { code?: string; message?: string } | null;
+  return maybe?.code === "42P01" || /raw_offer_missing_candidates/i.test(String(maybe?.message || ""));
+}
+
 async function resolvePublicApiSnapshotRefreshScope(
   state: PublicApiSnapshotRefreshState,
 ): Promise<{ productIds: string[]; fullRequired: boolean }> {
@@ -1338,6 +1343,7 @@ export function getEmptyAdminSummary(isAuthenticated = false): AdminSummary {
     loadErrors: [],
     rawOfferTotal: 0,
     hiddenRawOfferTotal: 0,
+    hiddenOfferDiagnostics: emptyHiddenOfferDiagnostics(),
     isAuthenticated,
     crawlRuns: [],
     collectionJobs: [],
@@ -1387,6 +1393,87 @@ export function getEmptyAdminSummary(isAuthenticated = false): AdminSummary {
       message: "尚未加载后台密码状态。",
     },
   };
+}
+
+function emptyHiddenOfferDiagnostics(visibleTotal = 0): AdminSummary["hiddenOfferDiagnostics"] {
+  return {
+    visibleTotal,
+    hiddenTotal: 0,
+    manualHiddenTotal: 0,
+    systemHiddenTotal: 0,
+    legacyHiddenTotal: 0,
+    pendingMissingCandidateTotal: 0,
+  };
+}
+
+async function getHiddenOfferDiagnostics(): Promise<AdminSummary["hiddenOfferDiagnostics"]> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return emptyHiddenOfferDiagnostics();
+
+  const [
+    visibleResult,
+    manualHiddenResult,
+    systemHiddenResult,
+    legacyHiddenResult,
+    pendingMissingCandidateTotal,
+  ] = await Promise.all([
+    supabase
+      .from("raw_offers")
+      .select("id", { count: "exact", head: true })
+      .eq("hidden", false),
+    supabase
+      .from("raw_offers")
+      .select("id", { count: "exact", head: true })
+      .eq("hidden", true)
+      .ilike("failure_reason", `${ADMIN_MANUAL_HIDE_REASON_PREFIX}%`),
+    supabase
+      .from("raw_offers")
+      .select("id", { count: "exact", head: true })
+      .eq("hidden", true)
+      .not("failure_reason", "is", null)
+      .not("failure_reason", "ilike", `${ADMIN_MANUAL_HIDE_REASON_PREFIX}%`),
+    supabase
+      .from("raw_offers")
+      .select("id", { count: "exact", head: true })
+      .eq("hidden", true)
+      .is("failure_reason", null),
+    countPendingMissingOfferCandidates(),
+  ]);
+
+  if (visibleResult.error) throw visibleResult.error;
+  if (manualHiddenResult.error) throw manualHiddenResult.error;
+  if (systemHiddenResult.error) throw systemHiddenResult.error;
+  if (legacyHiddenResult.error) throw legacyHiddenResult.error;
+
+  const manualHiddenTotal = manualHiddenResult.count || 0;
+  const systemHiddenTotal = systemHiddenResult.count || 0;
+  const legacyHiddenTotal = legacyHiddenResult.count || 0;
+
+  return {
+    visibleTotal: visibleResult.count || 0,
+    hiddenTotal: manualHiddenTotal + systemHiddenTotal + legacyHiddenTotal,
+    manualHiddenTotal,
+    systemHiddenTotal,
+    legacyHiddenTotal,
+    pendingMissingCandidateTotal,
+  };
+}
+
+async function countPendingMissingOfferCandidates(): Promise<number> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return 0;
+
+  const { count, error } = await supabase
+    .from("raw_offer_missing_candidates")
+    .select("raw_offer_id", { count: "exact", head: true })
+    .eq("status", "pending");
+
+  if (error) {
+    if (isMissingRawOfferMissingCandidatesTableError(error)) return 0;
+    throw error;
+  }
+
+  return count || 0;
 }
 
 export async function getAdminSummary(options: { isAuthenticated?: boolean } = {}): Promise<AdminSummary> {
@@ -1588,6 +1675,7 @@ async function readAdminSummary(): Promise<AdminSummary> {
       ...adminDashboard,
       rawOfferTotal: dashboard.rawOffers.length,
       hiddenRawOfferTotal: 0,
+      hiddenOfferDiagnostics: emptyHiddenOfferDiagnostics(dashboard.rawOffers.length),
       isAuthenticated: false,
       loadErrors: [],
       crawlRuns: [],
@@ -1621,6 +1709,7 @@ async function readAdminSummary(): Promise<AdminSummary> {
     pendingSiteFeedback,
     sourceOfferStats,
     hiddenOfferData,
+    hiddenOfferDiagnostics,
     officialPrices,
     apiModels,
     apiTransit,
@@ -1643,6 +1732,7 @@ async function readAdminSummary(): Promise<AdminSummary> {
     adminLoad("site-feedback", "站点反馈", listSiteFeedback("pending"), [], loadErrors),
     adminLoad("source-offer-stats", "渠道报价统计", listSourceOfferStats(), [], loadErrors),
     adminLoad("hidden-offers", "手动下架报价", listAdminHiddenRawOffers(), { rows: [], total: 0 }, loadErrors),
+    adminLoad("hidden-offer-diagnostics", "隐藏报价诊断", getHiddenOfferDiagnostics(), emptyHiddenOfferDiagnostics(), loadErrors),
     adminLoad("official-prices", "官方地区价", getOfficialSubscriptionAdminData(), {
       configured: isSupabaseConfigured(),
       tableReady: false,
@@ -1722,6 +1812,7 @@ async function readAdminSummary(): Promise<AdminSummary> {
       ...baseDashboard,
       rawOfferTotal: visibleOfferData.total,
       hiddenRawOfferTotal: hiddenOfferData.total,
+      hiddenOfferDiagnostics,
       isAuthenticated: false,
       loadErrors,
       crawlRuns: [],
@@ -1746,6 +1837,7 @@ async function readAdminSummary(): Promise<AdminSummary> {
     ...baseDashboard,
     rawOfferTotal: visibleOfferData.total,
     hiddenRawOfferTotal: hiddenOfferData.total,
+    hiddenOfferDiagnostics,
     isAuthenticated: false,
     loadErrors,
     crawlRuns,
@@ -2260,7 +2352,7 @@ function filterAdminOfferMaintenanceRowsByScope(
 }
 
 function adminOfferMaintenanceScopeRequiresQuery(scope: AdminOfferMaintenanceScope): boolean {
-  return scope === "system_hidden" || scope === "legacy_hidden" || scope === "all";
+  return scope === "all";
 }
 
 function isAdminOfferDiagnosticSearchAllowed(query: string): boolean {

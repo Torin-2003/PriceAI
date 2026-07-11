@@ -86,7 +86,7 @@ type Message = {
 };
 
 type AdminProduct = AdminSummary["products"][number];
-type OfferMaintenanceScope = "visible" | "manual_hidden" | "all";
+type OfferMaintenanceScope = "visible" | "manual_hidden" | "system_hidden" | "legacy_hidden" | "all";
 type AdminOfferHideMode = "manual" | "temporary";
 type OfferEmergencyListAction = {
   label: string;
@@ -278,6 +278,15 @@ type SourceGroupOverview = SourceGroup & {
   riskCount: number;
 };
 
+type HiddenSourceOverview = {
+  id: string;
+  name: string;
+  hiddenCount: number;
+  manualCount: number;
+  systemOrLegacyCount: number;
+  visibleCount: number;
+};
+
 const statusOptions: Array<[OfferStatus, string]> = [
   ["in_stock", "有货"],
   ["out_of_stock", "缺货"],
@@ -391,6 +400,22 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       error: null,
       query: "",
     },
+    system_hidden: {
+      offers: [],
+      total: data.hiddenOfferDiagnostics.systemHiddenTotal,
+      loading: false,
+      loadingMore: false,
+      error: null,
+      query: "",
+    },
+    legacy_hidden: {
+      offers: [],
+      total: data.hiddenOfferDiagnostics.legacyHiddenTotal,
+      loading: false,
+      loadingMore: false,
+      error: null,
+      query: "",
+    },
     all: {
       offers: [],
       total: 0,
@@ -423,6 +448,27 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
   const sourceById = useMemo(
     () => new Map(sources.map((s) => [s.id, s])),
     [sources],
+  );
+  const hiddenDiagnostics = data.hiddenOfferDiagnostics;
+  const hiddenSourceOverviews = useMemo(
+    () =>
+      (data.sourceOfferStats || [])
+        .filter((stats) => stats.hiddenCount > 0)
+        .map((stats): HiddenSourceOverview => {
+          const source = sourceById.get(stats.sourceId);
+          const manualCount = stats.manuallyHiddenCount || 0;
+          return {
+            id: stats.sourceId,
+            name: source?.name || source?.entryUrl || stats.sourceId,
+            hiddenCount: stats.hiddenCount,
+            manualCount,
+            systemOrLegacyCount: Math.max(0, stats.hiddenCount - manualCount),
+            visibleCount: stats.visibleCount,
+          };
+        })
+        .sort((left, right) => right.hiddenCount - left.hiddenCount)
+        .slice(0, 6),
+    [data.sourceOfferStats, sourceById],
   );
   const offerById = useMemo(() => {
     const map = new Map<string, RawOffer>();
@@ -717,6 +763,8 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     }));
     void loadOfferMaintenancePage("visible", { reset: true, query: "" });
     void loadOfferMaintenancePage("manual_hidden", { reset: true, query: "" });
+    void loadOfferMaintenancePage("system_hidden", { reset: true, query: "" });
+    void loadOfferMaintenancePage("legacy_hidden", { reset: true, query: "" });
   }, [activeTab, authed, debouncedOfferSearchQuery, loadOfferMaintenancePage]);
 
   const showRowFeedback = useCallback((id: string, type: RowFeedback["type"], text: string) => {
@@ -1445,6 +1493,8 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       });
       void loadOfferMaintenancePage("visible", { reset: true, query: offerMaintenanceRef.current.visible.query });
       void loadOfferMaintenancePage("manual_hidden", { reset: true, query: offerMaintenanceRef.current.manual_hidden.query });
+      void loadOfferMaintenancePage("system_hidden", { reset: true, query: offerMaintenanceRef.current.system_hidden.query });
+      void loadOfferMaintenancePage("legacy_hidden", { reset: true, query: offerMaintenanceRef.current.legacy_hidden.query });
       if (offerMaintenanceRef.current.all.query) {
         void loadOfferMaintenancePage("all", { reset: true, query: offerMaintenanceRef.current.all.query });
       }
@@ -3547,6 +3597,10 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
 
                 <div className="lg:col-span-2">
                   <Panel title="报价应急处置" icon={<AlertTriangle size={17} />}>
+                    <HiddenOfferDiagnosticsStrip
+                      diagnostics={hiddenDiagnostics}
+                      sources={hiddenSourceOverviews}
+                    />
                     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="text-sm leading-6 text-[#5a6061]">
                         {debouncedOfferSearchQuery
@@ -3566,7 +3620,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                     {debouncedOfferSearchQuery ? (
                       <OfferEmergencyList
                         title="全状态搜索结果"
-                        emptyText="没有匹配的数据库报价。"
+                        emptyText="没有匹配的数据库报价，或关键词未达到诊断搜索长度。"
                         offers={offerMaintenance.all.offers}
                         productByKey={productByKey}
                         totalCount={offerMaintenance.all.total}
@@ -3612,6 +3666,34 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                           hiddenAction={false}
                           hideMode="manual"
                           onLoadMore={() => loadOfferMaintenancePage("manual_hidden")}
+                          onToggleHidden={toggleOfferHidden}
+                        />
+                        <OfferEmergencyList
+                          title="系统/临时隐藏"
+                          emptyText="没有系统或临时隐藏报价。"
+                          offers={offerMaintenance.system_hidden.offers}
+                          productByKey={productByKey}
+                          totalCount={offerMaintenance.system_hidden.total}
+                          loading={offerMaintenance.system_hidden.loading}
+                          loadingMore={offerMaintenance.system_hidden.loadingMore}
+                          error={offerMaintenance.system_hidden.error}
+                          loadingAction={loadingAction}
+                          getAction={adminOfferDiagnosticAction}
+                          onLoadMore={() => loadOfferMaintenancePage("system_hidden")}
+                          onToggleHidden={toggleOfferHidden}
+                        />
+                        <OfferEmergencyList
+                          title="历史隐藏（无原因）"
+                          emptyText="没有无原因历史隐藏报价。"
+                          offers={offerMaintenance.legacy_hidden.offers}
+                          productByKey={productByKey}
+                          totalCount={offerMaintenance.legacy_hidden.total}
+                          loading={offerMaintenance.legacy_hidden.loading}
+                          loadingMore={offerMaintenance.legacy_hidden.loadingMore}
+                          error={offerMaintenance.legacy_hidden.error}
+                          loadingAction={loadingAction}
+                          getAction={adminOfferDiagnosticAction}
+                          onLoadMore={() => loadOfferMaintenancePage("legacy_hidden")}
                           onToggleHidden={toggleOfferHidden}
                         />
                       </div>
@@ -8435,6 +8517,60 @@ function RecentRunsPanel({ runs }: { runs: CrawlRun[] }) {
         />
       )}
     </Panel>
+  );
+}
+
+function HiddenOfferDiagnosticsStrip({
+  diagnostics,
+  sources,
+}: {
+  diagnostics: AdminSummary["hiddenOfferDiagnostics"];
+  sources: HiddenSourceOverview[];
+}) {
+  const metrics = [
+    { label: "可见", value: diagnostics.visibleTotal, tone: "success" as const },
+    { label: "隐藏", value: diagnostics.hiddenTotal, tone: "warn" as const },
+    { label: "手动", value: diagnostics.manualHiddenTotal, tone: "danger" as const },
+    { label: "系统/临时", value: diagnostics.systemHiddenTotal, tone: "info" as const },
+    { label: "历史无原因", value: diagnostics.legacyHiddenTotal, tone: "muted" as const },
+    { label: "缺失候选", value: diagnostics.pendingMissingCandidateTotal, tone: "default" as const },
+  ];
+
+  return (
+    <div className="mb-4 space-y-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="rounded-lg border border-[#adb3b4]/20 bg-[#f7f9f9] px-3 py-2">
+            <p className="text-[11px] font-medium text-[#7f8889]">{metric.label}</p>
+            <div className="mt-1 flex items-center justify-between gap-2">
+              <span className="text-lg font-semibold tabular-nums text-[#2d3435]">{metric.value}</span>
+              <Badge tone={metric.tone}>{metric.label}</Badge>
+            </div>
+          </div>
+        ))}
+      </div>
+      {sources.length ? (
+        <div className="rounded-lg border border-[#adb3b4]/20 bg-white px-3 py-2.5">
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-[#5a6061]">
+            <Store size={13} />
+            隐藏来源 Top
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {sources.map((source) => (
+              <div key={source.id} className="min-w-0 rounded-lg bg-[#f7f9f9] px-2.5 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-xs font-semibold text-[#2d3435]">{source.name}</span>
+                  <span className="shrink-0 text-xs tabular-nums text-[#9b3328]">{source.hiddenCount}</span>
+                </div>
+                <p className="mt-1 text-[11px] leading-4 text-[#7f8889]">
+                  手动 {source.manualCount} · 系统/历史 {source.systemOrLegacyCount} · 可见 {source.visibleCount}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

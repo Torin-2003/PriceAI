@@ -221,6 +221,7 @@ export type AdminSummary = DashboardData & {
   loadErrors: AdminLoadError[];
   rawOfferTotal: number;
   hiddenRawOfferTotal: number;
+  hiddenOfferDiagnostics: HiddenOfferDiagnostics;
   crawlRuns: CrawlRun[];
   collectionJobs: CollectionJob[];
   collectorHealth: CollectorHealthSummary;
@@ -236,6 +237,15 @@ export type AdminSummary = DashboardData & {
   riskReviewSettings: RiskReviewSettingsSummary;
   sponsorSettings: SponsorSettingsSummary;
   passwordStatus: AdminPasswordStatus;
+};
+
+export type HiddenOfferDiagnostics = {
+  visibleTotal: number;
+  hiddenTotal: number;
+  manualHiddenTotal: number;
+  systemHiddenTotal: number;
+  legacyHiddenTotal: number;
+  pendingMissingCandidateTotal: number;
 };
 
 export type AdminCollectorStatus = {
