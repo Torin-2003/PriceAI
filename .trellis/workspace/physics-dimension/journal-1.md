@@ -77,3 +77,42 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Deploy API transit public monitor fallback
+
+**Date**: 2026-07-12
+**Task**: Deploy API transit public monitor fallback
+**Branch**: `main`
+
+### Summary
+
+Pushed API transit public monitor group fallback to main, deployed via Cloudflare/OpenNext Actions run 29161288486, revalidated api-transit snapshot with stationCount=10, and verified /api-transit, /api-transit/models, /api-transit/wawazz-xyz, /api-transit/sub-callai-one on priceai.cc with server=cloudflare and x-opennext=1.
+
+### Main Changes
+
+- Pushed `749a5ae` from local `main` to `origin/main`.
+- Deployed production via `npm run deploy:production -- --wait`.
+- Triggered API transit public cache revalidation after deploy.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `749a5ae7117e7ea2d9d276c1cb13bbdfc2704d40` | (see git log) |
+
+### Testing
+
+- [OK] Preflight: `npm run deploy:production -- --check`.
+- [OK] Deploy: GitHub Actions run `29161288486`.
+- [OK] Cloudflare smoke passed in the deploy workflow.
+- [OK] Revalidate: `/api/cron/api-transit-revalidate` returned `snapshotWritten: true`, `stationCount: 10`.
+- [OK] Live checks: `/api-transit`, `/api-transit/models?family=gpt&q=GPT%205.5`, `/api-transit/wawazz-xyz`, `/api-transit/sub-callai-one` returned 200 with `server: cloudflare` and `x-opennext: 1`.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
