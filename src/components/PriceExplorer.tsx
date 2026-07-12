@@ -5,6 +5,7 @@ import {
   ChevronRight,
   X,
   Database,
+  Flag,
   Filter,
   LayoutGrid,
   Layers3,
@@ -21,7 +22,7 @@ import { BrandIcon } from "@/components/BrandIcon";
 import { CategoryTabBar, CategoryTabStrip, type CategoryTabItem } from "@/components/CategoryTabBar";
 import { CollectorSourceLogo } from "@/components/MerchantCollectorSource";
 import { GuidePromptStrip } from "@/components/GuidePromptStrip";
-import { OfferActions, OfferFeedbackButton, OfferFeedbackDialog, OfferLink } from "@/components/ProductOffersPanel";
+import { MerchantFeedbackDialog, OfferActions, OfferFeedbackButton, OfferFeedbackDialog, OfferLink } from "@/components/ProductOffersPanel";
 import { SiteHeader } from "@/components/SiteHeader";
 import { listDetailNavigationHref, shouldHandleListDetailClick } from "@/lib/list-return";
 import {
@@ -201,6 +202,7 @@ export function PriceExplorer({
   const [merchantsPaging, setMerchantsPaging] = useState(false);
   const [merchantsError, setMerchantsError] = useState<string | null>(null);
   const [feedbackRow, setFeedbackRow] = useState<PlatformOfferRow | null>(null);
+  const [feedbackMerchant, setFeedbackMerchant] = useState<PublicMerchantSummary | null>(null);
   const offerLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const merchantLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const activeOfferQueryRef = useRef("");
@@ -1053,7 +1055,7 @@ export function PriceExplorer({
                   {merchantsError}。已保留当前商家数据，可稍后重试或切换筛选条件。
                 </div>
               ) : null}
-              <MerchantView merchants={merchantRows} viewMode={viewMode} />
+              <MerchantView merchants={merchantRows} viewMode={viewMode} onFeedback={setFeedbackMerchant} />
               {hasMoreMerchants ? (
                 <div ref={merchantLoadMoreRef} className="mt-4 flex justify-center">
                   <button
@@ -1142,6 +1144,10 @@ export function PriceExplorer({
           <EmptyState text="没有符合条件的商品" />
         )}
       </main>
+
+      {feedbackMerchant ? (
+        <MerchantFeedbackDialog merchant={feedbackMerchant} onClose={() => setFeedbackMerchant(null)} />
+      ) : null}
 
       <footer className="px-5 py-8 text-center text-xs leading-6 text-[#5a6061] sm:px-8">
         <p>价格仅供参考，实际价格、库存和售后规则以原平台为准。本工具不构成购买建议。</p>
@@ -1409,14 +1415,22 @@ function PlatformOfferCard({
   );
 }
 
-function MerchantView({ merchants, viewMode }: { merchants: PublicMerchantSummary[]; viewMode: ViewMode }) {
+function MerchantView({
+  merchants,
+  viewMode,
+  onFeedback,
+}: {
+  merchants: PublicMerchantSummary[];
+  viewMode: ViewMode;
+  onFeedback: (merchant: PublicMerchantSummary) => void;
+}) {
   if (viewMode === "table") {
     return (
       <>
-        <MerchantTable merchants={merchants} />
+        <MerchantTable merchants={merchants} onFeedback={onFeedback} />
         <div className="grid gap-3 md:hidden">
           {merchants.map((merchant) => (
-            <MerchantCard key={merchant.id} merchant={merchant} />
+            <MerchantCard key={merchant.id} merchant={merchant} onFeedback={onFeedback} />
           ))}
         </div>
       </>
@@ -1426,17 +1440,23 @@ function MerchantView({ merchants, viewMode }: { merchants: PublicMerchantSummar
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {merchants.map((merchant) => (
-        <MerchantCard key={merchant.id} merchant={merchant} />
+        <MerchantCard key={merchant.id} merchant={merchant} onFeedback={onFeedback} />
       ))}
     </div>
   );
 }
 
-function MerchantTable({ merchants }: { merchants: PublicMerchantSummary[] }) {
+function MerchantTable({
+  merchants,
+  onFeedback,
+}: {
+  merchants: PublicMerchantSummary[];
+  onFeedback: (merchant: PublicMerchantSummary) => void;
+}) {
   return (
     <div className="hidden overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15 md:block">
       <div className="overflow-x-auto">
-        <table className="min-w-[1320px] w-full border-collapse text-left text-sm">
+        <table className="min-w-[1370px] w-full border-collapse text-left text-sm">
           <colgroup>
             <col className="w-[260px]" />
             <col className="w-[150px]" />
@@ -1446,7 +1466,7 @@ function MerchantTable({ merchants }: { merchants: PublicMerchantSummary[] }) {
             <col className="w-[135px]" />
             <col className="w-[130px]" />
             <col className="w-[160px]" />
-            <col className="w-[120px]" />
+            <col className="w-[170px]" />
             <col className="w-[120px]" />
           </colgroup>
           <thead className="bg-[#f2f4f4] text-[0.68rem] font-semibold text-[#5a6061]">
@@ -1465,7 +1485,7 @@ function MerchantTable({ merchants }: { merchants: PublicMerchantSummary[] }) {
           </thead>
           <tbody className="divide-y divide-[#edf0f1]">
             {merchants.map((merchant) => (
-              <MerchantTableRow key={merchant.id} merchant={merchant} />
+              <MerchantTableRow key={merchant.id} merchant={merchant} onFeedback={onFeedback} />
             ))}
           </tbody>
         </table>
@@ -1474,7 +1494,13 @@ function MerchantTable({ merchants }: { merchants: PublicMerchantSummary[] }) {
   );
 }
 
-function MerchantTableRow({ merchant }: { merchant: PublicMerchantSummary }) {
+function MerchantTableRow({
+  merchant,
+  onFeedback,
+}: {
+  merchant: PublicMerchantSummary;
+  onFeedback: (merchant: PublicMerchantSummary) => void;
+}) {
   const sourcePlatform = merchantSourcePlatform({
     collectorKind: merchant.collectorKind,
     collectorGroup: merchant.collectorGroup,
@@ -1525,13 +1551,19 @@ function MerchantTableRow({ merchant }: { merchant: PublicMerchantSummary }) {
         <RelativeTime value={merchant.latestSeenAt} />
       </td>
       <td className="px-5 py-4 text-center align-middle">
-        <MerchantSourceLink merchant={merchant} />
+        <MerchantActions merchant={merchant} onFeedback={onFeedback} />
       </td>
     </tr>
   );
 }
 
-function MerchantCard({ merchant }: { merchant: PublicMerchantSummary }) {
+function MerchantCard({
+  merchant,
+  onFeedback,
+}: {
+  merchant: PublicMerchantSummary;
+  onFeedback: (merchant: PublicMerchantSummary) => void;
+}) {
   const sourcePlatform = merchantSourcePlatform({
     collectorKind: merchant.collectorKind,
     collectorGroup: merchant.collectorGroup,
@@ -1580,7 +1612,7 @@ function MerchantCard({ merchant }: { merchant: PublicMerchantSummary }) {
           <span className="block truncate">{merchant.representativeProduct || "未记录代表商品"}</span>
           <span className="block">更新 <RelativeTime value={merchant.latestSeenAt} /></span>
         </p>
-        <MerchantSourceLink merchant={merchant} />
+        <MerchantActions merchant={merchant} onFeedback={onFeedback} />
       </div>
     </article>
   );
@@ -1695,6 +1727,41 @@ function MerchantCoverageText({ merchant }: { merchant: PublicMerchantSummary })
       <span className="font-semibold text-[#2d3435]">覆盖：</span>
       {platforms.join(" / ")}{suffix}
     </p>
+  );
+}
+
+function MerchantActions({
+  merchant,
+  onFeedback,
+}: {
+  merchant: PublicMerchantSummary;
+  onFeedback: (merchant: PublicMerchantSummary) => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center justify-end gap-2">
+      <MerchantSourceLink merchant={merchant} />
+      <MerchantFeedbackButton merchant={merchant} onFeedback={onFeedback} />
+    </div>
+  );
+}
+
+function MerchantFeedbackButton({
+  merchant,
+  onFeedback,
+}: {
+  merchant: PublicMerchantSummary;
+  onFeedback: (merchant: PublicMerchantSummary) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onFeedback(merchant)}
+      title="反馈商家问题"
+      aria-label={`反馈商家问题：${merchant.name}`}
+      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#adb3b4]/30 bg-white text-[#5a6061] transition hover:border-[#5a6061]/35 hover:bg-[#f2f4f4]"
+    >
+      <Flag size={14} />
+    </button>
   );
 }
 

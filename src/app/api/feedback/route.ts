@@ -22,8 +22,11 @@ import { offerFeedbackReasonValues } from "@/lib/types";
 const PUBLIC_OFFER_FEEDBACK_RATE_LIMIT_PER_HOUR = 20;
 const reasonSchema = z.enum(offerFeedbackReasonValues);
 const userExpectedActionSchema = z.enum(["recheck", "hide_offer", "hide_source", "unsure"]);
+const feedbackScopeSchema = z.enum(["offer", "merchant"]);
 
 const schema = z.object({
+  feedbackScope: feedbackScopeSchema.default("offer"),
+  publicConsent: z.boolean().optional(),
   productId: z.string().max(200).nullable().optional(),
   productSlug: z.string().max(200).nullable().optional(),
   productName: z.string().max(200).nullable().optional(),
@@ -70,7 +73,7 @@ function getErrorStatus(error: unknown, message: string): number {
   const publicRequestStatus = getPublicRequestErrorStatus(error);
   if (publicRequestStatus) return publicRequestStatus;
   if (error instanceof z.ZodError) return 400;
-  if (message.includes("刚刚被反馈过")) return 409;
+  if (message.includes("刚刚被反馈过") || message.includes("商家问题刚刚")) return 409;
   if (message.includes("反馈过于频繁")) return 429;
   if (message.includes("需要提交") || message.includes("需要至少上传")) return 400;
   if (message.includes("需要留下")) return 400;
@@ -87,6 +90,7 @@ export async function POST(request: Request) {
     });
 
     const payload = schema.parse(await readJsonWithLimit(request));
+    const feedbackScope = payload.feedbackScope;
 
     if (payload.website) {
       return Response.json({ ok: true });
@@ -108,6 +112,8 @@ export async function POST(request: Request) {
     }
 
     const result = await createOfferFeedback({
+      feedbackScope,
+      publicStatus: payload.publicConsent === false ? "not_public" : undefined,
       productId: payload.productId || null,
       productSlug: payload.productSlug || null,
       productName: payload.productName || null,
@@ -145,7 +151,7 @@ export async function POST(request: Request) {
           mergeFeedbackSnapshotScope(snapshotScope, escalation.snapshotScope);
         }
 
-        if (HIGH_RISK_FEEDBACK_REASONS.has(payload.reason)) {
+        if (HIGH_RISK_FEEDBACK_REASONS.has(payload.reason) && payload.publicConsent !== false) {
           const feedback = await runOfferFeedbackRiskPrecheck(result.id);
           clearPublicDataCache();
           await markPublicApiSnapshotsDirty("public feedback precheck", {

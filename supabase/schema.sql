@@ -1564,6 +1564,7 @@ for each row execute function set_updated_at();
 
 create table if not exists offer_feedback (
   id text primary key,
+  feedback_scope text not null default 'offer',
   product_id text,
   product_slug text,
   product_name text,
@@ -1587,6 +1588,9 @@ create table if not exists offer_feedback (
   notes text,
   contact text,
   status text not null default 'pending',
+  public_status text not null default 'not_public',
+  withdrawn_at timestamptz,
+  withdraw_reason text,
   reviewer_note text,
   submitter_ip text,
   user_id uuid,
@@ -1601,10 +1605,34 @@ alter table offer_feedback
   add column if not exists verification_result text,
   add column if not exists verification_message text,
   add column if not exists verification_checked_at timestamptz,
-  add column if not exists created_collection_job_id text references collection_jobs(id) on delete set null;
+  add column if not exists created_collection_job_id text references collection_jobs(id) on delete set null,
+  add column if not exists feedback_scope text not null default 'offer',
+  add column if not exists public_status text not null default 'not_public',
+  add column if not exists withdrawn_at timestamptz,
+  add column if not exists withdraw_reason text;
 
 do $$
 begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'offer_feedback_scope_check'
+  ) then
+    alter table offer_feedback
+      add constraint offer_feedback_scope_check
+      check (feedback_scope in ('offer', 'merchant'));
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'offer_feedback_public_status_check'
+  ) then
+    alter table offer_feedback
+      add constraint offer_feedback_public_status_check
+      check (public_status in ('not_public', 'pending_review', 'public', 'withdrawn'));
+  end if;
+
   if not exists (
     select 1
     from pg_constraint
@@ -1657,6 +1685,12 @@ create index if not exists offer_feedback_verification_status_idx
 create index if not exists offer_feedback_created_collection_job_id_idx
   on offer_feedback(created_collection_job_id);
 create index if not exists offer_feedback_user_id_created_at_idx on offer_feedback(user_id, created_at desc);
+create index if not exists offer_feedback_scope_created_at_idx
+  on offer_feedback(feedback_scope, created_at desc);
+create index if not exists offer_feedback_public_status_idx
+  on offer_feedback(public_status, created_at desc);
+create index if not exists offer_feedback_user_public_status_idx
+  on offer_feedback(user_id, public_status, created_at desc);
 
 alter table offer_feedback enable row level security;
 

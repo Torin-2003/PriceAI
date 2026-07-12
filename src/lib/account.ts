@@ -18,6 +18,18 @@ export async function listUserOfferFeedback(userId: string): Promise<OfferFeedba
   return (data || []).map(mapAccountOfferFeedbackRow);
 }
 
+export async function getUserOfferFeedback(userId: string, feedbackId: string): Promise<OfferFeedback | null> {
+  const supabase = getRequiredSupabase();
+  const { data, error } = await supabase
+    .from("offer_feedback")
+    .select("*")
+    .eq("id", feedbackId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapAccountOfferFeedbackRow(data) : null;
+}
+
 export async function listUserFeedbackFollowups(userId: string, feedbackId: string): Promise<FeedbackFollowup[]> {
   const supabase = getRequiredSupabase();
   const { data: feedbackRows, error: feedbackError } = await supabase
@@ -70,6 +82,59 @@ export async function createUserFeedbackFollowup(input: {
     .single();
   if (error) throw error;
   return mapFeedbackFollowupRow(data);
+}
+
+export async function withdrawUserOfferFeedback(input: {
+  userId: string;
+  feedbackId: string;
+  reason?: string | null;
+}): Promise<OfferFeedback> {
+  const supabase = getRequiredSupabase();
+  const { data: feedbackRow, error: feedbackError } = await supabase
+    .from("offer_feedback")
+    .select("*")
+    .eq("id", input.feedbackId)
+    .eq("user_id", input.userId)
+    .maybeSingle();
+  if (feedbackError) throw feedbackError;
+  if (!feedbackRow) throw new Error("没有找到这条反馈，或你无权撤销。");
+
+  const feedback = mapAccountOfferFeedbackRow(feedbackRow);
+  if (feedback.publicStatus === "withdrawn") return feedback;
+
+  const now = new Date().toISOString();
+  const withdrawReason = input.reason?.trim() || "已与商家协商一致或不再需要继续公开展示。";
+  const { data: updatedRow, error: updateError } = await supabase
+    .from("offer_feedback")
+    .update({
+      status: "ignored",
+      public_status: "withdrawn",
+      withdrawn_at: now,
+      withdraw_reason: withdrawReason,
+      reviewer_note: "用户已撤销反馈。",
+      reviewed_at: now,
+    })
+    .eq("id", input.feedbackId)
+    .eq("user_id", input.userId)
+    .select("*")
+    .maybeSingle();
+  if (updateError) throw updateError;
+  if (!updatedRow) throw new Error("没有找到这条反馈，或你无权撤销。");
+
+  const followupId = stableId("feedback-withdraw", input.feedbackId, input.userId, now);
+  const { error: followupError } = await supabase.from("feedback_followups").insert({
+    id: followupId,
+    feedback_id: input.feedbackId,
+    user_id: input.userId,
+    role: "user",
+    message: `用户撤销反馈：${withdrawReason}`,
+    evidence_urls: [],
+  });
+  if (followupError) {
+    console.warn("Feedback withdrawal followup insert failed:", followupError.message);
+  }
+
+  return mapAccountOfferFeedbackRow(updatedRow);
 }
 
 export async function listUserDetectorJobs(userId: string): Promise<TransitDetectorJob[]> {
@@ -166,6 +231,10 @@ export const feedbackFollowupSchema = z.object({
   evidenceUrls: z.array(z.string().max(2048)).max(10).optional(),
 });
 
+export const feedbackWithdrawSchema = z.object({
+  reason: z.string().trim().max(500, "撤销说明不能超过 500 字。").nullable().optional(),
+});
+
 function getRequiredSupabase(): SupabaseClient {
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase 尚未配置。");
@@ -175,6 +244,7 @@ function getRequiredSupabase(): SupabaseClient {
 function mapAccountOfferFeedbackRow(row: Record<string, unknown>): OfferFeedback {
   return {
     id: String(row.id),
+    feedbackScope: row.feedback_scope === "merchant" ? "merchant" : "offer",
     productId: row.product_id ? String(row.product_id) : null,
     productSlug: row.product_slug ? String(row.product_slug) : null,
     productName: row.product_name ? String(row.product_name) : null,
@@ -204,6 +274,9 @@ function mapAccountOfferFeedbackRow(row: Record<string, unknown>): OfferFeedback
     notes: row.notes ? String(row.notes) : null,
     contact: row.contact ? String(row.contact) : null,
     status: String(row.status || "pending") as OfferFeedback["status"],
+    publicStatus: normalizeFeedbackPublicStatus(row.public_status),
+    withdrawnAt: row.withdrawn_at ? String(row.withdrawn_at) : null,
+    withdrawReason: row.withdraw_reason ? String(row.withdraw_reason) : null,
     reviewerNote: row.reviewer_note ? String(row.reviewer_note) : null,
     submitterIp: row.submitter_ip ? String(row.submitter_ip) : null,
     userId: row.user_id ? String(row.user_id) : null,
@@ -212,6 +285,13 @@ function mapAccountOfferFeedbackRow(row: Record<string, unknown>): OfferFeedback
     createdAt: String(row.created_at || new Date().toISOString()),
     reviewedAt: row.reviewed_at ? String(row.reviewed_at) : null,
   };
+}
+
+function normalizeFeedbackPublicStatus(value: unknown): OfferFeedback["publicStatus"] {
+  if (value === "pending_review" || value === "public" || value === "withdrawn" || value === "not_public") {
+    return value;
+  }
+  return "not_public";
 }
 
 function mapFeedbackFollowupRow(row: Record<string, unknown>): FeedbackFollowup {

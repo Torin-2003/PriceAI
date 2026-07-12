@@ -47,15 +47,20 @@ export default async function AccountFeedbackPage() {
           {feedback.length ? (
             <div className="divide-y divide-[#edf0f1]">
               {feedback.map((item) => (
-                <div key={item.id} className="px-5 py-4">
+                <Link key={item.id} href={`/account/feedback/${encodeURIComponent(item.id)}`} className="block px-5 py-4 transition hover:bg-[#f7f9f9]">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
-                      <p className="font-semibold text-[#202829]">{item.productName || item.productSlug || "未命名商品"}</p>
+                      <p className="font-semibold text-[#202829]">{feedbackTitle(item)}</p>
                       <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#5a6061]">{item.sourceTitle || item.sourceName || "未记录渠道"}</p>
                     </div>
-                    <span className="inline-flex h-7 shrink-0 items-center rounded-full bg-[#f2f4f4] px-3 text-xs font-semibold text-[#5a6061]">
-                      {feedbackStatusLabel(item.status)}
-                    </span>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <span className="inline-flex h-7 items-center rounded-full bg-[#eef3f8] px-3 text-xs font-semibold text-[#47657a]">
+                        {item.feedbackScope === "merchant" ? "商家反馈" : "报价反馈"}
+                      </span>
+                      <span className="inline-flex h-7 items-center rounded-full bg-[#f2f4f4] px-3 text-xs font-semibold text-[#5a6061]">
+                        {feedbackStatusLabel(item)}
+                      </span>
+                    </div>
                   </div>
                   <div className="mt-3 grid gap-2 text-xs leading-5 text-[#5a6061] sm:grid-cols-3">
                     <span>类型：{feedbackReasonLabel(item.reason)}</span>
@@ -67,7 +72,7 @@ export default async function AccountFeedbackPage() {
                       {item.reviewerNote || item.verificationMessage}
                     </p>
                   ) : null}
-                </div>
+                </Link>
               ))}
             </div>
           ) : (
@@ -81,9 +86,15 @@ export default async function AccountFeedbackPage() {
   );
 }
 
-function feedbackStatusLabel(value: OfferFeedback["status"]) {
-  if (value === "resolved") return "已处理";
-  if (value === "ignored") return "已关闭";
+function feedbackTitle(item: OfferFeedback) {
+  if (item.feedbackScope === "merchant") return item.sourceName || item.sourceTitle || "未命名商家";
+  return item.productName || item.productSlug || "未命名商品";
+}
+
+function feedbackStatusLabel(item: OfferFeedback) {
+  if (item.publicStatus === "withdrawn") return "已撤销";
+  if (item.status === "resolved") return "已处理";
+  if (item.status === "ignored") return "已关闭";
   return "待处理";
 }
 

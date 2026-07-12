@@ -747,6 +747,12 @@ export type SubmissionStatus = "pending" | "approved" | "rejected";
 
 export type OfferFeedbackStatus = "pending" | "resolved" | "ignored";
 export type SiteFeedbackStatus = OfferFeedbackStatus;
+export type OfferFeedbackScope = "offer" | "merchant";
+export type OfferFeedbackPublicStatus =
+  | "not_public"
+  | "pending_review"
+  | "public"
+  | "withdrawn";
 export const offerFeedbackReasonValues = [
   "wrong_price",
   "description_mismatch",
@@ -813,6 +819,7 @@ export type ChannelSubmission = {
 
 export type OfferFeedback = {
   id: string;
+  feedbackScope: OfferFeedbackScope;
   productId: string | null;
   productSlug: string | null;
   productName: string | null;
@@ -842,6 +849,9 @@ export type OfferFeedback = {
   notes: string | null;
   contact: string | null;
   status: OfferFeedbackStatus;
+  publicStatus: OfferFeedbackPublicStatus;
+  withdrawnAt: string | null;
+  withdrawReason: string | null;
   reviewerNote: string | null;
   submitterIp: string | null;
   userId: string | null;
