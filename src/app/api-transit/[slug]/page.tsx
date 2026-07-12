@@ -1,17 +1,22 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getTransitStationBySlug } from "@/lib/api-transit-db";
+import { getTransitStationBySlug, getTransitStations } from "@/lib/api-transit-db";
 import { SiteHeader } from "@/components/SiteHeader";
-import TransitStationDetail, {
-  TransitStationPricingPanels,
-} from "@/components/TransitStationDetail";
+import TransitStationDetail from "@/components/TransitStationDetail";
+import { TransitStationLivePricingPanels } from "@/components/TransitStationLivePricingPanels";
 import { JsonLd } from "@/components/JsonLd";
 
-// Admin-published transit stations can appear after a slug was visited as a draft.
-// Render details at request time so stale cached 404s cannot hide newly published stations.
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+// Cache the stable detail shell; volatile pricing and monitoring data refreshes separately.
+export const revalidate = 300;
 export const dynamicParams = true;
+
+export async function generateStaticParams() {
+  const stations = await getTransitStations();
+  return stations
+    .map((station) => station.slug)
+    .filter((slug) => slug && !slug.includes("/") && !slug.includes("\\"))
+    .map((slug) => ({ slug }));
+}
 
 export async function generateMetadata({
   params,
@@ -39,7 +44,7 @@ export default async function ApiTransitDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const station = await getTransitStationBySlug(slug, { includeHistory: true });
+  const station = await getTransitStationBySlug(slug);
 
   if (!station) notFound();
 
@@ -68,7 +73,7 @@ export default async function ApiTransitDetailPage({
 
       <main className="mx-auto max-w-[1500px] px-4 py-6 pb-20 sm:px-5 sm:py-7">
         <TransitStationDetail station={station}>
-          <TransitStationPricingPanels station={station} />
+          <TransitStationLivePricingPanels key={slug} slug={slug} initialStation={station} />
         </TransitStationDetail>
       </main>
     </div>

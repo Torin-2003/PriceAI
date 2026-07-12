@@ -201,9 +201,22 @@ assert(/listPublicProductOffers/.test(productPageText), "src/app/products/[id]/p
 assert(/initialData=\{initialOffers\}/.test(productPageText), "src/app/products/[id]/page.tsx: product offer panel must receive server-prefetched initialData.");
 
 const transitDetailPageText = read("src/app/api-transit/[slug]/page.tsx");
-assert(/dynamic\s*=\s*["']force-dynamic["']/.test(transitDetailPageText), "src/app/api-transit/[slug]/page.tsx: transit detail pages must avoid cached not-found results for newly published stations.");
-assert(/revalidate\s*=\s*0/.test(transitDetailPageText), "src/app/api-transit/[slug]/page.tsx: transit detail pages must not ISR-cache negative station lookups.");
-assert(!/generateStaticParams/.test(transitDetailPageText), "src/app/api-transit/[slug]/page.tsx: transit detail routes must not prerender a stale station set.");
+assert(/revalidate\s*=\s*300/.test(transitDetailPageText), "src/app/api-transit/[slug]/page.tsx: transit detail shell should use the shared 5 minute public cache window.");
+assert(/dynamicParams\s*=\s*true/.test(transitDetailPageText), "src/app/api-transit/[slug]/page.tsx: newly published transit detail slugs must still render on demand.");
+assert(/generateStaticParams/.test(transitDetailPageText), "src/app/api-transit/[slug]/page.tsx: known transit detail slugs should be pre-rendered into the stable cached shell.");
+assert(!/dynamic\s*=\s*["']force-dynamic["']/.test(transitDetailPageText), "src/app/api-transit/[slug]/page.tsx: transit detail shell should not force every request through live database reads.");
+assert(!/revalidate\s*=\s*0/.test(transitDetailPageText), "src/app/api-transit/[slug]/page.tsx: transit detail shell must not disable ISR caching.");
+assert(/TransitStationLivePricingPanels/.test(transitDetailPageText), "src/app/api-transit/[slug]/page.tsx: volatile pricing and monitoring panels must refresh separately from the cached shell.");
+
+const transitDetailApiText = read("src/app/api/api-transit-stations/[slug]/detail/route.ts");
+assert(/TRANSIT_DETAIL_EDGE_SECONDS\s*=\s*600/.test(transitDetailApiText), "src/app/api/api-transit-stations/[slug]/detail/route.ts: volatile transit detail data should use a 10 minute edge cache.");
+assert(/publicDataCacheHeaders/.test(transitDetailApiText), "src/app/api/api-transit-stations/[slug]/detail/route.ts: transit detail data API must set public CDN cache headers.");
+assert(/noStoreCacheHeaders/.test(transitDetailApiText), "src/app/api/api-transit-stations/[slug]/detail/route.ts: not-found transit detail API responses must not be negatively cached.");
+
+const transitLivePricingPanelsText = read("src/components/TransitStationLivePricingPanels.tsx");
+assert(/setStation\(initialStation\)/.test(transitLivePricingPanelsText), "src/components/TransitStationLivePricingPanels.tsx: live pricing panels must start from the cached shell's last known good data.");
+assert(/TransitStationPricingSkeleton/.test(transitLivePricingPanelsText), "src/components/TransitStationLivePricingPanels.tsx: live pricing panels must keep a skeleton state for missing volatile data.");
+assert(!/setStation\(null\)/.test(transitLivePricingPanelsText), "src/components/TransitStationLivePricingPanels.tsx: transient refresh failures must not erase last known good station data.");
 
 const publicOfferQueryText = read("src/lib/public-offer-query.ts");
 assert(/PUBLIC_OFFER_MAX_LIMIT\s*=\s*200/.test(publicOfferQueryText), "src/lib/public-offer-query.ts: public offer pages must stay capped at 200 rows or less.");
