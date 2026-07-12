@@ -470,6 +470,7 @@
     "apiBaseUrl": "https://yujianwudi.top/v1",
     "pricingUrl": "https://yujianwudi.top/pricing",
     "pricingEndpointUrl": "https://yujianwudi.top/api/pricing",
+    "monitorEndpointUrl": "https://yujianwudi.top/api/perf-metrics/summary?period=24",
     "collectorKind": "new_api_pricing",
     "stationSystem": "new_api",
     "commercialRelation": "affiliate",
@@ -489,7 +490,7 @@
       "站长提交资料包含 1:1 充值、主体类型、发票支持、售后退款和 AFF 链接，后台资料完整度较高。"
     ],
     "cautions": [
-      "未提供公开监测页，真实可用性和扣费仍需后续测试 Key 或人工样本核验。",
+      "未提供独立可视化公开监测页；公开 performance summary JSON 可读取，属于站方公开监测口径，非 PriceAI API Key 实测。",
       "用户提交的常规口径为 Pro 号池 0.20 倍率；2026-07-12 公开价格页当前 Codex-pro 显示 0.10，疑似站内限时活动价，正式上架前需再次确认。"
     ],
     "commercialOffers": [
@@ -524,15 +525,15 @@
         "happenedAt": "2026-07-12T05:23:00.000Z"
       },
       {
-        "id": "yujianwudi-monitor-missing-2026-07-12",
+        "id": "yujianwudi-public-performance-2026-07-12",
         "source": "priceai",
-        "status": "warning",
-        "title": "未提供公开监测页",
-        "description": "当前仅能读取公开价格页，站点可用性和真实扣费仍需后续测试 Key、测试账号或人工样本补充。",
-        "happenedAt": "2026-07-12T05:23:00.000Z"
+        "status": "success",
+        "title": "公开 performance summary 可读取",
+        "description": "2026-07-12 检查 https://yujianwudi.top/api/perf-metrics/summary?period=24 返回模型维度成功率、平均延迟与 TPS；该数据为站方公开监测口径，非 PriceAI API Key 实测。",
+        "happenedAt": "2026-07-12T08:52:42.000Z"
       }
     ],
-    "adminNote": "用户提交口径：天机阁 / New API / 运营约 70 天 / 1:1 充值 / Pro 号池常规 0.20 倍率 / 自建号池 / 个体工商户 / 支持普票 / 联系客服退款 / AFF: https://yujianwudi.top/sign-up?aff=3UXW。PriceAI 2026-07-12 读取公开 /api/pricing 时，Codex-pro 当前显示 0.10，结合站内公告疑似限时活动价；正式上架前需让站长确认常规倍率、活动结束后口径、公开监测或测试 Key。"
+    "adminNote": "用户提交口径：天机阁 / New API / 运营约 70 天 / 1:1 充值 / Pro 号池常规 0.20 倍率 / 自建号池 / 个体工商户 / 支持普票 / 联系客服退款 / AFF: https://yujianwudi.top/sign-up?aff=3UXW。PriceAI 2026-07-12 读取公开 /api/pricing 时，Codex-pro 当前显示 0.10，结合站内公告疑似限时活动价；/api/perf-metrics/summary?period=24 可读取站方公开稳定性，但非 PriceAI API Key 实测。正式上架前需让站长确认常规倍率、活动结束后口径和是否提供测试 Key。"
   },
   {
     "id": "umapis-com",
@@ -541,6 +542,7 @@
     "apiBaseUrl": "https://www.umapis.com/v1",
     "pricingUrl": "https://www.umapis.com/pricing",
     "pricingEndpointUrl": "https://www.umapis.com/api/pricing",
+    "monitorEndpointUrl": "https://www.umapis.com/api/perf-metrics/summary?period=24",
     "collectorKind": "new_api_pricing",
     "stationSystem": "new_api",
     "commercialRelation": "none",
@@ -556,7 +558,7 @@
       "公开 /api/status 返回系统名、New API 版本、服务地址、导航配置和站点公告，可用于后台核验基础信息。"
     ],
     "cautions": [
-      "未发现公开监测页，/api/status 显示 uptime_kuma_enabled=false；真实可用性和扣费仍需后续测试 Key 或人工样本核验。",
+      "未发现独立可视化公开监测页；公开 performance summary JSON 可读取，属于站方公开监测口径，非 PriceAI API Key 实测。",
       "未接入 PriceAI 公共快照标准：/api/public/transit/v1/snapshot 返回 404，/.well-known/ai-transit.json 当前返回前端壳。",
       "用户仅补充站点和系统类型；充值倍率、主体类型、发票、售后/退款、AFF 和号池来源说明仍需后续补充确认。"
     ],
@@ -586,15 +588,15 @@
         "happenedAt": "2026-07-12T05:35:36.000Z"
       },
       {
-        "id": "umapis-monitor-missing-2026-07-12",
+        "id": "umapis-public-performance-2026-07-12",
         "source": "priceai",
-        "status": "warning",
-        "title": "未发现公开监测页或公共快照",
-        "description": "当前仅能读取公开价格和状态接口；/v1/models 需要 API Key，/api/public/transit/v1/snapshot 返回 404，/.well-known/ai-transit.json 不是标准 JSON。",
-        "happenedAt": "2026-07-12T05:35:37.000Z"
+        "status": "success",
+        "title": "公开 performance summary 可读取",
+        "description": "2026-07-12 检查 https://www.umapis.com/api/perf-metrics/summary?period=24 返回模型维度成功率、平均延迟与 TPS；该数据为站方公开监测口径，非 PriceAI API Key 实测。",
+        "happenedAt": "2026-07-12T08:52:46.000Z"
       }
     ],
-    "adminNote": "用户提交口径：New API 系统 / 官网: http://www.umapis.com。PriceAI 2026-07-12 核验：站点公开名为 悠米AI中转，/api/status 显示 New API v1.0.0-rc.21，/api/pricing 可读取 16 个模型；当前公开分组倍率包含 GPT-Pro 0.15、GPT混合 0.05、自研Claude满血 0.7、Claude Max 1.2、GPT-IMAGE-2 1。未发现公开监测页，未接入 PriceAI 公共快照标准，/v1/models 需要 API Key。正式上架前需补充或确认：充值倍率、主流模型倍率口径、号池/上游来源、主体类型、发票、售后/退款、AFF、公开监测页或测试 Key。"
+    "adminNote": "用户提交口径：New API 系统 / 官网: http://www.umapis.com。PriceAI 2026-07-12 核验：站点公开名为 悠米AI中转，/api/status 显示 New API v1.0.0-rc.21，/api/pricing 可读取 16 个模型；当前公开分组倍率包含 GPT-Pro 0.15、GPT混合 0.05、自研Claude满血 0.7、Claude Max 1.2、GPT-IMAGE-2 1；/api/perf-metrics/summary?period=24 可读取站方公开稳定性，但非 PriceAI API Key 实测。未接入 PriceAI 公共快照标准，/v1/models 需要 API Key。正式上架前需补充或确认：充值倍率、主流模型倍率口径、号池/上游来源、主体类型、发票、售后/退款、AFF、测试 Key。"
   },
   {
     "id": "kksj-org",
