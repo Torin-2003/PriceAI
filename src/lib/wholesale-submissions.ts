@@ -37,12 +37,11 @@ type InsertableWholesaleSubmission = {
   submission_type: "user" | "merchant";
   submitted_url: string;
   submitted_name: string;
-  submitted_note: string | null;
   submitted_models: string[] | null;
-  submitted_contact: string | null;
+  contact: string | null;
+  notes: string | null;
   submitted_meta: Record<string, unknown>;
   submitter_ip: string | null;
-  submitter_user_agent: string | null;
   normalized_url: string | null;
   normalized_host: string | null;
   parse_status: "pending";
@@ -114,6 +113,7 @@ export async function createWholesaleSubmission(input: WholesaleSubmissionInput)
     afterSales: cleanText(input.afterSales, 300),
     evidenceSummary,
     proofUrl,
+    submitterUserAgent: cleanText(input.userAgent, 500),
     receivedAt: now.toISOString(),
     wholesaleTags: compactList([
       roleLabel,
@@ -127,16 +127,15 @@ export async function createWholesaleSubmission(input: WholesaleSubmissionInput)
     submission_type: input.role === "seller" ? "merchant" : "user",
     submitted_url: submittedUrl,
     submitted_name: title,
-    submitted_note: notes,
     submitted_models: compactList([
       target,
       sourceDescription,
       evidenceSummary,
     ]).slice(0, 8),
-    submitted_contact: cleanText(input.contact, 200),
+    contact: cleanText(input.contact, 200),
+    notes,
     submitted_meta: stripEmptyMeta(meta),
     submitter_ip: input.submitterIp ?? null,
-    submitter_user_agent: cleanText(input.userAgent, 500),
     normalized_url: normalized.normalizedUrl,
     normalized_host: normalized.normalizedHost,
     parse_status: "pending",
