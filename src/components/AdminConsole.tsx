@@ -35,7 +35,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { Dispatch, FormEvent, ReactNode, SetStateAction, UIEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiTransitAdminPanel, WholesaleAdminPanel, type ApiTransitAdminTab } from "@/components/ApiTransitAdminConsole";
@@ -241,7 +241,40 @@ type ApiModelProbeResult = {
   };
 };
 
-type AdminTab = "review" | "todo" | "feedback" | "sponsors" | "security" | "history" | "collect" | "health" | "official" | "apiModels" | "apiTransit" | "wholesale" | "sources" | "manual" | "logs";
+const adminTabValues = [
+  "review",
+  "todo",
+  "feedback",
+  "sponsors",
+  "security",
+  "history",
+  "collect",
+  "health",
+  "official",
+  "apiModels",
+  "apiTransit",
+  "wholesale",
+  "sources",
+  "manual",
+  "logs",
+] as const;
+type AdminTab = (typeof adminTabValues)[number];
+type AdminLocationState = {
+  tab: AdminTab;
+  apiTransitTab: ApiTransitAdminTab;
+};
+
+const DEFAULT_ADMIN_TAB: AdminTab = "review";
+const DEFAULT_API_TRANSIT_ADMIN_TAB: ApiTransitAdminTab = "stations";
+const adminTabSet = new Set<string>(adminTabValues);
+const apiTransitAdminTabValues = [
+  "stations",
+  "candidates",
+  "rawOffers",
+  "submissions",
+  "runs",
+] as const satisfies readonly ApiTransitAdminTab[];
+const apiTransitAdminTabSet = new Set<string>(apiTransitAdminTabValues);
 
 type RowFeedback = {
   id: string;
@@ -325,10 +358,58 @@ const feedbackStatusOptions: Array<{ value: OfferFeedbackStatus; label: string }
 const DEFAULT_RISK_REVIEW_ADMIN_BASE_URL = "https://opencode.ai/zen/go/v1";
 const DEFAULT_RISK_REVIEW_ADMIN_MODEL = "mimo-v2.5";
 
+type AdminSearchParams = {
+  get(name: string): string | null;
+};
+
+function parseAdminLocation(searchParams: AdminSearchParams): AdminLocationState {
+  const rawTab = searchParams.get("tab");
+  const apiTransitTabFromTab = rawTab?.startsWith("apiTransit:")
+    ? rawTab.slice("apiTransit:".length)
+    : "";
+  const tab = apiTransitTabFromTab ? "apiTransit" : parseAdminTab(rawTab);
+  const apiTransitTab = tab === "apiTransit"
+    ? parseApiTransitAdminTab(searchParams.get("apiTransitTab") || apiTransitTabFromTab)
+    : DEFAULT_API_TRANSIT_ADMIN_TAB;
+
+  return { tab, apiTransitTab };
+}
+
+function parseAdminTab(value: string | null | undefined): AdminTab {
+  return value && adminTabSet.has(value) ? value as AdminTab : DEFAULT_ADMIN_TAB;
+}
+
+function parseApiTransitAdminTab(value: string | null | undefined): ApiTransitAdminTab {
+  return value && apiTransitAdminTabSet.has(value)
+    ? value as ApiTransitAdminTab
+    : DEFAULT_API_TRANSIT_ADMIN_TAB;
+}
+
+function syncAdminLocationToUrl(location: AdminLocationState): void {
+  if (typeof window === "undefined") return;
+
+  const params = new URLSearchParams(window.location.search);
+  params.set("tab", location.tab);
+  if (location.tab === "apiTransit") {
+    params.set("apiTransitTab", location.apiTransitTab);
+  } else {
+    params.delete("apiTransitTab");
+  }
+
+  const query = params.toString();
+  const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (nextUrl !== currentUrl) {
+    window.history.replaceState(window.history.state, "", nextUrl);
+  }
+}
+
 /* ─── Main Component ─── */
 
 export function AdminConsole({ data }: { data: AdminSummary }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialAdminLocation = useMemo(() => parseAdminLocation(searchParams), [searchParams]);
   const [password, setPassword] = useState("");
   const [optimisticAuthed, setOptimisticAuthed] = useState(false);
   const authed = data.isAuthenticated || optimisticAuthed;
@@ -373,8 +454,8 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     newPassword: "",
     confirmPassword: "",
   });
-  const [activeTab, setActiveTab] = useState<AdminTab>("review");
-  const [apiTransitActiveTab, setApiTransitActiveTab] = useState<ApiTransitAdminTab>("stations");
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialAdminLocation.tab);
+  const [apiTransitActiveTab, setApiTransitActiveTab] = useState<ApiTransitAdminTab>(initialAdminLocation.apiTransitTab);
   const embeddedApiTransitData = useMemo(
     () => (data.apiTransit.isAuthenticated === authed ? data.apiTransit : { ...data.apiTransit, isAuthenticated: authed }),
     [authed, data.apiTransit],
@@ -549,6 +630,12 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     [offerById, offerFeedback, siteFeedback],
   );
   const pendingFeedbackCount = pendingOfferFeedbackCount + pendingSiteFeedbackCount;
+  useEffect(() => {
+    setActiveTab((current) => current === initialAdminLocation.tab ? current : initialAdminLocation.tab);
+    setApiTransitActiveTab((current) =>
+      current === initialAdminLocation.apiTransitTab ? current : initialAdminLocation.apiTransitTab,
+    );
+  }, [initialAdminLocation.apiTransitTab, initialAdminLocation.tab]);
   useEffect(() => {
     if (!selectedFeedbackIds.size) return;
     const visibleIds = new Set(filteredOfferFeedback.map((item) => item.id));
@@ -2010,7 +2097,6 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       type: success === targets.length ? "success" : "info",
       text: `${status === "resolved" ? "批量标记已处理" : "批量忽略"}完成：${success}/${targets.length} 条成功。`,
     });
-    router.refresh();
   }
 
   async function batchHideSelectedFeedbackOffers() {
@@ -2062,7 +2148,6 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       type: hiddenSuccess === targets.length && resolvedSuccess === targets.length ? "success" : "info",
       text: `批量临时下架报价完成：下架 ${hiddenSuccess}/${targets.length} 条，标记已处理 ${resolvedSuccess}/${targets.length} 条反馈。`,
     });
-    router.refresh();
   }
 
   async function batchHideSelectedFeedbackSources() {
@@ -2133,7 +2218,6 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       type: sourceSuccess === feedbackBySource.size && resolvedSuccess === targets.length ? "success" : "info",
       text: `批量临时下架渠道完成：下架 ${sourceSuccess}/${feedbackBySource.size} 个渠道，处理 ${updatedOfferCount} 条报价，标记已处理 ${resolvedSuccess}/${targets.length} 条反馈。`,
     });
-    router.refresh();
   }
 
   async function updateSiteFeedbackStatus(feedback: SiteFeedback, status: SiteFeedbackStatus, reviewerNote?: string) {
@@ -2179,7 +2263,6 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     if (result.ok) {
       await updateFeedbackStatus(feedback, "resolved", "已按用户反馈临时下架报价");
       setGlobalMessage({ type: "success", text: "报价已临时下架，反馈已标记处理。" });
-      router.refresh();
     } else {
       setLoadingAction(null);
       showRowFeedback(feedback.id, "error", result.message || "下架报价失败。");
@@ -2204,7 +2287,6 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     if (result.ok) {
       await updateFeedbackStatus(feedback, "resolved", "已按用户反馈停用报价");
       setGlobalMessage({ type: "success", text: "报价已停用，反馈已标记处理。" });
-      router.refresh();
     } else {
       setLoadingAction(null);
       showRowFeedback(feedback.id, "error", result.message || "停用报价失败。");
@@ -2232,7 +2314,6 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       }
       await updateFeedbackStatus(feedback, "resolved", "已按用户反馈临时下架渠道报价");
       setGlobalMessage({ type: "success", text: `已临时下架 ${result.updatedOfferCount || 0} 条渠道报价，反馈已标记处理。` });
-      router.refresh();
     } else {
       setLoadingAction(null);
       showRowFeedback(feedback.id, "error", result.message || "下架渠道失败。");
@@ -2260,7 +2341,6 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       }
       await updateFeedbackStatus(feedback, "resolved", "已按用户反馈停用渠道并下架报价");
       setGlobalMessage({ type: "success", text: `渠道已停用，已下架 ${result.updatedOfferCount || 0} 条报价，反馈已标记处理。` });
-      router.refresh();
     } else {
       setLoadingAction(null);
       showRowFeedback(feedback.id, "error", result.message || "停用渠道失败。");
@@ -2722,12 +2802,15 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
 
   function selectAdminNavigation(itemId: string) {
     let nextTab = itemId as AdminTab;
+    let nextApiTransitTab = apiTransitActiveTab;
     if (itemId.startsWith("apiTransit:")) {
       nextTab = "apiTransit";
-      setApiTransitActiveTab(itemId.slice("apiTransit:".length) as ApiTransitAdminTab);
+      nextApiTransitTab = parseApiTransitAdminTab(itemId.slice("apiTransit:".length));
+      setApiTransitActiveTab(nextApiTransitTab);
     }
 
     setActiveTab(nextTab);
+    syncAdminLocationToUrl({ tab: nextTab, apiTransitTab: nextApiTransitTab });
     setSearchQuery("");
     setSelectedIds(new Set());
     setFocusedIndex(-1);
