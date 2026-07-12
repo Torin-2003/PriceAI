@@ -222,6 +222,8 @@ assert(/pushScope\(normalizedStandardModel, normalizedGroupName\);[\s\S]{0,200}i
 assert(!/\.abortSignal\(publicTransitReadSignal\(\)\)/.test(transitPublicText), "src/lib/api-transit-db.ts: nested API transit queries must not silently recreate the short 2.5s signal.");
 assert(/cached\.find\(\(item\) => item\.slug === slug \|\| item\.id === slug\)/.test(transitPublicText), "src/lib/api-transit-db.ts: API transit detail cache must resolve both station slug and station id.");
 assert(/\.eq\("slug", slug\)[\s\S]{0,500}\.eq\("id", slug\)/.test(transitPublicText), "src/lib/api-transit-db.ts: API transit detail reads must fall back from slug lookup to station id lookup.");
+assert(/readTransitRowsOrEmpty/.test(transitPublicText), "src/lib/api-transit-db.ts: API transit detail optional reads must not turn existing stations into not-found pages.");
+assert(/readStationFromSupabaseBySlug[\s\S]{0,1800}readTransitRowsOrEmpty\([\s\S]{0,500}recent availability samples/.test(transitPublicText), "src/lib/api-transit-db.ts: API transit detail recent sample timeouts must degrade instead of returning not-found.");
 
 const transitAdminText = read("src/lib/api-transit-admin.ts");
 assert(/ADMIN_RUN_SELECT/.test(transitAdminText), "src/lib/api-transit-admin.ts: admin run lists must use an explicit field projection.");
@@ -243,6 +245,9 @@ assert(/checked_at desc/.test(transitSamplesMigration), "api transit availabilit
 const smokeText = read("scripts/smoke-cloudflare.mjs");
 assert(/SMOKE_FETCH_TIMEOUT_MS/.test(smokeText), "scripts/smoke-cloudflare.mjs: smoke checks must have a request timeout.");
 assert(/fetchWithTimeout/.test(smokeText), "scripts/smoke-cloudflare.mjs: smoke checks must use fetchWithTimeout.");
+assert(/validateApiTransitDetailPages/.test(smokeText), "scripts/smoke-cloudflare.mjs: production smoke must validate API transit detail pages.");
+assert(/extractApiTransitDetailPaths/.test(smokeText), "scripts/smoke-cloudflare.mjs: API transit detail smoke must derive detail paths from sitemap.");
+assert(/API 中转站详情/.test(smokeText), "scripts/smoke-cloudflare.mjs: API transit detail smoke must reject cached not-found detail pages.");
 
 const packageText = read("package.json");
 assert(/"check:performance"\s*:\s*"node scripts\/check-performance-guards\.mjs"/.test(packageText), "package.json: add npm run check:performance.");

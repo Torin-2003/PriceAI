@@ -24,6 +24,12 @@ const staticDatasetMarkers = [
   "数据源：静态样本",
 ];
 
+const apiTransitDetailNotFoundMarkers = [
+  "未找到 | PriceAI",
+  "找不到这个页面",
+  "This page could not be found",
+];
+
 const checks = [
   {
     path: "/",
@@ -120,6 +126,7 @@ for (const check of checks) {
   }
 }
 
+await validateApiTransitDetailPages(baseUrl);
 await validateNextStaticAssets(baseUrl);
 
 if (failures > 0) {
@@ -281,6 +288,91 @@ function validateMerchantsJson(data) {
   if (!Array.isArray(data?.rows)) failures.push("rows!=array");
   if (!Number.isFinite(data?.total) || data.total < 1) failures.push("total<1");
   return failures;
+}
+
+async function validateApiTransitDetailPages(baseUrl) {
+  const sitemapUrl = new URL("/sitemap.xml", baseUrl);
+  const startedAt = Date.now();
+
+  try {
+    const sitemapResponse = await fetchWithTimeout(sitemapUrl, {
+      headers: {
+        "user-agent": "PriceAI Cloudflare smoke check",
+      },
+    });
+    const sitemapXml = await sitemapResponse.text();
+    const detailPaths = extractApiTransitDetailPaths(sitemapXml);
+
+    if (sitemapResponse.status !== 200 || detailPaths.length === 0) {
+      failures += 1;
+      console.log(
+        `fail api-transit-details sitemap status=${sitemapResponse.status} paths=${detailPaths.length} ${sitemapUrl.pathname}`,
+      );
+      return;
+    }
+
+    for (const path of detailPaths) {
+      const detailStartedAt = Date.now();
+      const detailUrl = new URL(path, baseUrl);
+      const response = await fetchWithTimeout(detailUrl, {
+        headers: {
+          "user-agent": "PriceAI Cloudflare smoke check",
+        },
+      });
+      const html = await response.text();
+      const markerFailures = apiTransitDetailNotFoundMarkers
+        .filter((marker) => html.includes(marker))
+        .map((marker) => `forbidden:${marker}`);
+      const contentFailures = html.includes("API 中转站详情") ? [] : ["missing:api-transit-detail-title"];
+      const contentOk = markerFailures.length === 0 && contentFailures.length === 0;
+      const ok = response.status === 200 && contentOk;
+
+      if (!ok) failures += 1;
+
+      console.log(
+        [
+          ok ? "ok" : "fail",
+          "api-transit-detail",
+          response.status,
+          `${html.length}B`,
+          `${Date.now() - detailStartedAt}ms`,
+          detailUrl.pathname,
+          response.headers.get("x-nextjs-cache") ? `next-cache=${response.headers.get("x-nextjs-cache")}` : "",
+          response.headers.get("cf-cache-status") ? `cf-cache=${response.headers.get("cf-cache-status")}` : "",
+          markerFailures.length ? `text=${markerFailures.join(";")}` : "",
+          contentFailures.length ? `text=${contentFailures.join(";")}` : "",
+        ].filter(Boolean).join(" "),
+      );
+    }
+
+    console.log(`ok api-transit-details ${detailPaths.length} paths ${Date.now() - startedAt}ms`);
+  } catch (error) {
+    failures += 1;
+    console.log(
+      `fail api-transit-details error ${sitemapUrl.pathname} ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function extractApiTransitDetailPaths(sitemapXml) {
+  const specialSegments = new Set(["detector", "models", "submit"]);
+  const paths = new Set();
+
+  for (const match of sitemapXml.matchAll(/<loc>([^<]+)<\/loc>/g)) {
+    let url;
+    try {
+      url = new URL(match[1]);
+    } catch {
+      continue;
+    }
+
+    const path = url.pathname.replace(/\/+$/, "");
+    const detailMatch = path.match(/^\/api-transit\/([^/]+)$/);
+    if (!detailMatch || specialSegments.has(detailMatch[1])) continue;
+    paths.add(path);
+  }
+
+  return [...paths].sort();
 }
 
 async function validateNextStaticAssets(baseUrl) {

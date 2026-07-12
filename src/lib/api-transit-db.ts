@@ -420,7 +420,10 @@ async function readStationsFromSupabase(options: TransitStationsReadOptions = {}
     );
     const [enhancementRows, recentSampleRows] = await Promise.all([
       readStationEnhancementRows(),
-      readRecentAvailabilitySampleRows(supabase, stationIds, sampleRowLimit, signal),
+      readTransitRowsOrEmpty(
+        "recent availability samples",
+        () => readRecentAvailabilitySampleRows(supabase, stationIds, sampleRowLimit, signal)
+      ),
     ]);
     const enhancementsByStation = new Map<string, DbRow>();
     for (const row of enhancementRows) {
@@ -496,36 +499,68 @@ async function readStationFromSupabaseBySlug(slug: string): Promise<TransitStati
   const supabase = getSupabaseServerClient();
   if (!supabase) return seedStations.find((station) => station.slug === slug || station.id === slug);
 
+  let stationRow: DbRow | undefined;
   try {
-    const stationRow = (await queryPublishedStationRows(supabase, publicTransitReadSignal(), slug))[0];
-    if (!stationRow) return undefined;
+    stationRow = (await queryPublishedStationRows(supabase, publicTransitReadSignal(), slug))[0];
+  } catch (error) {
+    console.warn("Returning no API transit station because Supabase station read failed:", error);
+    return undefined;
+  }
 
-    const stationId = stringValue(stationRow.id);
-    if (!stationId) return undefined;
+  if (!stationRow) return undefined;
 
-    const signal = publicTransitReadSignal();
-    const [offerRows, enhancementRow, recentSampleRows] = await Promise.all([
-      readPublicOfferRows(supabase, signal, stationId, { includeRawPayload: true }),
-      readStationEnhancementRow(supabase, stationId, signal),
-      readRecentAvailabilitySampleRows(
+  const stationId = stringValue(stationRow.id);
+  if (!stationId) return undefined;
+
+  const signal = publicTransitReadSignal();
+  const [offerRows, enhancementRow, recentSampleRows] = await Promise.all([
+    readTransitRowsOrEmpty(
+      `offers for station ${stationId}`,
+      () => readPublicOfferRows(supabase, signal, stationId, { includeRawPayload: true })
+    ),
+    readTransitRowOrUndefined(
+      `enhancement for station ${stationId}`,
+      () => readStationEnhancementRow(supabase, stationId, signal)
+    ),
+    readTransitRowsOrEmpty(
+      `recent availability samples for station ${stationId}`,
+      () => readRecentAvailabilitySampleRows(
         supabase,
         [stationId],
         TRANSIT_RECENT_AVAILABILITY_SAMPLE_DETAIL_ROW_LIMIT,
         signal
-      ),
-    ]);
+      )
+    ),
+  ]);
 
-    const station = mapStationRow(
-      stationRow,
-      offerRows,
-      enhancementRow,
-      new Map(),
-      buildRecentAvailabilitySamplesByKey(recentSampleRows)
-    );
-    cacheStationLookup(station, Date.now(), slug);
-    return station;
+  const station = mapStationRow(
+    stationRow,
+    offerRows,
+    enhancementRow,
+    new Map(),
+    buildRecentAvailabilitySamplesByKey(recentSampleRows)
+  );
+  cacheStationLookup(station, Date.now(), slug);
+  return station;
+}
+
+async function readTransitRowsOrEmpty(label: string, readRows: () => Promise<DbRow[]>): Promise<DbRow[]> {
+  try {
+    return await readRows();
   } catch (error) {
-    console.warn("Returning no API transit station because Supabase detail read failed:", error);
+    console.warn(`Rendering API transit data without ${label} because the read failed:`, error);
+    return [];
+  }
+}
+
+async function readTransitRowOrUndefined(
+  label: string,
+  readRow: () => Promise<DbRow | undefined>
+): Promise<DbRow | undefined> {
+  try {
+    return await readRow();
+  } catch (error) {
+    console.warn(`Rendering API transit data without ${label} because the read failed:`, error);
     return undefined;
   }
 }
