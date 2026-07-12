@@ -37,6 +37,7 @@ yarn-error.log*
 /.agents/
 /.claude/
 /.codex/
+/.codex-tmp/
 /.impeccable/
 /.trellis/
 /.omo/
@@ -52,6 +53,7 @@ yarn-error.log*
 
 # local docs kept off GitHub and production deploys
 /docs/
+/docs/planning/STATUS.md
 
 # env files (can opt-in for committing if needed)
 .env*
