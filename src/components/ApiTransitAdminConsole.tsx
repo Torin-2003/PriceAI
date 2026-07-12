@@ -217,6 +217,11 @@ export function ApiTransitAdminPanel({
           submission.pricingUrl,
           submission.contact,
           submission.notes,
+          stringMeta(submission.submittedMeta, "wholesaleRoleLabel"),
+          stringMeta(submission.submittedMeta, "wholesaleDirectionLabel"),
+          stringMeta(submission.submittedMeta, "identityType"),
+          stringMeta(submission.submittedMeta, "target"),
+          stringMeta(submission.submittedMeta, "sourceDescription"),
         ]),
       ),
     [data.submissions, normalizedQuery],
@@ -353,7 +358,7 @@ export function ApiTransitAdminPanel({
     const result = await requestJson("/api/admin/api-transit/submissions", "PATCH", {
       id: submission.id,
       reviewStatus,
-      adminNote: defaultSubmissionNote(reviewStatus),
+      adminNote: defaultSubmissionNote(reviewStatus, isWholesaleSubmission(submission)),
     });
     handleActionResult(
       result,
@@ -1213,12 +1218,15 @@ function SubmissionRow({
     reviewStatus: ApiTransitSubmissionReviewStatus,
   ) => void;
 }) {
-  const needsStationDraft = submission.reviewStatus === "approved" && !submission.stationId;
+  const isWholesale = isWholesaleSubmission(submission);
+  const internalWholesaleUrl = isInternalWholesaleLeadUrl(submission);
+  const needsStationDraft = !isWholesale && submission.reviewStatus === "approved" && !submission.stationId;
   return (
     <article className="grid gap-3 px-4 py-4 text-sm lg:grid-cols-[minmax(220px,1.5fr)_120px_140px_150px_220px] lg:items-start">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="truncate text-sm font-semibold text-[#202829]">{submission.submittedName || submission.submittedUrl}</h2>
+          {isWholesale ? <StatusBadge tone="info">批发线索</StatusBadge> : null}
           <StatusBadge tone={submission.reviewStatus === "pending" ? "warn" : submission.reviewStatus === "approved" ? "success" : submission.reviewStatus === "collector_todo" ? "info" : "muted"}>
             {submissionReviewStatusLabel(submission.reviewStatus)}
           </StatusBadge>
@@ -1226,10 +1234,14 @@ function SubmissionRow({
             <StatusBadge tone="muted">合并 {submission.duplicateCount}</StatusBadge>
           ) : null}
         </div>
-        <a href={submission.submittedUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex max-w-full items-center gap-1 text-xs font-medium text-[#47657a] hover:text-[#202829]">
-          <span className="truncate">{submission.submittedUrl}</span>
-          <ExternalLink size={12} />
-        </a>
+        {internalWholesaleUrl ? (
+          <div className="mt-1 text-xs font-medium text-[#5a6061]">内部批发线索：{submission.id}</div>
+        ) : (
+          <a href={submission.submittedUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex max-w-full items-center gap-1 text-xs font-medium text-[#47657a] hover:text-[#202829]">
+            <span className="truncate">{submission.submittedUrl}</span>
+            <ExternalLink size={12} />
+          </a>
+        )}
         {submission.normalizedHost ? (
           <div className="mt-1 text-xs text-[#adb3b4]">同站口径：{submission.normalizedHost}</div>
         ) : null}
@@ -1238,7 +1250,7 @@ function SubmissionRow({
       </div>
       <div>
         <MobileLabel>类型</MobileLabel>
-        <span className="text-sm font-medium text-[#2d3435]">{submission.submissionType === "merchant" ? "站长提交" : "用户推荐"}</span>
+        <span className="text-sm font-medium text-[#2d3435]">{submissionTypeLabel(submission)}</span>
         {submission.contact ? <div className="mt-1 text-xs text-[#5a6061]">{submission.contact}</div> : null}
       </div>
       <div>
@@ -1263,7 +1275,7 @@ function SubmissionRow({
         </button>
         <button
           type="button"
-          disabled={(!needsStationDraft && submission.reviewStatus === "approved") || loadingAction === `submission-approved-${submission.id}`}
+          disabled={(isWholesale && submission.reviewStatus === "approved") || (!needsStationDraft && submission.reviewStatus === "approved") || loadingAction === `submission-approved-${submission.id}`}
           onClick={() => onUpdate(submission, "approved")}
           className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#2d3435] px-3 text-xs font-medium text-[#f8f8f8] transition-colors hover:bg-[#202829] disabled:opacity-50"
         >
@@ -2012,7 +2024,27 @@ function AdminDialogActions({
 
 function SubmissionMetaSummary({ submission }: { submission: ApiTransitAdminSubmission }) {
   const meta = submission.submittedMeta;
+  const wholesale = isWholesaleSubmission(submission);
+  const wholesaleRows: Array<[string, string | null]> = wholesale
+    ? [
+        ["方向", wholesaleDirectionLabel(meta)],
+        ["角色", wholesaleRoleLabel(meta)],
+        ["身份", stringMeta(meta, "identityType")],
+        ["目标/供给", stringMeta(meta, "target")],
+        ["月量/批量", stringMeta(meta, "volume")],
+        ["预算", stringMeta(meta, "budget")],
+        ["价格/结算", stringMeta(meta, "pricing")],
+        ["可接受来源", stringMeta(meta, "acceptableSources")],
+        ["源头说明", stringMeta(meta, "sourceDescription")],
+        ["起批门槛", stringMeta(meta, "minimumOrder")],
+        ["测试/验真", stringMeta(meta, "testRequirement")],
+        ["售后/边界", stringMeta(meta, "afterSales")],
+        ["证明", stringMeta(meta, "evidenceSummary")],
+        ["证明链接", stringMeta(meta, "proofUrl")],
+      ]
+    : [];
   const rows = [
+    ...wholesaleRows,
     ["接入", accessModeLabel(stringMeta(meta, "accessMode"))],
     ["凭据", credentialStatusSummary(meta)],
     ["系统", stringMeta(meta, "systemType")],
@@ -2030,6 +2062,7 @@ function SubmissionMetaSummary({ submission }: { submission: ApiTransitAdminSubm
     ["监测频率", stringMeta(meta, "monitorBudgetLimit")],
   ].filter((row): row is [string, string] => Boolean(row[1]));
   const chips = [
+    ...arrayMeta(meta, "wholesaleTags"),
     ...arrayMeta(meta, "channelClaims"),
     ...arrayMeta(meta, "cooperation"),
     ...arrayMeta(meta, "admission"),
@@ -2118,6 +2151,7 @@ type ApiResponse = {
   updatedOfferCount?: number;
   offer?: unknown;
   station?: unknown;
+  submission?: unknown;
   stationCreated?: boolean;
 };
 
@@ -2298,6 +2332,39 @@ function verificationEventStatusFromText(value: string | undefined): ApiTransitV
   return "info";
 }
 
+function isWholesaleSubmission(submission: ApiTransitAdminSubmission): boolean {
+  return submission.submittedMeta.workflow === "wholesale";
+}
+
+function isInternalWholesaleLeadUrl(submission: ApiTransitAdminSubmission): boolean {
+  return (
+    isWholesaleSubmission(submission) &&
+    /^https:\/\/priceai\.cc\/wholesale\/leads\//.test(submission.submittedUrl)
+  );
+}
+
+function submissionTypeLabel(submission: ApiTransitAdminSubmission): string {
+  if (isWholesaleSubmission(submission)) return wholesaleRoleLabel(submission.submittedMeta) || "批发线索";
+  return submission.submissionType === "merchant" ? "站长提交" : "用户推荐";
+}
+
+function wholesaleRoleLabel(meta: Record<string, unknown>): string | null {
+  const value = stringMeta(meta, "wholesaleRole");
+  const explicitLabel = stringMeta(meta, "wholesaleRoleLabel");
+  if (value === "buyer") return "批发买方";
+  if (value === "seller") return "源头供给";
+  return explicitLabel;
+}
+
+function wholesaleDirectionLabel(meta: Record<string, unknown>): string | null {
+  const value = stringMeta(meta, "wholesaleDirection");
+  const explicitLabel = stringMeta(meta, "wholesaleDirectionLabel");
+  if (value === "api_transit") return "API 中转批发";
+  if (value === "subscription_channel") return "卡网/订阅渠道批发";
+  if (value === "other") return "其他源头";
+  return explicitLabel;
+}
+
 function stringMeta(meta: Record<string, unknown>, key: string): string | null {
   const value = meta[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -2385,15 +2452,20 @@ function submissionReviewStatusLabel(value: ApiTransitSubmissionReviewStatus): s
   return "待处理";
 }
 
-function defaultSubmissionNote(value: ApiTransitSubmissionReviewStatus): string {
-  if (value === "approved") return "人工审核通过，已生成或关联站点池草稿。";
-  if (value === "collector_todo") return "已加入 API 中转采集器待办。";
+function defaultSubmissionNote(value: ApiTransitSubmissionReviewStatus, wholesale = false): string {
+  if (value === "approved") {
+    return wholesale ? "批发线索人工初筛通过。" : "人工审核通过，已生成或关联站点池草稿。";
+  }
+  if (value === "collector_todo") {
+    return wholesale ? "已加入批发线索待办。" : "已加入 API 中转采集器待办。";
+  }
   if (value === "rejected") return "人工审核拒绝。";
   return "";
 }
 
 function submissionStatusSuccessText(value: ApiTransitSubmissionReviewStatus, result?: ApiResponse): string {
   if (value === "approved") {
+    if (isWholesaleSubmissionResponse(result)) return "批发线索已通过初筛。";
     const stationName = responseStationName(result);
     if (stationName) {
       return result?.stationCreated
@@ -2402,9 +2474,18 @@ function submissionStatusSuccessText(value: ApiTransitSubmissionReviewStatus, re
     }
     return "提交线索已通过，并已准备进入站点池。";
   }
-  if (value === "collector_todo") return "提交线索已加入采集器待办。";
+  if (value === "collector_todo") {
+    return isWholesaleSubmissionResponse(result) ? "批发线索已加入待办。" : "提交线索已加入采集器待办。";
+  }
   if (value === "rejected") return "提交线索已拒绝。";
   return "提交线索已更新。";
+}
+
+function isWholesaleSubmissionResponse(result?: ApiResponse): boolean {
+  const submission = result?.submission;
+  if (!submission || typeof submission !== "object") return false;
+  const meta = (submission as { submittedMeta?: unknown }).submittedMeta;
+  return Boolean(meta && typeof meta === "object" && (meta as { workflow?: unknown }).workflow === "wholesale");
 }
 
 function responseStationName(result?: ApiResponse): string | null {

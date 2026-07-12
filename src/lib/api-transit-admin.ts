@@ -470,10 +470,15 @@ export async function updateApiTransitSubmission(input: {
   let stationCreated = false;
   let stationId = input.stationId;
   if (input.reviewStatus === "approved") {
-    const promotion = await promoteTransitSubmissionToStation(input.id, input.stationId);
-    station = promotion.station;
-    stationCreated = promotion.created;
-    stationId = promotion.station.id;
+    const submission = await getAdminTransitSubmissionById(input.id);
+    if (isWholesaleAdminSubmission(submission)) {
+      stationId = input.stationId ?? submission.stationId;
+    } else {
+      const promotion = await promoteTransitSubmissionToStation(input.id, input.stationId);
+      station = promotion.station;
+      stationCreated = promotion.created;
+      stationId = promotion.station.id;
+    }
   }
 
   const row: DbRow = {
@@ -496,10 +501,9 @@ export async function updateApiTransitSubmission(input: {
   return { submission, station, stationCreated };
 }
 
-async function promoteTransitSubmissionToStation(
+async function getAdminTransitSubmissionById(
   submissionId: string,
-  requestedStationId?: string | null,
-): Promise<{ station: ApiTransitAdminStation; created: boolean }> {
+): Promise<ApiTransitAdminSubmission> {
   const supabase = getSupabaseOrThrow();
   const { data, error } = await supabase
     .from("api_transit_submissions")
@@ -509,8 +513,18 @@ async function promoteTransitSubmissionToStation(
 
   if (error) throw error;
   if (!data) throw new Error("提交记录不存在。");
+  return mapSubmission(data as DbRow);
+}
 
-  const submission = mapSubmission(data as DbRow);
+async function promoteTransitSubmissionToStation(
+  submissionId: string,
+  requestedStationId?: string | null,
+): Promise<{ station: ApiTransitAdminStation; created: boolean }> {
+  const submission = await getAdminTransitSubmissionById(submissionId);
+  if (isWholesaleAdminSubmission(submission)) {
+    throw new Error("批发线索不能自动创建中转站草稿。");
+  }
+  const supabase = getSupabaseOrThrow();
   const existing = await findStationForSubmission(submission, requestedStationId);
   if (existing) return { station: existing, created: false };
 
@@ -1019,7 +1033,10 @@ function mapOffer(row: DbRow): ApiTransitAdminOffer {
 
 function mapSubmission(row: DbRow): ApiTransitAdminSubmission {
   const submittedUrl = stringValue(row.submitted_url);
-  const normalized = normalizeTransitSubmissionUrl(submittedUrl);
+  const submittedMeta = recordValue(row.submitted_meta);
+  const normalized = isWholesaleInternalLeadUrl(submittedUrl, submittedMeta)
+    ? { normalizedUrl: null, normalizedHost: null }
+    : normalizeTransitSubmissionUrl(submittedUrl);
   return {
     id: stringValue(row.id),
     submissionType: submissionType(row.submission_type),
@@ -1030,7 +1047,7 @@ function mapSubmission(row: DbRow): ApiTransitAdminSubmission {
     contact: nullableString(row.contact),
     notes: nullableString(row.notes),
     submittedModels: stringArray(row.submitted_models),
-    submittedMeta: recordValue(row.submitted_meta),
+    submittedMeta,
     parseStatus: parseStatus(row.parse_status),
     probeStatus: probeStatus(row.probe_status),
     reviewStatus: reviewStatus(row.review_status),
@@ -1043,6 +1060,20 @@ function mapSubmission(row: DbRow): ApiTransitAdminSubmission {
     createdAt: timestampValue(row.created_at),
     updatedAt: nullableString(row.updated_at),
   };
+}
+
+function isWholesaleInternalLeadUrl(
+  submittedUrl: string,
+  submittedMeta: Record<string, unknown>,
+): boolean {
+  return (
+    submittedMeta.workflow === "wholesale" &&
+    /^https:\/\/priceai\.cc\/wholesale\/leads\//.test(submittedUrl)
+  );
+}
+
+function isWholesaleAdminSubmission(submission: ApiTransitAdminSubmission): boolean {
+  return submission.submittedMeta.workflow === "wholesale";
 }
 
 function mapRun(row: DbRow): ApiTransitAdminRun {

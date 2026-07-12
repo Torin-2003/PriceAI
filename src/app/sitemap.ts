@@ -80,6 +80,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "weekly",
       priority: 0.5,
     },
+    {
+      url: `${siteUrl}/wholesale`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.5,
+    },
     ...platformPageConfigList.map((platform) => ({
       url: `${siteUrl}/platforms/${platform.slug}`,
       lastModified: data.generatedAt ? new Date(data.generatedAt) : now,

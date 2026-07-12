@@ -17,6 +17,7 @@ const navItems = [
   { key: "official", href: "/official-prices", label: "官方订阅", mobileLabel: "订阅", match: (pathname: string) => pathname.startsWith("/official-prices") },
   { key: "api", href: "/official-api", label: "官方 API", mobileLabel: "API", match: (pathname: string) => pathname.startsWith("/official-api") },
   { key: "transit", href: "/api-transit", label: "中转 API", mobileLabel: "中转", match: (pathname: string) => pathname.startsWith("/api-transit") },
+  { key: "wholesale", href: "/wholesale", label: "批发专区", mobileLabel: "批发", match: (pathname: string) => pathname.startsWith("/wholesale") },
 ];
 
 type SiteHeaderSection = (typeof navItems)[number]["key"] | "home" | "guides" | "support";
@@ -71,7 +72,7 @@ export function SiteHeader({
               <Link
                 key={item.href}
                 href={item.href}
-                className={`inline-flex h-9 items-center whitespace-nowrap rounded-full px-4 transition ${
+                className={`inline-flex h-9 items-center whitespace-nowrap rounded-full px-3 transition xl:px-4 ${
                   active
                     ? "bg-[#2d3435] text-[#f8f8f8] shadow-[0_10px_30px_rgba(45,52,53,0.10)]"
                     : "hover:bg-[#edf0f1] hover:text-[#202829]"
