@@ -38,7 +38,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Dispatch, FormEvent, ReactNode, SetStateAction, UIEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiTransitAdminPanel } from "@/components/ApiTransitAdminConsole";
+import { ApiTransitAdminPanel, type ApiTransitAdminTab } from "@/components/ApiTransitAdminConsole";
+import { AdminShell, type AdminNavSection } from "@/components/admin/AdminShell";
 import { apiProviderTypeLabels } from "@/lib/api-models";
 import { formatBeijingDateTimeLocalValue, parseBeijingDateTimeLocalValue } from "@/lib/beijing-time";
 import { classifyOffer } from "@/lib/catalog";
@@ -363,6 +364,11 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     confirmPassword: "",
   });
   const [activeTab, setActiveTab] = useState<AdminTab>("review");
+  const [apiTransitActiveTab, setApiTransitActiveTab] = useState<ApiTransitAdminTab>("stations");
+  const embeddedApiTransitData = useMemo(
+    () => (data.apiTransit.isAuthenticated === authed ? data.apiTransit : { ...data.apiTransit, isAuthenticated: authed }),
+    [authed, data.apiTransit],
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -846,24 +852,58 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       Number(health.overall.staleNodes || 0)
     );
   }, [collectorStatus.collectorHealth]);
-  const adminTabs: Array<{ id: AdminTab; label: string; count: number | null; icon: ReactNode }> = useMemo(
+  const adminNavigationSections: AdminNavSection[] = useMemo(
     () => [
-      { id: "review", label: "审核", count: reviewSubmissions.length, icon: <Inbox size={15} /> },
-      { id: "todo", label: "待办", count: collectorTodoSubmissions.length, icon: <ClipboardList size={15} /> },
-      { id: "feedback", label: "反馈", count: pendingFeedbackCount, icon: <Flag size={15} /> },
-      { id: "sponsors", label: "赞助", count: sponsorSettings.enabled ? activeSponsorPlacementCount(sponsorSettings) || null : null, icon: <Megaphone size={15} /> },
-      { id: "security", label: "安全", count: null, icon: <KeyRound size={15} /> },
-      { id: "history", label: "历史", count: null, icon: <History size={15} /> },
-      { id: "collect", label: "采集", count: failedRunCount || null, icon: <RefreshCcw size={15} /> },
-      { id: "health", label: "健康", count: collectorHealthIssueCount || null, icon: <Activity size={15} /> },
-      { id: "official", label: "官方价", count: officialPrices.currentPrices.length || null, icon: <Database size={15} /> },
-      { id: "apiModels", label: "API 模型", count: apiModels.offers.length || null, icon: <TerminalSquare size={15} /> },
-      { id: "apiTransit", label: "中转 API", count: data.apiTransit.metrics.candidateOffers || data.apiTransit.metrics.pendingStations || null, icon: <Server size={15} /> },
-      { id: "sources", label: "渠道", count: sources.length, icon: <Store size={15} /> },
-      { id: "manual", label: "维护", count: null, icon: <Plus size={15} /> },
-      { id: "logs", label: "日志", count: collectorStatus.crawlRuns.length, icon: <Clock size={15} /> },
+      {
+        id: "review-queue",
+        label: "审核队列",
+        items: [
+          { id: "review", label: "渠道提交", count: reviewSubmissions.length, icon: <Inbox size={15} />, description: "处理用户提交的新渠道，支持试采集、通过、转待办和拒绝。" },
+          { id: "feedback", label: "反馈处理", count: pendingFeedbackCount, icon: <Flag size={15} />, description: "处理报价举报和站点意见，沉淀核验结果与临时处置。" },
+          { id: "sponsors", label: "赞助审核", count: sponsorSettings.enabled ? activeSponsorPlacementCount(sponsorSettings) || null : null, icon: <Megaphone size={15} />, description: "管理赞助素材、披露文案和前台展示状态。" },
+        ],
+      },
+      {
+        id: "data-maintenance",
+        label: "数据维护",
+        items: [
+          { id: "sources", label: "渠道源", count: sources.length, icon: <Store size={15} />, description: "维护来源站点、采集器类型、启停状态和批量采集动作。" },
+          { id: "manual", label: "报价维护", count: null, icon: <Plus size={15} />, description: "调试补录报价和处理隐藏报价，作为排查工具而非长期维护入口。" },
+          { id: "official", label: "官方价格", count: officialPrices.currentPrices.length || null, icon: <Database size={15} />, description: "维护官方订阅地区价、应用、计划、地区和采集日志。" },
+          { id: "apiModels", label: "API 模型", count: apiModels.offers.length || null, icon: <TerminalSquare size={15} />, description: "维护官方 API 模型、供应商、套餐、报价和候选提交。" },
+        ],
+      },
+      {
+        id: "api-transit",
+        label: "API 中转",
+        items: [
+          { id: "apiTransit:stations", label: "站点池", count: data.apiTransit.metrics.pendingStations, icon: <Server size={15} />, description: "维护中转站点、发布状态、商业披露和站点资料。" },
+          { id: "apiTransit:candidates", label: "清洗候选", count: data.apiTransit.metrics.candidateOffers, icon: <Database size={15} />, description: "审核已清洗出的模型报价候选，决定是否进入可见报价。" },
+          { id: "apiTransit:rawOffers", label: "原始报价", count: data.apiTransit.metrics.pendingOffers, icon: <ClipboardList size={15} />, description: "追溯中转站原始报价、模型名、分组和来源 URL。" },
+          { id: "apiTransit:submissions", label: "提交线索", count: data.apiTransit.metrics.pendingSubmissions, icon: <Inbox size={15} />, description: "处理用户和站长提交的中转站线索。" },
+          { id: "apiTransit:runs", label: "检测记录", count: data.apiTransit.metrics.failedRuns, icon: <Activity size={15} />, description: "查看中转站检测运行、失败和最近采集记录。" },
+        ],
+      },
+      {
+        id: "collection",
+        label: "采集系统",
+        items: [
+          { id: "todo", label: "采集待办", count: collectorTodoSubmissions.length, icon: <ClipboardList size={15} />, description: "查看试采集失败或需要新增解析器的渠道待办。" },
+          { id: "collect", label: "运行调度", count: failedRunCount || null, icon: <RefreshCcw size={15} />, description: "创建采集任务、查看采集队列和最近运行状态。" },
+          { id: "health", label: "健康状态", count: collectorHealthIssueCount || null, icon: <Activity size={15} />, description: "查看采集节点、来源新鲜度、失败来源和健康指标。" },
+          { id: "logs", label: "运行日志", count: collectorStatus.crawlRuns.length, icon: <Clock size={15} />, description: "查看采集状态快照和最近运行日志。" },
+        ],
+      },
+      {
+        id: "system",
+        label: "系统",
+        items: [
+          { id: "security", label: "安全", count: null, icon: <KeyRound size={15} />, description: "修改后台密码并查看当前密码来源和安全状态。" },
+          { id: "history", label: "操作历史", count: null, icon: <History size={15} />, description: "查看已批准和已拒绝的渠道提交处理记录。" },
+        ],
+      },
     ],
-    [apiModels.offers.length, collectorHealthIssueCount, collectorStatus.crawlRuns.length, collectorTodoSubmissions.length, data.apiTransit.metrics.candidateOffers, data.apiTransit.metrics.pendingStations, failedRunCount, officialPrices.currentPrices.length, pendingFeedbackCount, reviewSubmissions.length, sources.length, sponsorSettings],
+    [apiModels.offers.length, collectorHealthIssueCount, collectorStatus.crawlRuns.length, collectorTodoSubmissions.length, data.apiTransit.metrics.candidateOffers, data.apiTransit.metrics.failedRuns, data.apiTransit.metrics.pendingOffers, data.apiTransit.metrics.pendingStations, data.apiTransit.metrics.pendingSubmissions, failedRunCount, officialPrices.currentPrices.length, pendingFeedbackCount, reviewSubmissions.length, sources.length, sponsorSettings],
   );
 
   /* ─── Keyboard shortcuts ─── */
@@ -2643,6 +2683,23 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     }
   };
 
+  const activeNavigationId = activeTab === "apiTransit" ? `apiTransit:${apiTransitActiveTab}` : activeTab;
+
+  function selectAdminNavigation(itemId: string) {
+    let nextTab = itemId as AdminTab;
+    if (itemId.startsWith("apiTransit:")) {
+      nextTab = "apiTransit";
+      setApiTransitActiveTab(itemId.slice("apiTransit:".length) as ApiTransitAdminTab);
+    }
+
+    setActiveTab(nextTab);
+    setSearchQuery("");
+    setSelectedIds(new Set());
+    setFocusedIndex(-1);
+    setExpandedId(null);
+    if (nextTab === "history" && !historySubmissions.length) void loadHistory();
+  }
+
   return (
     <main className="min-h-screen bg-[#f9f9f9] text-[#2d3435]">
       {/* Header */}
@@ -2716,44 +2773,11 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
             </form>
           </section>
         ) : (
-          <>
-            {/* Tab bar */}
-            <nav role="tablist" aria-label="管理后台导航" className="mb-5 flex gap-1 overflow-x-auto border-b border-[#adb3b4]/20">
-              {adminTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={activeTab === tab.id}
-                  aria-controls={`tabpanel-${tab.id}`}
-                  onClick={() => {
-                    setActiveTab(tab.id);
-                    setSearchQuery("");
-                    setSelectedIds(new Set());
-                    setFocusedIndex(-1);
-                    setExpandedId(null);
-                    if (tab.id === "history" && !historySubmissions.length) void loadHistory();
-                  }}
-                  className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
-                    activeTab === tab.id
-                      ? "border-[#2d3435] text-[#2d3435]"
-                      : "border-transparent text-[#5a6061] hover:border-[#adb3b4]/40 hover:text-[#2d3435]"
-                  }`}
-                >
-                  {tab.icon}
-                  {tab.label}
-                  {typeof tab.count === "number" && tab.count > 0 && (
-                    <span className={`rounded-full px-1.5 py-0.5 text-xs ${
-                      activeTab === tab.id
-                        ? "bg-[#2d3435] text-white"
-                        : "bg-[#f2f4f4] text-[#5a6061]"
-                    }`}>
-                      {tab.count}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </nav>
+          <AdminShell
+            sections={adminNavigationSections}
+            activeItemId={activeNavigationId}
+            onSelectItem={selectAdminNavigation}
+          >
 
             {/* Review tab */}
             {activeTab === "review" && (
@@ -3422,7 +3446,12 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
             {/* API transit tab */}
             {activeTab === "apiTransit" && (
               <div role="tabpanel" id="tabpanel-apiTransit">
-                <ApiTransitAdminPanel data={data.apiTransit} />
+                <ApiTransitAdminPanel
+                  data={embeddedApiTransitData}
+                  activeTab={apiTransitActiveTab}
+                  onActiveTabChange={setApiTransitActiveTab}
+                  hideTabs
+                />
               </div>
             )}
 
@@ -3710,7 +3739,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                 <RecentRunsPanel runs={collectorStatus.crawlRuns} />
               </div>
             )}
-          </>
+          </AdminShell>
         )}
       </div>
     </main>

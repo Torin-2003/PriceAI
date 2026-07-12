@@ -53,7 +53,7 @@ import {
 import { apiTransitLogoDisplayUrl } from "@/lib/api-transit-logo-url";
 import { formatCurrency, formatRelativeTime } from "@/lib/utils";
 
-type AdminTab = "stations" | "candidates" | "rawOffers" | "submissions" | "runs";
+export type ApiTransitAdminTab = "stations" | "candidates" | "rawOffers" | "submissions" | "runs";
 type StationBucket = "published" | "pending" | "removed";
 type Message = {
   type: "success" | "error" | "info";
@@ -134,14 +134,20 @@ export function ApiTransitAdminConsole({ data }: { data: ApiTransitAdminData }) 
 export function ApiTransitAdminPanel({
   data,
   framed = false,
+  activeTab: controlledActiveTab,
+  onActiveTabChange,
+  hideTabs = false,
 }: {
   data: ApiTransitAdminData;
   framed?: boolean;
+  activeTab?: ApiTransitAdminTab;
+  onActiveTabChange?: (tab: ApiTransitAdminTab) => void;
+  hideTabs?: boolean;
 }) {
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [optimisticAuthed, setOptimisticAuthed] = useState(false);
-  const [activeTab, setActiveTab] = useState<AdminTab>("stations");
+  const [uncontrolledActiveTab, setUncontrolledActiveTab] = useState<ApiTransitAdminTab>("stations");
   const [stationBucket, setStationBucket] = useState<StationBucket>("pending");
   const [query, setQuery] = useState("");
   const [selectedOfferIds, setSelectedOfferIds] = useState<Set<string>>(new Set());
@@ -150,7 +156,13 @@ export function ApiTransitAdminPanel({
   const [editDialog, setEditDialog] = useState<EditDialog>(null);
 
   const authed = data.isAuthenticated || optimisticAuthed;
+  const activeTab = controlledActiveTab || uncontrolledActiveTab;
   const normalizedQuery = query.trim().toLowerCase();
+  const changeActiveTab = (tab: ApiTransitAdminTab) => {
+    onActiveTabChange?.(tab);
+    if (!controlledActiveTab) setUncontrolledActiveTab(tab);
+    setSelectedOfferIds(new Set());
+  };
 
   const pendingOffers = useMemo(
     () => data.offers.filter((offer) => offer.status === "needs_review"),
@@ -240,7 +252,7 @@ export function ApiTransitAdminPanel({
     [data.runs, normalizedQuery],
   );
 
-  const tabs: Array<{ id: AdminTab; label: string; count: number; icon: ReactNode }> = [
+  const tabs: Array<{ id: ApiTransitAdminTab; label: string; count: number; icon: ReactNode }> = [
     { id: "stations", label: "站点池", count: data.metrics.pendingStations, icon: <Server size={15} /> },
     { id: "candidates", label: "清洗候选", count: data.metrics.candidateOffers, icon: <Database size={15} /> },
     { id: "rawOffers", label: "原始报价", count: data.metrics.pendingOffers, icon: <ClipboardList size={15} /> },
@@ -485,15 +497,12 @@ export function ApiTransitAdminPanel({
                     className="h-10 w-full rounded-lg border border-[#adb3b4]/30 bg-white pl-9 pr-3 text-sm outline-none transition-colors focus:border-[#2d3435]"
                   />
                 </div>
-                <div className="flex gap-1 overflow-x-auto">
+                {!hideTabs && <div className="flex gap-1 overflow-x-auto">
                   {tabs.map((tab) => (
                     <button
                       key={tab.id}
                       type="button"
-                      onClick={() => {
-                        setActiveTab(tab.id);
-                        setSelectedOfferIds(new Set());
-                      }}
+                      onClick={() => changeActiveTab(tab.id)}
                       className={`inline-flex h-10 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-medium transition-colors ${
                         activeTab === tab.id
                           ? "bg-[#2d3435] text-[#f8f8f8]"
@@ -509,7 +518,7 @@ export function ApiTransitAdminPanel({
                       ) : null}
                     </button>
                   ))}
-                </div>
+                </div>}
               </div>
             </section>
 
