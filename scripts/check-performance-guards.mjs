@@ -220,6 +220,8 @@ assert(/preferPublicStatusSamples[\s\S]{0,400}return undefined/.test(transitPubl
 assert(/for\s*\(const lookupScope of getTransitRecentAvailabilitySampleLookupScopes\(standardModel, groupName\)\)[\s\S]{0,300}appendRecentAvailabilitySample/.test(transitPublicText), "src/lib/api-transit-db.ts: recent public samples must use the shared lookup scopes when populating aggregate keys.");
 assert(/pushScope\(normalizedStandardModel, normalizedGroupName\);[\s\S]{0,200}if \(normalizedGroupName\) pushScope\("", normalizedGroupName\);[\s\S]{0,200}if \(normalizedStandardModel && normalizedGroupName\) pushScope\(normalizedStandardModel, ""\);[\s\S]{0,200}if \(normalizedStandardModel \|\| normalizedGroupName\) pushScope\("", ""\);/.test(transitLogicText), "src/lib/api-transit.ts: recent sample lookup scopes must preserve exact, group-only, model-only, station aggregate fallback order.");
 assert(!/\.abortSignal\(publicTransitReadSignal\(\)\)/.test(transitPublicText), "src/lib/api-transit-db.ts: nested API transit queries must not silently recreate the short 2.5s signal.");
+assert(/cached\.find\(\(item\) => item\.slug === slug \|\| item\.id === slug\)/.test(transitPublicText), "src/lib/api-transit-db.ts: API transit detail cache must resolve both station slug and station id.");
+assert(/\.eq\("slug", slug\)[\s\S]{0,500}\.eq\("id", slug\)/.test(transitPublicText), "src/lib/api-transit-db.ts: API transit detail reads must fall back from slug lookup to station id lookup.");
 
 const transitAdminText = read("src/lib/api-transit-admin.ts");
 assert(/ADMIN_RUN_SELECT/.test(transitAdminText), "src/lib/api-transit-admin.ts: admin run lists must use an explicit field projection.");

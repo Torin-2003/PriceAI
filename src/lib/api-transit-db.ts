@@ -333,7 +333,13 @@ function setTransitStationsCache(stations: TransitStation[], cachedAtValue = Dat
   cachedAt = cachedAtValue;
   cachedBySlug.clear();
   for (const station of cached) {
-    cachedBySlug.set(station.slug, { station, cachedAt });
+    cacheStationLookup(station, cachedAt);
+  }
+}
+
+function cacheStationLookup(station: TransitStation, cachedAtValue: number, ...aliases: string[]): void {
+  for (const key of [station.slug, station.id, ...aliases]) {
+    if (key) cachedBySlug.set(key, { station, cachedAt: cachedAtValue });
   }
 }
 
@@ -386,7 +392,7 @@ export async function getTransitStationDetailData(station: TransitStation): Prom
 function getCachedStationBySlug(slug: string): TransitStation | undefined {
   const now = Date.now();
   if (cached && now - cachedAt < CACHE_TTL_MS) {
-    return cached.find((item) => item.slug === slug);
+    return cached.find((item) => item.slug === slug || item.id === slug);
   }
   const entry = cachedBySlug.get(slug);
   if (!entry || now - entry.cachedAt >= CACHE_TTL_MS) return undefined;
@@ -488,7 +494,7 @@ async function readStationsFromSupabase(options: TransitStationsReadOptions = {}
 
 async function readStationFromSupabaseBySlug(slug: string): Promise<TransitStation | undefined> {
   const supabase = getSupabaseServerClient();
-  if (!supabase) return seedStations.find((station) => station.slug === slug);
+  if (!supabase) return seedStations.find((station) => station.slug === slug || station.id === slug);
 
   try {
     const stationRow = (await queryPublishedStationRows(supabase, publicTransitReadSignal(), slug))[0];
@@ -516,7 +522,7 @@ async function readStationFromSupabaseBySlug(slug: string): Promise<TransitStati
       new Map(),
       buildRecentAvailabilitySamplesByKey(recentSampleRows)
     );
-    cachedBySlug.set(station.slug, { station, cachedAt: Date.now() });
+    cacheStationLookup(station, Date.now(), slug);
     return station;
   } catch (error) {
     console.warn("Returning no API transit station because Supabase detail read failed:", error);
@@ -650,7 +656,19 @@ async function queryStationRows(
   if (slug) query = query.eq("slug", slug).limit(1);
   const { data, error } = await query;
   if (error) throw error;
-  return dbRows(data);
+  const rows = dbRows(data);
+  if (rows.length || !slug) return rows;
+
+  const fallback = await client
+    .from("api_transit_stations")
+    .select(columns)
+    .eq("published", true)
+    .eq("id", slug)
+    .order("last_updated_at", { ascending: false })
+    .limit(1)
+    .abortSignal(signal);
+  if (fallback.error) throw fallback.error;
+  return dbRows(fallback.data);
 }
 
 async function queryPublicOfferRows(
