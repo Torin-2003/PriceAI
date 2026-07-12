@@ -1,19 +1,17 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getTransitStations, getTransitStationBySlug } from "@/lib/api-transit-db";
+import { getTransitStationBySlug } from "@/lib/api-transit-db";
 import { SiteHeader } from "@/components/SiteHeader";
 import TransitStationDetail, {
   TransitStationPricingPanels,
 } from "@/components/TransitStationDetail";
 import { JsonLd } from "@/components/JsonLd";
 
-export const revalidate = 300;
+// Admin-published transit stations can appear after a slug was visited as a draft.
+// Render details at request time so stale cached 404s cannot hide newly published stations.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 export const dynamicParams = true;
-
-export async function generateStaticParams() {
-  const stations = await getTransitStations();
-  return stations.map((s) => ({ slug: s.slug }));
-}
 
 export async function generateMetadata({
   params,

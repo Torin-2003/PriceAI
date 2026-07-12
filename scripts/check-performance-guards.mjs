@@ -200,6 +200,11 @@ const productPageText = read("src/app/products/[id]/page.tsx");
 assert(/listPublicProductOffers/.test(productPageText), "src/app/products/[id]/page.tsx: product pages must server-prefetch the first offer page.");
 assert(/initialData=\{initialOffers\}/.test(productPageText), "src/app/products/[id]/page.tsx: product offer panel must receive server-prefetched initialData.");
 
+const transitDetailPageText = read("src/app/api-transit/[slug]/page.tsx");
+assert(/dynamic\s*=\s*["']force-dynamic["']/.test(transitDetailPageText), "src/app/api-transit/[slug]/page.tsx: transit detail pages must avoid cached not-found results for newly published stations.");
+assert(/revalidate\s*=\s*0/.test(transitDetailPageText), "src/app/api-transit/[slug]/page.tsx: transit detail pages must not ISR-cache negative station lookups.");
+assert(!/generateStaticParams/.test(transitDetailPageText), "src/app/api-transit/[slug]/page.tsx: transit detail routes must not prerender a stale station set.");
+
 const publicOfferQueryText = read("src/lib/public-offer-query.ts");
 assert(/PUBLIC_OFFER_MAX_LIMIT\s*=\s*200/.test(publicOfferQueryText), "src/lib/public-offer-query.ts: public offer pages must stay capped at 200 rows or less.");
 assert(/PUBLIC_OFFER_MAX_OFFSET\s*=\s*5000/.test(publicOfferQueryText), "src/lib/public-offer-query.ts: public offer offset must keep a bounded public scan window.");
@@ -247,6 +252,7 @@ assert(/SMOKE_FETCH_TIMEOUT_MS/.test(smokeText), "scripts/smoke-cloudflare.mjs: 
 assert(/fetchWithTimeout/.test(smokeText), "scripts/smoke-cloudflare.mjs: smoke checks must use fetchWithTimeout.");
 assert(/validateApiTransitDetailPages/.test(smokeText), "scripts/smoke-cloudflare.mjs: production smoke must validate API transit detail pages.");
 assert(/extractApiTransitDetailPaths/.test(smokeText), "scripts/smoke-cloudflare.mjs: API transit detail smoke must derive detail paths from sitemap.");
+assert(/readPublishedApiTransitDetailPathsFromSupabase/.test(smokeText), "scripts/smoke-cloudflare.mjs: API transit detail smoke must also cover newly published stations from Supabase.");
 assert(/API 中转站详情/.test(smokeText), "scripts/smoke-cloudflare.mjs: API transit detail smoke must reject cached not-found detail pages.");
 
 const packageText = read("package.json");

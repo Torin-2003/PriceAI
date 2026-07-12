@@ -301,7 +301,12 @@ async function validateApiTransitDetailPages(baseUrl) {
       },
     });
     const sitemapXml = await sitemapResponse.text();
-    const detailPaths = extractApiTransitDetailPaths(sitemapXml);
+    const detailPaths = [
+      ...new Set([
+        ...extractApiTransitDetailPaths(sitemapXml),
+        ...await readPublishedApiTransitDetailPathsFromSupabase(),
+      ]),
+    ].sort();
 
     if (sitemapResponse.status !== 200 || detailPaths.length === 0) {
       failures += 1;
@@ -373,6 +378,53 @@ function extractApiTransitDetailPaths(sitemapXml) {
   }
 
   return [...paths].sort();
+}
+
+async function readPublishedApiTransitDetailPathsFromSupabase() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !key) return [];
+
+  const withRemovedFilter = await fetchPublishedApiTransitStationSlugs(supabaseUrl, key, true);
+  const slugs = withRemovedFilter.ok
+    ? withRemovedFilter.slugs
+    : (await fetchPublishedApiTransitStationSlugs(supabaseUrl, key, false)).slugs;
+
+  return slugs.map(apiTransitStationPath).filter(Boolean).sort();
+}
+
+async function fetchPublishedApiTransitStationSlugs(supabaseUrl, key, filterRemoved) {
+  const url = new URL("/rest/v1/api_transit_stations", supabaseUrl);
+  url.searchParams.set("select", "slug");
+  url.searchParams.set("published", "eq.true");
+  url.searchParams.set("order", "updated_at.desc");
+  if (filterRemoved) url.searchParams.set("removed_at", "is.null");
+
+  try {
+    const response = await fetchWithTimeout(url, {
+      headers: {
+        apikey: key,
+        authorization: `Bearer ${key}`,
+        "user-agent": "PriceAI Cloudflare smoke check",
+      },
+    });
+    if (!response.ok) return { ok: false, slugs: [] };
+    const rows = await response.json();
+    return {
+      ok: true,
+      slugs: Array.isArray(rows)
+        ? rows.map((row) => (typeof row?.slug === "string" ? row.slug : "")).filter(Boolean)
+        : [],
+    };
+  } catch {
+    return { ok: false, slugs: [] };
+  }
+}
+
+function apiTransitStationPath(slug) {
+  const cleanSlug = typeof slug === "string" ? slug.trim() : "";
+  if (!cleanSlug || cleanSlug.includes("/") || cleanSlug.includes("\\")) return null;
+  return `/api-transit/${encodeURIComponent(cleanSlug)}`;
 }
 
 async function validateNextStaticAssets(baseUrl) {
