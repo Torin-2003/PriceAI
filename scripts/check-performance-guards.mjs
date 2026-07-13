@@ -114,6 +114,7 @@ assert(/priceai_public_offer_dedupe_key\(\s*canonical_product_id,\s*url,\s*sourc
 assert(/raw_offers_public_dedupe_key_idx[\s\S]{0,300}where hidden = false/.test(migrationText), "supabase/migrations: raw_offers public dedupe index must stay scoped to visible offers.");
 assert(/prefer_base_unavailable/.test(migrationText), "supabase/migrations: raw_offer_public_state must guard against stale confirmation rows.");
 assert(/raw_offers\.effective_status = 'unavailable'/.test(migrationText), "supabase/migrations: unavailable raw offer rows must be able to dominate stale confirmation rows.");
+assert(/api_transit_availability_samples_checked_time_idx[\s\S]{0,220}checked_at desc,\s*station_id/.test(migrationText), "supabase/migrations: recent API transit samples must have a global checked_at-first index for ordered multi-station reads.");
 
 const snapshotRefreshWorkflowText = read(".github/workflows/refresh-public-api-snapshots.yml");
 assert(snapshotRefreshWorkflowText.includes('cron: "*/30 * * * *"'), ".github/workflows/refresh-public-api-snapshots.yml: GitHub scheduled snapshot refresh must remain a low-frequency fallback.");

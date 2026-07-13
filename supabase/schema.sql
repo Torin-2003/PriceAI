@@ -2718,6 +2718,7 @@ create index if not exists api_transit_detection_runs_started_at_idx on api_tran
 create index if not exists api_transit_detection_runs_station_id_idx on api_transit_detection_runs(station_id);
 create index if not exists api_transit_availability_samples_station_time_idx on api_transit_availability_samples(station_id, checked_at desc);
 create index if not exists api_transit_availability_samples_offer_time_idx on api_transit_availability_samples(station_id, scope, standard_model, group_name, checked_at desc);
+create index if not exists api_transit_availability_samples_checked_time_idx on api_transit_availability_samples(checked_at desc, station_id) include (scope, standard_model, group_name, ok, source_type);
 create index if not exists api_transit_feedback_status_idx on api_transit_feedback(status, created_at desc);
 
 drop trigger if exists api_transit_stations_set_updated_at on api_transit_stations;
