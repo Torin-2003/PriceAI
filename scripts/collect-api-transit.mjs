@@ -827,8 +827,8 @@ function buildAiTransitSnapshotOfferRow({
     cache_hit_sample_tokens: cacheUsage.sampleTokens,
     image_output_price: splitMultipliers.imageOutput === null ? null : round(splitMultipliers.imageOutput, 6),
     currency: "CNY",
-    account_pool: inferAccountPool(sourceText),
-    channel_type: inferChannelType(sourceText),
+    account_pool: aiTransitAccountPool({ payload, model, groupName, rawGroupName, sourceText }),
+    channel_type: aiTransitChannelType({ payload, model, sourceText }),
     price_source: "ai-transit 公开快照",
     source_url: source.pricingEndpointUrl,
     availability_seven_day_rate: availabilitySource.rate,
@@ -2740,7 +2740,7 @@ function isExcludedGptVariant(value) {
 function inferAccountPool(text) {
   const value = String(text || "").toLowerCase();
   if (value.includes("official") || value.includes("官方") || value.includes("官转") || value.includes("官key")) return "official_api";
-  if (value.includes("kiro")) return "kiro";
+  if (value.includes("kiro") || value.includes("krio")) return "kiro";
   if (value.includes("max")) return "max";
   if (value.includes("team")) return "team";
   if (value.includes("plus")) return "plus";
@@ -2749,14 +2749,60 @@ function inferAccountPool(text) {
   return "undisclosed";
 }
 
+function aiTransitAccountPool({ payload, model, groupName, rawGroupName, sourceText }) {
+  const groupPool = inferAccountPool([groupName, rawGroupName].filter(Boolean).join(" "));
+  if (groupPool !== "undisclosed") return groupPool;
+
+  return normalizeAiTransitAccountPool(model?.source?.account_pool_type) ||
+    normalizeAiTransitAccountPool(payload?.disclosure?.account_pool_type) ||
+    inferAccountPool(sourceText);
+}
+
+function normalizeAiTransitAccountPool(value) {
+  const normalized = String(value || "").trim().toLowerCase().replaceAll("-", "_");
+  if (["pro", "plus", "max", "team", "kiro", "enterprise", "mixed", "undisclosed"].includes(normalized)) {
+    return normalized;
+  }
+  if (normalized === "krio") return "kiro";
+  if (normalized === "official" || normalized === "official_api") return "official_api";
+  return null;
+}
+
+function aiTransitChannelType({ payload, model, sourceText }) {
+  return normalizeAiTransitChannelType(model?.source?.upstream_type) ||
+    normalizeAiTransitChannelType(payload?.disclosure?.upstream_type) ||
+    inferChannelType(sourceText);
+}
+
+function normalizeAiTransitChannelType(value) {
+  const normalized = String(value || "").trim().toLowerCase().replaceAll("-", "_");
+  if (
+    [
+      "official_api",
+      "cloud",
+      "first_party_pool",
+      "reverse_engineered",
+      "first_party_wholesale",
+      "reseller",
+      "mixed",
+      "undisclosed",
+    ].includes(normalized)
+  ) {
+    return normalized;
+  }
+  if (normalized === "official") return "official_api";
+  if (normalized === "reverse") return "reverse_engineered";
+  return null;
+}
+
 function inferChannelType(text) {
   const value = String(text || "").toLowerCase();
   if (value.includes("official") || value.includes("官方") || value.includes("官转") || value.includes("官key")) return "official_api";
-  if (value.includes("kiro")) return "reverse_engineered";
+  if (value.includes("kiro") || value.includes("krio")) return "reverse_engineered";
   if (value.includes("anti") || value.includes("反重力") || value.includes("逆向")) return "reverse_engineered";
   if (value.includes("自有") || value.includes("号池")) return "first_party_pool";
   if (value.includes("aws") || value.includes("azure") || value.includes("vertex") || value.includes("云")) return "cloud";
-  if (value.includes("混")) return "mixed";
+  if (value.includes("mixed") || value.includes("混")) return "mixed";
   if (value.includes("分销") || value.includes("reseller")) return "reseller";
   return "undisclosed";
 }

@@ -255,7 +255,7 @@
     "rechargeRatio": "1:1",
     "autoPublish": true,
     "channelTypes": ["mixed", "first_party_pool", "undisclosed"],
-    "accountPools": ["kiro", "max", "pro"],
+    "accountPools": ["kiro", "max", "mixed"],
     "riskLabels": ["mixed_pool", "insufficient_samples", "pending_feedback"],
     "summary": "Sub Callai One 使用 Sub2API 系统，公开 ai-transit.v1 快照可读取分组倍率、模型价格、缓存价格和公开监测时间线；可用率来自站点公开监测，不等同 PriceAI API Key 实测。",
     "strengths": [

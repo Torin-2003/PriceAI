@@ -942,6 +942,10 @@ const callaiAiTransitSnapshot = __test.parsePricingPayload(
       recharge_ratio: "1 USD balance per 1 CNY",
       recharge_multiplier: 1,
     },
+    disclosure: {
+      upstream_type: "mixed",
+      account_pool_type: "mixed",
+    },
     groups: [
       {
         name: "claude-kiro",
@@ -1046,6 +1050,8 @@ const callaiAiTransitSnapshot = __test.parsePricingPayload(
 );
 const callaiClaudeOffer = callaiAiTransitSnapshot.offers.find((offer) => offer.standard_model === "Claude Opus 4.8");
 assert.equal(callaiClaudeOffer.group_name, "claude-kiro");
+assert.equal(callaiClaudeOffer.account_pool, "kiro");
+assert.equal(callaiClaudeOffer.channel_type, "mixed");
 assert.equal(callaiClaudeOffer.cache_hit_rate, 0.804429);
 assert.equal(callaiClaudeOffer.cache_hit_sample_tokens, 3_164_297_639);
 assert.equal(callaiClaudeOffer.availability_seven_day_rate, 0.811862);
@@ -1053,6 +1059,8 @@ assert.equal(callaiClaudeOffer.availability_seven_day_samples, 1);
 assert.equal(callaiClaudeOffer.availability_latest_latency_ms, 1414);
 const callaiGptOffer = callaiAiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.5");
 assert.equal(callaiGptOffer.group_name, "gpt");
+assert.equal(callaiGptOffer.account_pool, "mixed");
+assert.equal(callaiGptOffer.channel_type, "mixed");
 assert.equal(callaiGptOffer.cache_hit_rate, 0.903728);
 assert.equal(callaiGptOffer.cache_hit_sample_tokens, 25_358_042_481);
 assert.equal(callaiGptOffer.availability_seven_day_rate, 0.987801);
@@ -1342,6 +1350,10 @@ const wawazzAiTransitSnapshot = __test.parsePricingPayload(
       recharge_multiplier: 1,
       minimum_top_up: 1,
     },
+    disclosure: {
+      upstream_type: "mixed",
+      account_pool_type: "mixed",
+    },
     groups: [
       {
         name: "claude-krio",
@@ -1353,6 +1365,20 @@ const wawazzAiTransitSnapshot = __test.parsePricingPayload(
             cache_creation_tokens: 892_460,
             cache_read_tokens: 56_418_415,
             cache_hit_rate: 88.49778090521248,
+          },
+        },
+        models: [],
+      },
+      {
+        name: "claude-krio-power",
+        platform: "anthropic",
+        rate_multiplier: 0.4,
+        cache_usage: {
+          last_7d: {
+            input_tokens: 2_000_000,
+            cache_creation_tokens: 3_000_000,
+            cache_read_tokens: 20_000_000,
+            cache_hit_rate: 80,
           },
         },
         models: [],
@@ -1484,14 +1510,16 @@ const wawazzAiTransitSnapshot = __test.parsePricingPayload(
   },
   "2026-07-08T06:40:41.000Z",
 );
-assert.equal(wawazzAiTransitSnapshot.modelCount, 4);
-assert.equal(wawazzAiTransitSnapshot.offers.length, 4);
+assert.equal(wawazzAiTransitSnapshot.modelCount, 5);
+assert.equal(wawazzAiTransitSnapshot.offers.length, 5);
 assert.equal(wawazzAiTransitSnapshot.station.collection_status, "success");
 assert.equal(wawazzAiTransitSnapshot.station.published, true);
 const wawazzPlusGpt55 = wawazzAiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.5" && offer.group_name === "gpt-plus");
 assert.equal(wawazzPlusGpt55, undefined);
 const wawazzPlusGpt54 = wawazzAiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.4" && offer.group_name === "gpt-plus");
 assert.equal(wawazzPlusGpt54.model_multiplier, 0.07);
+assert.equal(wawazzPlusGpt54.account_pool, "plus");
+assert.equal(wawazzPlusGpt54.channel_type, "mixed");
 assert.equal(wawazzPlusGpt54.cache_hit_rate, 0.900715);
 const wawazzProGpt55 = wawazzAiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.5" && offer.group_name === "gpt-pro");
 assert.equal(wawazzProGpt55, undefined);
@@ -1499,10 +1527,18 @@ const wawazzProGpt54Mini = wawazzAiTransitSnapshot.offers.find((offer) => offer.
 assert.equal(wawazzProGpt54Mini, undefined);
 const wawazzKrioClaude = wawazzAiTransitSnapshot.offers.find((offer) => offer.standard_model === "Claude Opus 4.8" && offer.group_name === "claude-krio");
 assert.equal(wawazzKrioClaude.model_multiplier, 0.3);
+assert.equal(wawazzKrioClaude.account_pool, "kiro");
+assert.equal(wawazzKrioClaude.channel_type, "mixed");
 assert.equal(wawazzKrioClaude.cache_hit_rate, 0.884978);
 assert.equal(wawazzKrioClaude.cache_hit_sample_tokens, 63_751_220);
+const wawazzKrioPowerClaude = wawazzAiTransitSnapshot.offers.find((offer) => offer.standard_model === "Claude Opus 4.8" && offer.group_name === "claude-krio-power");
+assert.equal(wawazzKrioPowerClaude.model_multiplier, 0.4);
+assert.equal(wawazzKrioPowerClaude.account_pool, "kiro");
+assert.equal(wawazzKrioPowerClaude.channel_type, "mixed");
 const wawazzMaxClaude = wawazzAiTransitSnapshot.offers.find((offer) => offer.standard_model === "Claude Opus 4.8" && offer.group_name === "claude-max-号池-不限制客户端");
 assert.equal(wawazzMaxClaude.model_multiplier, 1.3);
+assert.equal(wawazzMaxClaude.account_pool, "max");
+assert.equal(wawazzMaxClaude.channel_type, "mixed");
 assert.equal(wawazzMaxClaude.cache_hit_rate, 0.860592);
 
 const onehopSource = {
