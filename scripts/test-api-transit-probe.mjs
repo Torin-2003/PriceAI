@@ -232,18 +232,18 @@ assert.equal(
   __test.availabilitySampleMatchesActiveOfferScope(
     { standard_model: "GPT 5.5", group_name: "gpt" },
     {
-      offerKeys: new Set(["gpt-5.5|gpt-pro号池"]),
+      offerKeys: new Set(["gpt-5.5|gpt"]),
       modelTokens: new Set(["gpt-5.5"]),
     },
   ),
-  false,
-  "Offer rollups should not mix samples across renamed groups.",
+  true,
+  "Offer rollups should match CallAI's source-native GPT group.",
 );
 assert.equal(
   __test.availabilitySampleMatchesActiveOfferScope(
     { standard_model: "GPT 5.5", group_name: "gpt" },
     {
-      offerKeys: new Set(["gpt-5.5|gpt-pro号池"]),
+      offerKeys: new Set(["gpt-5.5|gpt"]),
       modelTokens: new Set(["gpt-5.5"]),
     },
     { allowModelFallbackWithGroup: true },

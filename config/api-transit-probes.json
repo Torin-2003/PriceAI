@@ -171,21 +171,21 @@
     "apiKeyEnv": "API_TRANSIT_SUB_CALLAI_ONE_GPT_PRO_KEY",
     "protocol": "openai_compatible",
     "enabled": true,
-    "groupName": "gpt-pro号池",
+    "groupName": "gpt",
     "targetLimit": 1,
     "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "gpt",
         "standardModel": "GPT 5.4",
-        "groupName": "gpt-pro号池",
+        "groupName": "gpt",
         "candidates": ["gpt-5.4"],
         "keywords": ["gpt", "5.4"]
       },
       {
         "family": "gpt",
         "standardModel": "GPT 5.5",
-        "groupName": "gpt-pro号池",
+        "groupName": "gpt",
         "candidates": ["gpt-5.5"],
         "keywords": ["gpt", "5.5"]
       }
@@ -198,35 +198,35 @@
     "apiKeyEnv": "API_TRANSIT_SUB_CALLAI_ONE_CLAUDE_KEY",
     "protocol": "openai_compatible",
     "enabled": true,
-    "groupName": "kiro",
+    "groupName": "claude-kiro",
     "targetLimit": 1,
     "targetPriority": "lowest_cost_available",
     "targets": [
       {
         "family": "claude",
         "standardModel": "Claude Sonnet 4.6",
-        "groupName": "kiro",
+        "groupName": "claude-kiro",
         "candidates": ["claude-sonnet-4-6", "claude-sonnet-4.6"],
         "keywords": ["claude", "sonnet", "4.6"]
       },
       {
         "family": "claude",
         "standardModel": "Claude Opus 4.6",
-        "groupName": "kiro",
+        "groupName": "claude-kiro",
         "candidates": ["claude-opus-4-6", "claude-opus-4.6"],
         "keywords": ["claude", "opus", "4.6"]
       },
       {
         "family": "claude",
         "standardModel": "Claude Opus 4.7",
-        "groupName": "kiro",
+        "groupName": "claude-kiro",
         "candidates": ["claude-opus-4-7", "claude-opus-4.7"],
         "keywords": ["claude", "opus", "4.7"]
       },
       {
         "family": "claude",
         "standardModel": "Claude Opus 4.8",
-        "groupName": "kiro",
+        "groupName": "claude-kiro",
         "candidates": ["claude-opus-4-8", "claude-opus-4.8"],
         "keywords": ["claude", "opus", "4.8"]
       },
@@ -235,7 +235,7 @@
         "standardModel": "Claude Sonnet 5",
         "candidates": ["claude-sonnet-5", "claude-sonnet-5-0", "claude-5-sonnet"],
         "keywords": ["claude", "sonnet", "5"],
-        "groupName": "kiro"
+        "groupName": "claude-kiro"
       }
     ]
   },

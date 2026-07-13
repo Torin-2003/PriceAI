@@ -237,6 +237,7 @@ export async function collectApiTransitPrices(options = {}) {
     }
   }
 
+  const dedupedAvailabilitySamples = dedupeRowsById(availabilitySamples);
   const result = {
     dryRun: Boolean(options.dryRun),
     post: Boolean(options.post || options.db),
@@ -249,16 +250,16 @@ export async function collectApiTransitPrices(options = {}) {
       stations: stations.length,
       offers: offers.length,
       runs: runs.length,
-      availabilitySamples: availabilitySamples.length,
+      availabilitySamples: dedupedAvailabilitySamples.length,
     },
     stations,
     offers,
     runs,
-    availabilitySamples,
+    availabilitySamples: dedupedAvailabilitySamples,
   };
 
   if (options.post || options.db) {
-    result.database = await postRows({ stations, offers, runs, availabilitySamples }, options);
+    result.database = await postRows({ stations, offers, runs, availabilitySamples: dedupedAvailabilitySamples }, options);
   }
 
   return result;
@@ -2846,7 +2847,6 @@ function findStaleRefreshedOfferIds(existingOffers, refreshedOfferKeys) {
   for (const existing of existingOffers.values()) {
     const currentKeys = refreshedOfferKeys.get(existing.station_id);
     if (!currentKeys || existing.status !== "active") continue;
-    if (existing.availability_source_type === "priceai_probe") continue;
     if (!currentKeys.has(offerKey(existing))) ids.push(existing.id);
   }
   return ids;
@@ -3604,6 +3604,16 @@ function uniqueText(values) {
   );
 }
 
+function dedupeRowsById(rows) {
+  const byId = new Map();
+  for (const row of rows || []) {
+    const id = stringOrNull(row?.id);
+    if (!id) continue;
+    byId.set(id, row);
+  }
+  return Array.from(byId.values());
+}
+
 function numberValue(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value === "string" && value.trim()) {
@@ -3687,6 +3697,7 @@ function errorMessage(error) {
 export const __test = {
   collectSuccessfulRefreshStationIds,
   collectRefreshedOfferKeys,
+  dedupeRowsById,
   filterSourcesByPublishedStationIds,
   findStaleRefreshedOfferIds,
   mergeStationForRefresh,

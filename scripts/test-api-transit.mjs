@@ -32,10 +32,7 @@ assert.equal(configuredCallaiSource.stationSystem, "sub_to_api");
 assert.equal(configuredCallaiSource.rechargeRatio, "1:1");
 assert.equal(configuredCallaiSource.autoPublish, true);
 assert.equal("partnerTokenEnv" in configuredCallaiSource, false);
-assert.deepEqual(configuredCallaiSource.groupAliases, {
-  "claude-kiro": "kiro",
-  gpt: "gpt-pro号池",
-});
+assert.equal(configuredCallaiSource.groupAliases, undefined);
 const configuredAliuapiSource = transitSourceConfig.find((source) => source.id === "aliuapi-top");
 assert.ok(configuredAliuapiSource, "A6-API must stay in API transit public collection sources.");
 assert.equal(configuredAliuapiSource.collectorKind, "ai_transit_snapshot");
@@ -73,8 +70,8 @@ assert.deepEqual(configuredWawazzSource.groupAliases, {
   "gpt-plus分组": "gpt-plus",
   "gpt-pro分组": "gpt-pro",
 });
-assert.deepEqual(configuredWawazzSource.aiTransitGroupModels["gpt-plus"], ["GPT 5.4", "GPT 5.5"]);
-assert.deepEqual(configuredWawazzSource.aiTransitGroupModels["gpt-pro"], ["GPT 5.4 Mini", "GPT 5.5"]);
+assert.equal(configuredWawazzSource.aiTransitGroupModels["gpt-plus"], undefined);
+assert.equal(configuredWawazzSource.aiTransitGroupModels["gpt-pro"], undefined);
 const configuredMaofeiSource = transitSourceConfig.find((source) => source.id === "999555999-com");
 assert.ok(configuredMaofeiSource, "猫肥NekoAPI public snapshot must stay attached to the existing station source.");
 assert.ok(
@@ -219,6 +216,18 @@ const existingOffers = new Map([
 
 assert.deepEqual(__test.findStaleRefreshedOfferIds(existingOffers, keys), ["deactivate"]);
 
+assert.deepEqual(
+  __test.dedupeRowsById([
+    { id: "sample-1", ok: false },
+    { id: "sample-1", ok: true },
+    { id: "sample-2", ok: true },
+  ]),
+  [
+    { id: "sample-1", ok: true },
+    { id: "sample-2", ok: true },
+  ],
+);
+
 existingOffers.set("published-new-api|GPT 5.5|priceai-probe", {
   id: "keep-priceai-probe",
   station_id: "published-new-api",
@@ -227,7 +236,7 @@ existingOffers.set("published-new-api|GPT 5.5|priceai-probe", {
   status: "active",
   availability_source_type: "priceai_probe",
 });
-assert.deepEqual(__test.findStaleRefreshedOfferIds(existingOffers, keys), ["deactivate"]);
+assert.deepEqual(__test.findStaleRefreshedOfferIds(existingOffers, keys), ["deactivate", "keep-priceai-probe"]);
 
 assert.equal(
   __test.mergeOfferForRefresh(
@@ -1036,14 +1045,14 @@ const callaiAiTransitSnapshot = __test.parsePricingPayload(
   "2026-07-07T09:20:00.000Z",
 );
 const callaiClaudeOffer = callaiAiTransitSnapshot.offers.find((offer) => offer.standard_model === "Claude Opus 4.8");
-assert.equal(callaiClaudeOffer.group_name, "kiro");
+assert.equal(callaiClaudeOffer.group_name, "claude-kiro");
 assert.equal(callaiClaudeOffer.cache_hit_rate, 0.804429);
 assert.equal(callaiClaudeOffer.cache_hit_sample_tokens, 3_164_297_639);
 assert.equal(callaiClaudeOffer.availability_seven_day_rate, 0.811862);
 assert.equal(callaiClaudeOffer.availability_seven_day_samples, 1);
 assert.equal(callaiClaudeOffer.availability_latest_latency_ms, 1414);
 const callaiGptOffer = callaiAiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.5");
-assert.equal(callaiGptOffer.group_name, "gpt-pro号池");
+assert.equal(callaiGptOffer.group_name, "gpt");
 assert.equal(callaiGptOffer.cache_hit_rate, 0.903728);
 assert.equal(callaiGptOffer.cache_hit_sample_tokens, 25_358_042_481);
 assert.equal(callaiGptOffer.availability_seven_day_rate, 0.987801);
@@ -1374,7 +1383,26 @@ const wawazzAiTransitSnapshot = __test.parsePricingPayload(
             cache_hit_rate: 90.07147044251201,
           },
         },
-        models: [],
+        models: [
+          {
+            standard_model: "gpt-5.4",
+            raw_model: "gpt-5.4",
+            price: {
+              input_usd_per_token: 0.0000025,
+              output_usd_per_token: 0.000015,
+              cache_read_usd_per_token: 0.00000025,
+            },
+          },
+          {
+            standard_model: "gpt-5.4-mini",
+            raw_model: "gpt-5.4-mini",
+            price: {
+              input_usd_per_token: 0.00000075,
+              output_usd_per_token: 0.0000045,
+              cache_read_usd_per_token: 0.000000075,
+            },
+          },
+        ],
       },
       {
         name: "gpt-pro",
@@ -1456,30 +1484,19 @@ const wawazzAiTransitSnapshot = __test.parsePricingPayload(
   },
   "2026-07-08T06:40:41.000Z",
 );
-assert.equal(wawazzAiTransitSnapshot.modelCount, 6);
-assert.equal(wawazzAiTransitSnapshot.offers.length, 6);
+assert.equal(wawazzAiTransitSnapshot.modelCount, 4);
+assert.equal(wawazzAiTransitSnapshot.offers.length, 4);
 assert.equal(wawazzAiTransitSnapshot.station.collection_status, "success");
 assert.equal(wawazzAiTransitSnapshot.station.published, true);
 const wawazzPlusGpt55 = wawazzAiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.5" && offer.group_name === "gpt-plus");
-assert.equal(wawazzPlusGpt55.model_multiplier, 0.07);
-assert.equal(wawazzPlusGpt55.input_price, 0.07);
-assert.equal(wawazzPlusGpt55.cache_hit_rate, 0.900715);
-assert.equal(wawazzPlusGpt55.cache_hit_sample_tokens, 11_226_680_734);
-assert.equal(wawazzPlusGpt55.availability_seven_day_rate, 0.880862);
-assert.equal(wawazzPlusGpt55.availability_latest_latency_ms, 1909);
+assert.equal(wawazzPlusGpt55, undefined);
 const wawazzPlusGpt54 = wawazzAiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.4" && offer.group_name === "gpt-plus");
 assert.equal(wawazzPlusGpt54.model_multiplier, 0.07);
 assert.equal(wawazzPlusGpt54.cache_hit_rate, 0.900715);
 const wawazzProGpt55 = wawazzAiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.5" && offer.group_name === "gpt-pro");
-assert.equal(wawazzProGpt55.model_multiplier, 0.16);
-assert.equal(wawazzProGpt55.cache_hit_rate, 0.884607);
-assert.equal(wawazzProGpt55.availability_seven_day_rate, null);
-assert.equal(wawazzProGpt55.availability_seven_day_samples, 0);
+assert.equal(wawazzProGpt55, undefined);
 const wawazzProGpt54Mini = wawazzAiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.4 Mini" && offer.group_name === "gpt-pro");
-assert.equal(wawazzProGpt54Mini.model_multiplier, 0.16);
-assert.equal(wawazzProGpt54Mini.cache_hit_rate, 0.884607);
-assert.equal(wawazzProGpt54Mini.availability_seven_day_rate, 0.98924);
-assert.equal(wawazzProGpt54Mini.availability_seven_day_samples, 1);
+assert.equal(wawazzProGpt54Mini, undefined);
 const wawazzKrioClaude = wawazzAiTransitSnapshot.offers.find((offer) => offer.standard_model === "Claude Opus 4.8" && offer.group_name === "claude-krio");
 assert.equal(wawazzKrioClaude.model_multiplier, 0.3);
 assert.equal(wawazzKrioClaude.cache_hit_rate, 0.884978);

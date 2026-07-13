@@ -176,22 +176,19 @@
     "aiTransitGroupModels": {
       "claude-krio": ["Claude Opus 4.8"],
       "claude-krio-power": ["Claude Opus 4.8"],
-      "claude-max-号池-不限制客户端": ["Claude Opus 4.8"],
-      "gpt-plus": ["GPT 5.4", "GPT 5.5"],
-      "gpt-pro": ["GPT 5.4 Mini", "GPT 5.5"],
-      "生图专用分组": ["GPT 5.5"]
+      "claude-max-号池-不限制客户端": ["Claude Opus 4.8"]
     },
     "channelTypes": ["first_party_pool", "reverse_engineered", "mixed", "undisclosed"],
     "accountPools": ["plus", "pro", "max", "kiro", "mixed", "undisclosed"],
     "supportChannels": ["qq群：1073408363"],
     "riskLabels": ["mixed_pool", "insufficient_samples", "pending_feedback"],
-    "summary": "WAWA ZZ API 使用 Sub2API 系统，公开 ai-transit.v1 快照可读取 Claude、GPT 和生图分组倍率、7 日缓存命中率和公开监测时间线；该快照未公开逐模型价格，PriceAI 按已知分组模型对应关系将最新分组倍率映射到标准模型。可用率优先展示站点公开监测，缺失时使用 PriceAI 实测补充。",
+    "summary": "WAWA ZZ API 使用 Sub2API 系统，公开 ai-transit.v1 快照可读取 Claude、GPT 和生图分组倍率、部分模型价格、7 日缓存命中率和公开监测时间线；PriceAI 以快照当前公开的模型清单为准，仅对未返回模型的 Claude 分组保留已知标准模型映射。可用率优先展示站点公开监测，缺失时使用 PriceAI 实测补充。",
     "strengths": [
       "公开 /.well-known/ai-transit.json 可发现结构化快照，/api/public/transit/v1/snapshot 返回分组倍率、缓存命中率和监控时间线。",
-      "gpt-plus、gpt-pro、claude-krio 等分组可与 PriceAI 已有 WAWA 标准模型对应，适合补充最新公开价格和 7 日缓存命中率。"
+      "gpt-plus、gpt-pro、claude-krio 等分组可补充最新公开价格和 7 日缓存命中率。"
     ],
     "cautions": [
-      "当前公开快照未返回逐模型 pricing 列表，PriceAI 按分组倍率映射到已知标准模型，不代表站点公开了完整模型目录。",
+      "当前公开快照只返回部分分组的模型目录；未在快照中出现的 GPT 模型不作为当前公开报价。",
       "公开披露为混合上游并包含逆向渠道，首次使用仍建议小额测试。"
     ],
     "verificationEvents": [
@@ -257,16 +254,12 @@
     "stationSystem": "sub_to_api",
     "rechargeRatio": "1:1",
     "autoPublish": true,
-    "groupAliases": {
-      "claude-kiro": "kiro",
-      "gpt": "gpt-pro号池"
-    },
     "channelTypes": ["mixed", "first_party_pool", "undisclosed"],
     "accountPools": ["kiro", "max", "pro"],
     "riskLabels": ["mixed_pool", "insufficient_samples", "pending_feedback"],
     "summary": "Sub Callai One 使用 Sub2API 系统，公开 ai-transit.v1 快照可读取分组倍率、模型价格、缓存价格和公开监测时间线；可用率来自站点公开监测，不等同 PriceAI API Key 实测。",
     "strengths": [
-      "公开 /.well-known/ai-transit.json 可发现结构化快照，/api/public/transit/v1/snapshot 返回 Kiro/Max/Pro 分组、模型价格和监控时间线。",
+      "公开 /.well-known/ai-transit.json 可发现结构化快照，/api/public/transit/v1/snapshot 返回 claude-kiro、claude-max 和 gpt 分组、模型价格与监控时间线。",
       "快照无需 partner token 即可读取，能作为 Sub Callai One 公开价格、缓存价格和公开监测样本的稳定来源。"
     ],
     "cautions": [
