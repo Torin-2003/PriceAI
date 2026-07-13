@@ -95,13 +95,13 @@ const POOL_OPTIONS: { value: TransitAccountPool | "all"; label: string }[] = [
 ];
 
 const SORT_OPTIONS: { value: TransitSortKey; label: string }[] = [
-  { value: "overall", label: "综合排序" },
+  { value: "overall", label: "综合推荐" },
   { value: "rate", label: "最低倍率" },
   { value: "stability", label: "稳定性优先" },
 ];
 
 function sortLabel(value: TransitSortKey) {
-  return SORT_OPTIONS.find((option) => option.value === value)?.label ?? "综合排序";
+  return SORT_OPTIONS.find((option) => option.value === value)?.label ?? "综合推荐";
 }
 
 function coerceParam<T extends string>(
@@ -114,9 +114,10 @@ function coerceParam<T extends string>(
 
 interface Props {
   stations: TransitStation[];
+  rankingReferenceAt: string;
 }
 
-export default function TransitStationExplorer({ stations }: Props) {
+export default function TransitStationExplorer({ stations, rankingReferenceAt }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [urlReady, setUrlReady] = useState(false);
@@ -199,8 +200,9 @@ export default function TransitStationExplorer({ stations }: Props) {
     return compareStations(result, sortBy, {
       activeFamily: familyFilter,
       activeStandardModel: modelFilter,
+      now: rankingReferenceAt,
     });
-  }, [channelFilter, familyFilter, modelFilter, poolFilter, search, sortBy, stations]);
+  }, [channelFilter, familyFilter, modelFilter, poolFilter, rankingReferenceAt, search, sortBy, stations]);
 
   const activeFilterCount =
     [channelFilter, poolFilter].filter((value) => value !== "all").length +

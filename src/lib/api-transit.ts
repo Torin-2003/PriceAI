@@ -916,8 +916,6 @@ export type TransitStationComparisonSummary = {
   bestCombinedRate: number | null;
   stabilityRate: number | null;
   stabilitySamples: number;
-  sourceCompleteness: number;
-  overallScore: number;
 };
 
 export function getStationComparisonSummary(
@@ -937,38 +935,6 @@ export function getStationComparisonSummary(
   const availability = getStationPublishedAvailabilitySummary(station);
   const stabilityRate = availability.sevenDayRate;
   const stabilitySamples = availability.sevenDaySamples;
-  const sourceCompleteness = [
-    station.minimumTopUp,
-    station.paymentMethods.length ? "payments" : null,
-    station.supportChannels.length ? "support" : null,
-    station.channelTypes.length ? "channels" : null,
-    station.accountPools.length ? "pools" : null,
-  ].filter(Boolean).length;
-
-  const rateScore = scoreTransitCombinedRate(bestCombinedRate);
-  const stabilityScore = (stabilityRate ?? 0) * 35;
-  const sampleScore = Math.min(stabilitySamples / 12, 12);
-  const completenessScore = Math.min(sourceCompleteness * 1.5, 9);
-  const commercialScore =
-    station.commercialRelation === "sponsored" ? 6 :
-      station.commercialRelation === "partner" ? 4 :
-        station.commercialRelation === "listed" ? 2 :
-          station.commercialRelation === "affiliate" ? 1 :
-            0;
-  const stationSystem = getTransitStationSystem(station);
-  const systemScore =
-    stationSystem === "sub_to_api" ? 5 :
-      stationSystem === "new_api" ? -10 :
-        0;
-  const riskPenalty = station.riskLabels.reduce((total, risk) => {
-    if (risk === "sample_data") return total + 1;
-    if (risk === "insufficient_samples") return total + 3;
-    if (risk === "mixed_pool") return total + 2;
-    if (risk === "reseller") return total + 3;
-    if (risk === "undisclosed_upstream") return total + 5;
-    if (risk === "third_party_aggregate") return total + 6;
-    return total + 2;
-  }, 0);
 
   return {
     station,
@@ -979,9 +945,6 @@ export function getStationComparisonSummary(
     bestCombinedRate,
     stabilityRate,
     stabilitySamples,
-    sourceCompleteness,
-    overallScore:
-      rateScore + stabilityScore + sampleScore + completenessScore + commercialScore + systemScore - riskPenalty,
   };
 }
 
@@ -1322,82 +1285,334 @@ function dedupeValues<T extends string>(items: T[]): T[] {
   return Array.from(new Set(items));
 }
 
+export const TRANSIT_RANKING_WEIGHTS = {
+  cost: 30,
+  recentReliability: 18,
+  sevenDayReliability: 12,
+  // Reserved until real TTFT samples are part of the public transit DTO.
+  ttft: 15,
+  cacheHit: 10,
+  modelDetection: 15,
+} as const;
+
+export type TransitStationRankingOptions = {
+  activeFamily?: TransitModelFamily | "all";
+  activeStandardModel?: TransitModelPrice["standardModel"] | "all";
+  now?: string | number | Date;
+};
+
+export type TransitStationRankingBreakdown = {
+  totalScore: number;
+  costScore: number;
+  recentReliabilityScore: number;
+  sevenDayReliabilityScore: number;
+  reliabilityScore: number;
+  ttftScore: number;
+  cacheHitScore: number;
+  modelDetectionScore: number;
+  eligible: boolean;
+  comparisonRate: number | null;
+  stabilityRate: number | null;
+  stabilitySamples: number;
+  recentSamples: number;
+};
+
+type TransitStationSortContext = {
+  station: TransitStation;
+  summary: TransitStationComparisonSummary;
+  scope: TransitFamilyRateSummary | null;
+  rate: number | null;
+  stabilityRate: number | null;
+  stabilitySamples: number;
+  recentSamples: TransitAvailability["recentSamples"];
+  cacheUsage: TransitModelPrice["cacheUsage"] | undefined;
+  lastCheckedAt: string | null;
+};
+
 export function compareStations(
   stations: TransitStation[],
   sortBy: TransitSortKey,
-  options: {
-    activeFamily?: TransitModelFamily | "all";
-    activeStandardModel?: TransitModelPrice["standardModel"] | "all";
-  } = {}
+  options: TransitStationRankingOptions = {}
 ): TransitStation[] {
-  return [...stations].sort((left, right) => {
-    const a = getStationComparisonSummary(left);
-    const b = getStationComparisonSummary(right);
-    const aScope = getActiveSortScope(left, a, options);
-    const bScope = getActiveSortScope(right, b, options);
-    const aRate = aScope ? aScope.combinedRateMin : a.bestCombinedRate;
-    const bRate = bScope ? bScope.combinedRateMin : b.bestCombinedRate;
-    const aStabilityRate = aScope ? aScope.sevenDayRate : a.stabilityRate;
-    const bStabilityRate = bScope ? bScope.sevenDayRate : b.stabilityRate;
-    const aStabilitySamples = aScope ? aScope.sevenDaySamples : a.stabilitySamples;
-    const bStabilitySamples = bScope ? bScope.sevenDaySamples : b.stabilitySamples;
-    const aOverallScore = aScope ? getScopedOverallScore(left, a, aScope) : a.overallScore;
-    const bOverallScore = bScope ? getScopedOverallScore(right, b, bScope) : b.overallScore;
+  const contexts = stations.map((station) => getTransitStationSortContext(station, options));
+  const ranking = sortBy === "overall" ? scoreTransitStationContexts(contexts, options) : null;
+
+  return contexts.sort((a, b) => {
+    const left = a.station;
+    const right = b.station;
 
     if (sortBy === "stability") {
       return (
-        compareNullableNumber(aStabilityRate, bStabilityRate, "desc") ||
-        bStabilitySamples - aStabilitySamples ||
+        compareNullableNumber(a.stabilityRate, b.stabilityRate, "desc") ||
+        b.stabilitySamples - a.stabilitySamples ||
         new Date(right.lastUpdatedAt).getTime() - new Date(left.lastUpdatedAt).getTime()
       );
     }
 
     if (sortBy === "rate") {
       return (
-        compareNullableNumber(aRate, bRate, "asc") ||
-        compareNullableNumber(aStabilityRate, bStabilityRate, "desc") ||
-        bStabilitySamples - aStabilitySamples ||
+        compareNullableNumber(a.rate, b.rate, "asc") ||
+        compareNullableNumber(a.stabilityRate, b.stabilityRate, "desc") ||
+        b.stabilitySamples - a.stabilitySamples ||
         new Date(right.lastUpdatedAt).getTime() - new Date(left.lastUpdatedAt).getTime()
       );
     }
 
     if (sortBy === "claude_rate") {
       return (
-        compareNullableNumber(a.claude.combinedRateMin, b.claude.combinedRateMin, "asc") ||
-        compareNullableNumber(aRate, bRate, "asc") ||
-        compareNullableNumber(aStabilityRate, bStabilityRate, "desc") ||
-        bStabilitySamples - aStabilitySamples ||
+        compareNullableNumber(a.summary.claude.combinedRateMin, b.summary.claude.combinedRateMin, "asc") ||
+        compareNullableNumber(a.rate, b.rate, "asc") ||
+        compareNullableNumber(a.stabilityRate, b.stabilityRate, "desc") ||
+        b.stabilitySamples - a.stabilitySamples ||
         new Date(right.lastUpdatedAt).getTime() - new Date(left.lastUpdatedAt).getTime()
       );
     }
 
     if (sortBy === "gpt_rate") {
       return (
-        compareNullableNumber(a.gpt.combinedRateMin, b.gpt.combinedRateMin, "asc") ||
-        compareNullableNumber(aRate, bRate, "asc") ||
-        compareNullableNumber(aStabilityRate, bStabilityRate, "desc") ||
-        bStabilitySamples - aStabilitySamples ||
+        compareNullableNumber(a.summary.gpt.combinedRateMin, b.summary.gpt.combinedRateMin, "asc") ||
+        compareNullableNumber(a.rate, b.rate, "asc") ||
+        compareNullableNumber(a.stabilityRate, b.stabilityRate, "desc") ||
+        b.stabilitySamples - a.stabilitySamples ||
         new Date(right.lastUpdatedAt).getTime() - new Date(left.lastUpdatedAt).getTime()
       );
     }
 
+    const aScore = ranking?.get(left.id)?.totalScore ?? 0;
+    const bScore = ranking?.get(right.id)?.totalScore ?? 0;
     return (
-      bOverallScore - aOverallScore ||
-      compareNullableNumber(aRate, bRate, "asc") ||
-      compareNullableNumber(aStabilityRate, bStabilityRate, "desc") ||
-      bStabilitySamples - aStabilitySamples ||
+      bScore - aScore ||
+      compareNullableNumber(a.rate, b.rate, "asc") ||
+      compareNullableNumber(a.stabilityRate, b.stabilityRate, "desc") ||
+      b.stabilitySamples - a.stabilitySamples ||
       new Date(right.lastUpdatedAt).getTime() - new Date(left.lastUpdatedAt).getTime()
     );
-  });
+  }).map((context) => context.station);
+}
+
+export function getTransitStationRankingBreakdowns(
+  stations: TransitStation[],
+  options: TransitStationRankingOptions = {}
+): Map<string, TransitStationRankingBreakdown> {
+  return scoreTransitStationContexts(
+    stations.map((station) => getTransitStationSortContext(station, options)),
+    options
+  );
+}
+
+function getTransitStationSortContext(
+  station: TransitStation,
+  options: TransitStationRankingOptions
+): TransitStationSortContext {
+  const summary = getStationComparisonSummary(station);
+  const scope = getActiveSortScope(station, summary, options);
+  const prices = getActiveSortPrices(station, options);
+
+  return {
+    station,
+    summary,
+    scope,
+    rate: scope ? scope.combinedRateMin : summary.bestCombinedRate,
+    stabilityRate: scope ? scope.sevenDayRate : summary.stabilityRate,
+    stabilitySamples: scope ? scope.sevenDaySamples : summary.stabilitySamples,
+    recentSamples: scope ? scope.recentSamples : summary.availability.recentSamples,
+    cacheUsage: getRepresentativeCacheUsage(prices),
+    lastCheckedAt: scope ? scope.lastCheckedAt : summary.availability.lastCheckedAt,
+  };
+}
+
+function getActiveSortPrices(
+  station: TransitStation,
+  options: TransitStationRankingOptions
+): TransitModelPrice[] {
+  if (options.activeStandardModel && options.activeStandardModel !== "all") {
+    return getStandardModelPrices(station, options.activeStandardModel);
+  }
+  if (options.activeFamily && options.activeFamily !== "all") {
+    return getFamilyPrices(station, options.activeFamily);
+  }
+  return station.prices;
+}
+
+function scoreTransitStationContexts(
+  contexts: TransitStationSortContext[],
+  options: TransitStationRankingOptions
+): Map<string, TransitStationRankingBreakdown> {
+  const peerRates = contexts
+    .map((context) => context.rate)
+    .filter((rate): rate is number => rate !== null && Number.isFinite(rate) && rate > 0);
+  const now = rankingTimestamp(options.now);
+
+  return new Map(contexts.map((context) => {
+    const costScore = scoreTransitRelativeCost(context.rate, peerRates) * TRANSIT_RANKING_WEIGHTS.cost;
+    const sevenDayReliability = scoreTransitReliability(
+      context.stabilityRate,
+      context.stabilitySamples
+    );
+    const recentReliability = scoreTransitRecentReliability(
+      context.recentSamples,
+      sevenDayReliability,
+      context.stabilitySamples
+    );
+    const recentReliabilityScore = recentReliability * TRANSIT_RANKING_WEIGHTS.recentReliability;
+    const sevenDayReliabilityScore = sevenDayReliability * TRANSIT_RANKING_WEIGHTS.sevenDayReliability;
+    const reliabilityScore = recentReliabilityScore + sevenDayReliabilityScore;
+    const ttftScore = scoreTransitTtft(null, []) * TRANSIT_RANKING_WEIGHTS.ttft;
+    const cacheHitScore = scoreTransitCacheHit(context.cacheUsage) * TRANSIT_RANKING_WEIGHTS.cacheHit;
+    const modelDetectionScore = scoreTransitModelDetection(
+      context.station,
+      options.activeStandardModel && options.activeStandardModel !== "all"
+        ? options.activeStandardModel
+        : undefined,
+      options.activeFamily && options.activeFamily !== "all"
+        ? options.activeFamily
+        : undefined
+    ) * TRANSIT_RANKING_WEIGHTS.modelDetection;
+    const eligible = isTransitRankingEligible(context, now);
+    const totalScore = eligible
+      ? clampNumber(
+          costScore + reliabilityScore + ttftScore + cacheHitScore + modelDetectionScore,
+          0,
+          100
+        )
+      : 0;
+
+    return [context.station.id, {
+      totalScore,
+      costScore,
+      recentReliabilityScore,
+      sevenDayReliabilityScore,
+      reliabilityScore,
+      ttftScore,
+      cacheHitScore,
+      modelDetectionScore,
+      eligible,
+      comparisonRate: context.rate,
+      stabilityRate: context.stabilityRate,
+      stabilitySamples: context.stabilitySamples,
+      recentSamples: context.recentSamples?.length ?? 0,
+    }];
+  }));
+}
+
+export function scoreTransitRelativeCost(rate: number | null, peerRates: number[]): number {
+  if (rate === null || !Number.isFinite(rate) || rate <= 0) return 0;
+  const rates = peerRates.filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+  if (rates.length <= 1) return 1;
+
+  const lower = Math.log(percentile(rates, 0.1));
+  const upper = Math.log(percentile(rates, 0.9));
+  if (!Number.isFinite(lower) || !Number.isFinite(upper) || upper <= lower) return 1;
+  return clampNumber((upper - Math.log(rate)) / (upper - lower), 0, 1);
+}
+
+export function scoreTransitReliability(rate: number | null, samples: number): number {
+  if (rate === null || !Number.isFinite(rate) || samples <= 0) return 0;
+  const sampleCount = Math.max(1, Math.round(samples));
+  const proportion = clampNumber(rate, 0, 1);
+  const z = 1.64;
+  const zSquared = z * z;
+  const denominator = 1 + zSquared / sampleCount;
+  const centre = proportion + zSquared / (2 * sampleCount);
+  const margin = z * Math.sqrt(
+    (proportion * (1 - proportion) + zSquared / (4 * sampleCount)) / sampleCount
+  );
+  return clampNumber((centre - margin) / denominator, 0, 1);
+}
+
+export function scoreTransitRecentReliability(
+  recentSamples: TransitAvailability["recentSamples"],
+  sevenDayReliability: number,
+  sevenDaySamples: number
+): number {
+  const samples = normalizeRecentAvailabilitySamples(recentSamples || []) || [];
+  if (samples.length) {
+    const successes = samples.filter((sample) => sample.ok).length;
+    return scoreTransitReliability(successes / samples.length, samples.length);
+  }
+
+  const fallbackCoverage = Math.min(Math.max(sevenDaySamples, 0) / 60, 1);
+  return sevenDayReliability * (0.6 + fallbackCoverage * 0.2);
+}
+
+export function scoreTransitCacheHit(
+  cacheUsage: TransitModelPrice["cacheUsage"] | null | undefined
+): number {
+  if (!cacheUsage || cacheUsage.sampleTokens <= 0 || cacheUsage.hitRate === null) return 0;
+  return clampNumber(cacheUsage.hitRate, 0, 1);
+}
+
+export function scoreTransitTtft(ttftMs: number | null, peerTtftValues: number[]): number {
+  return scoreTransitRelativeCost(ttftMs, peerTtftValues);
+}
+
+export function scoreTransitModelDetection(
+  station: TransitStation,
+  standardModel?: TransitModelPrice["standardModel"],
+  family?: TransitModelFamily
+): number {
+  if (standardModel) {
+    return scoreTransitDetectionSummary(getTransitStationDetectionSummary(station, standardModel));
+  }
+  if (station.modelDetection) return scoreTransitDetectionSummary(station.modelDetection);
+
+  const models = Array.from(new Set(
+    station.prices
+      .filter((price) => !family || transitModelPriceMatchesFamily(price, family))
+      .map((price) => price.standardModel)
+  ));
+  if (!models.length) return 0;
+  return models.reduce(
+    (total, model) => total + scoreTransitDetectionSummary(getTransitStationDetectionSummary(station, model)),
+    0
+  ) / models.length;
+}
+
+function scoreTransitDetectionSummary(detection: TransitModelDetectionSummary | null): number {
+  if (!hasPublicTransitModelDetectionReport(detection)) return 0;
+  if (detection?.score !== null && detection?.score !== undefined && Number.isFinite(detection.score)) {
+    return clampNumber(detection.score / 100, 0, 1);
+  }
+  if (detection?.verdict === "passed") return 1;
+  if (detection?.verdict === "review") return 0.5;
+  return 0;
+}
+
+function isTransitRankingEligible(context: TransitStationSortContext, now: number): boolean {
+  if (context.rate === null || context.stabilityRate === null || context.stabilitySamples <= 0) return false;
+  const checkedAt = parseAvailabilityTimestamp(context.lastCheckedAt);
+  if (checkedAt === null) return false;
+  return Math.max(0, now - checkedAt) <= 7 * 24 * 60 * 60 * 1000;
+}
+
+function percentile(sortedValues: number[], fraction: number): number {
+  if (!sortedValues.length) return Number.NaN;
+  const position = clampNumber(fraction, 0, 1) * (sortedValues.length - 1);
+  const lowerIndex = Math.floor(position);
+  const upperIndex = Math.ceil(position);
+  const lower = sortedValues[lowerIndex] ?? sortedValues[0];
+  const upper = sortedValues[upperIndex] ?? sortedValues.at(-1) ?? lower;
+  return lower + (upper - lower) * (position - lowerIndex);
+}
+
+function rankingTimestamp(value: TransitStationRankingOptions["now"]): number {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return Date.now();
+}
+
+function clampNumber(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
 }
 
 function getActiveSortScope(
   station: TransitStation,
   summary: TransitStationComparisonSummary,
-  options: {
-    activeFamily?: TransitModelFamily | "all";
-    activeStandardModel?: TransitModelPrice["standardModel"] | "all";
-  }
+  options: TransitStationRankingOptions
 ): TransitFamilyRateSummary | null {
   if (options.activeStandardModel && options.activeStandardModel !== "all") {
     return getStandardModelRateSummary(station, options.activeStandardModel);
@@ -1408,44 +1623,6 @@ function getActiveSortScope(
   }
 
   return null;
-}
-
-function getScopedOverallScore(
-  station: TransitStation,
-  summary: TransitStationComparisonSummary,
-  scope: TransitFamilyRateSummary
-): number {
-  const rateScore = scoreTransitCombinedRate(scope.combinedRateMin);
-  const stabilityScore = (scope.sevenDayRate ?? 0) * 35;
-  const sampleScore = Math.min(scope.sevenDaySamples / 12, 12);
-  const completenessScore = Math.min(summary.sourceCompleteness * 1.5, 9);
-  const commercialScore =
-    station.commercialRelation === "sponsored" ? 6 :
-      station.commercialRelation === "partner" ? 4 :
-        station.commercialRelation === "listed" ? 2 :
-          station.commercialRelation === "affiliate" ? 1 :
-            0;
-  const stationSystem = getTransitStationSystem(station);
-  const systemScore =
-    stationSystem === "sub_to_api" ? 5 :
-      stationSystem === "new_api" ? -10 :
-        0;
-  const riskPenalty = station.riskLabels.reduce((total, risk) => {
-    if (risk === "sample_data") return total + 1;
-    if (risk === "insufficient_samples") return total + 3;
-    if (risk === "mixed_pool") return total + 2;
-    if (risk === "reseller") return total + 3;
-    if (risk === "undisclosed_upstream") return total + 5;
-    if (risk === "third_party_aggregate") return total + 6;
-    return total + 2;
-  }, 0);
-
-  return rateScore + stabilityScore + sampleScore + completenessScore + commercialScore + systemScore - riskPenalty;
-}
-
-export function scoreTransitCombinedRate(rate: number | null): number {
-  if (rate === null || !Number.isFinite(rate) || rate <= 0) return 0;
-  return Math.min(55, 18 / rate);
 }
 
 function compareNullableNumber(

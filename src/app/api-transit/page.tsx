@@ -30,6 +30,7 @@ export const metadata: Metadata = {
 export const revalidate = 300;
 
 export default async function ApiTransitPage() {
+  const rankingReferenceAt = new Date().toISOString();
   const [stations, sponsorSettings] = await Promise.all([
     getTransitStations(),
     getSponsorSettingsSummary().catch(() => null),
@@ -133,7 +134,7 @@ export default async function ApiTransitPage() {
         <SponsoredPlacementPreview kind="apiTransit" settings={sponsorSettings} className="mb-5" />
 
         <Suspense fallback={<div className="text-center py-16 text-[#5a6061]">加载中...</div>}>
-          <TransitStationExplorer stations={stations} />
+          <TransitStationExplorer stations={stations} rankingReferenceAt={rankingReferenceAt} />
         </Suspense>
       </main>
     </div>

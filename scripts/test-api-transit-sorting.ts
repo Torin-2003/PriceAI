@@ -10,9 +10,12 @@ import {
   getTransitAvailabilityRollupPrices,
   getTransitModelSummaries,
   getTransitPriceAvailabilitySourceMeta,
+  getTransitStationRankingBreakdowns,
   normalizedTransitCommercialOfferDisclosure,
   getRechargeCoefficientFromRatio,
-  scoreTransitCombinedRate,
+  scoreTransitRelativeCost,
+  scoreTransitReliability,
+  scoreTransitTtft,
 } from "../src/lib/api-transit";
 import {
   TRANSIT_DEFAULT_COMMERCIAL_OFFER_DISCLOSURE,
@@ -93,7 +96,9 @@ function availability(sevenDayRate: number, sevenDaySamples: number): TransitSta
   };
 }
 
-assertEqual(scoreTransitCombinedRate(0.3) > scoreTransitCombinedRate(1.5), true);
+assertEqual(scoreTransitRelativeCost(0.3, [0.3, 1.5]) > scoreTransitRelativeCost(1.5, [0.3, 1.5]), true);
+assertEqual(scoreTransitReliability(0.99, 600) > scoreTransitReliability(1, 3), true);
+assertEqual(scoreTransitTtft(500, [500, 2000]) > scoreTransitTtft(2000, [500, 2000]), true);
 assertEqual(getRechargeCoefficientFromRatio("1 CNY = 1 USD balance"), 1);
 assertEqual(getRechargeCoefficientFromRatio("1 CNY = 5 USD balance"), 0.2);
 
@@ -120,6 +125,247 @@ assertDeepEqual(
 assertDeepEqual(
   compareStations([neko, wawa], "rate", { activeFamily: "claude" }).map((item) => item.id),
   ["wawazz-xyz", "999555999-com"],
+);
+
+const cheaperStation = station({
+  id: "cheaper-station",
+  name: "Cheaper Station",
+  claudeRate: 0.05,
+  availabilityRate: 0.985,
+  availabilitySamples: 180,
+});
+const pricierStation = station({
+  id: "pricier-station",
+  name: "Pricier Station",
+  claudeRate: 0.1,
+  availabilityRate: 0.99,
+  availabilitySamples: 360,
+});
+assertDeepEqual(
+  compareStations([pricierStation, cheaperStation], "overall", {
+    activeFamily: "claude",
+    now,
+  }).map((item) => item.id),
+  ["cheaper-station", "pricier-station"],
+);
+
+const neutralStation = station({
+  id: "neutral-station",
+  name: "Neutral Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+const sponsoredStation = station({
+  id: "sponsored-station",
+  name: "Sponsored Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+sponsoredStation.commercialRelation = "sponsored";
+neutralStation.stationSystem = "custom";
+sponsoredStation.stationSystem = "custom";
+const neutralScores = getTransitStationRankingBreakdowns(
+  [neutralStation, sponsoredStation],
+  { activeFamily: "claude", now },
+);
+assertEqual(
+  neutralScores.get(neutralStation.id)?.totalScore,
+  neutralScores.get(sponsoredStation.id)?.totalScore,
+);
+
+const newApiStation = station({
+  id: "new-api-station",
+  name: "New API Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+const subToApiStation = station({
+  id: "sub-to-api-station",
+  name: "Sub To API Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+newApiStation.stationSystem = "new_api";
+subToApiStation.stationSystem = "sub_to_api";
+const systemScores = getTransitStationRankingBreakdowns(
+  [newApiStation, subToApiStation],
+  { activeFamily: "claude", now },
+);
+assertEqual(
+  systemScores.get(newApiStation.id)?.totalScore,
+  systemScores.get(subToApiStation.id)?.totalScore,
+);
+
+const publicStatusStation = station({
+  id: "public-status-station",
+  name: "Public Status Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+publicStatusStation.availability.sourceType = "public_status";
+publicStatusStation.availability.sourceLabel = "站方公开";
+publicStatusStation.prices[0]!.availability.sourceType = "public_status";
+publicStatusStation.prices[0]!.availability.sourceLabel = "站方公开";
+const independentProbeStation = station({
+  id: "independent-probe-station",
+  name: "Independent Probe Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+const sourceNeutralScores = getTransitStationRankingBreakdowns(
+  [publicStatusStation, independentProbeStation],
+  { activeFamily: "claude", now },
+);
+assertEqual(
+  sourceNeutralScores.get(independentProbeStation.id)?.totalScore,
+  sourceNeutralScores.get(publicStatusStation.id)?.totalScore,
+);
+
+const recentHealthyStation = station({
+  id: "recent-healthy-station",
+  name: "Recent Healthy Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.98,
+  availabilitySamples: 360,
+});
+const recentFailingStation = station({
+  id: "recent-failing-station",
+  name: "Recent Failing Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.98,
+  availabilitySamples: 360,
+});
+recentHealthyStation.prices[0]!.availability.recentSamples = Array.from({ length: 60 }, (_, index) => ({
+  ok: index !== 0,
+  checkedAt: new Date(Date.UTC(2026, 6, 2, 6, index)).toISOString(),
+}));
+recentFailingStation.prices[0]!.availability.recentSamples = Array.from({ length: 60 }, (_, index) => ({
+  ok: index >= 6,
+  checkedAt: new Date(Date.UTC(2026, 6, 2, 6, index)).toISOString(),
+}));
+const recentScores = getTransitStationRankingBreakdowns(
+  [recentHealthyStation, recentFailingStation],
+  { activeFamily: "claude", now },
+);
+assertEqual(
+  (recentScores.get(recentHealthyStation.id)?.recentReliabilityScore ?? 0) >
+    (recentScores.get(recentFailingStation.id)?.recentReliabilityScore ?? 0),
+  true,
+);
+
+const cacheHealthyStation = station({
+  id: "cache-healthy-station",
+  name: "Cache Healthy Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+cacheHealthyStation.prices[0]!.cacheUsage = { hitRate: 0.95, sampleTokens: 1_000_000 };
+const cacheMissingStation = station({
+  id: "cache-missing-station",
+  name: "Cache Missing Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+const cacheScores = getTransitStationRankingBreakdowns(
+  [cacheHealthyStation, cacheMissingStation],
+  { activeFamily: "claude", now },
+);
+assertEqual(
+  (cacheScores.get(cacheHealthyStation.id)?.cacheHitScore ?? 0) >
+    (cacheScores.get(cacheMissingStation.id)?.cacheHitScore ?? 0),
+  true,
+);
+
+const detectedStation = station({
+  id: "detected-station",
+  name: "Detected Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+detectedStation.modelDetection = {
+  verdict: "passed",
+  score: 92,
+  checkedAt: now,
+  reportCount: 1,
+  issueCount: 0,
+  source: "priceai",
+  sourceLabel: "PriceAI 检测",
+  reportUrl: "https://example.test/reports/detected-station",
+};
+const untestedStation = station({
+  id: "untested-station",
+  name: "Untested Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+const detectionScores = getTransitStationRankingBreakdowns(
+  [detectedStation, untestedStation],
+  { activeFamily: "claude", now },
+);
+assertEqual(
+  (detectionScores.get(detectedStation.id)?.modelDetectionScore ?? 0) >
+    (detectionScores.get(untestedStation.id)?.modelDetectionScore ?? 0),
+  true,
+);
+
+const oldEvidenceStation = station({
+  id: "old-evidence-station",
+  name: "Old Evidence Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+oldEvidenceStation.availability.lastCheckedAt = "2026-06-01T07:00:00.000Z";
+oldEvidenceStation.prices[0]!.availability.lastCheckedAt = "2026-06-01T07:00:00.000Z";
+const eligibilityScores = getTransitStationRankingBreakdowns(
+  [independentProbeStation, oldEvidenceStation],
+  { activeFamily: "claude", now },
+);
+assertEqual(
+  eligibilityScores.get(independentProbeStation.id)?.eligible,
+  true,
+);
+assertEqual(
+  eligibilityScores.get(oldEvidenceStation.id)?.eligible,
+  false,
+);
+assertEqual(
+  eligibilityScores.get(oldEvidenceStation.id)?.totalScore,
+  0,
+);
+
+const enoughSamplesStation = station({
+  id: "enough-samples-station",
+  name: "Enough Samples Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+enoughSamplesStation.riskLabels = [];
+const insufficientLabelStation = station({
+  id: "insufficient-label-station",
+  name: "Insufficient Label Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+const sampleLabelScores = getTransitStationRankingBreakdowns(
+  [enoughSamplesStation, insufficientLabelStation],
+  { activeFamily: "claude", now },
+);
+assertEqual(
+  sampleLabelScores.get(enoughSamplesStation.id)?.totalScore,
+  sampleLabelScores.get(insufficientLabelStation.id)?.totalScore,
 );
 
 const mixedAvailabilityStation = station({
