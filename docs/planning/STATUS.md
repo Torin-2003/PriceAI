@@ -41,6 +41,7 @@
 | 低价订阅渠道稳定性反馈 | 规划中，待确认 | 已按 Idea-to-Product PRD Lite 沉淀产品规划；推荐先做轻量信号层，不做公开评论墙 | 方案围绕商品、商家、商品渠道三层反馈；用近 7/30 天样本、卖家标称渠道、证据门槛和审核摘要服务购前判断 | 确认 P0 是否采用轻量信号层；确认渠道标签优先覆盖范围、样本阈值、高风险反馈联系方式和商家回应排期 | [低价订阅渠道稳定性反馈产品规划](archive/pending/product/2026-07-11_ai-subscription-channel-stability-feedback-product-plan.md) |
 | 官方订阅地区价 | 已收尾，规划中 | P1 远端库落地完成；下一阶段策略待定 | App Store 公开地区价、38 个地区、后台管理、远端 Supabase 写入已收尾；地区解析又经过增强 | 规划尽量覆盖全部国家；确认更新周期按天、按周，或继续采用静态方案 | [执行跟踪](archive/done/execution/2026-06-05_implementation-tracker.md) |
 | 官方 API | 已收尾，规划中 | P1/P2 静态数据和后台维护闭环已收尾；官方状态页汇总进入规划 | 价格数据、免费渠道、后台可编辑、候选池和后台上下文已可用；公开模块名和路径已调整为“官方 API”与 `/official-api` | 不再规划候选采集器补齐和完整自动采集；新增「官方状态页汇总」作为模型 API 可用性辅助信息，第一版不做节点探测 | [官方 API 路线图](archive/done/modules/2026-06-05_api-model-radar-roadmap.md)、[模型状态页汇总](archive/pending/modules/2026-06-08_ai-model-status-aggregator.md) |
+| API 中转综合推荐 | 当前版已上线，目标版规划中 | 商业关系已退出自然排序；当前版按成本、公开近 60 次、近 7 日、缓存和模型检测预留权重排序 | commit `5fb509b` 已部署生产；无倍率、无稳定性样本或监测过期的站点不进入综合推荐；线上排序已验证不再让 APINode 固定第一 | 后续确认线路级评分、证据覆盖度、模型质量、TTFT/TPS 与“全部”页面展示方式 | [中转 API 综合推荐算法产品规划](archive/pending/product/2026-07-14_api-transit-composite-recommendation-algorithm-product-plan.md) |
 | API 中转站模型检测 | 规划中，暂不实施 | 前台先展示检测摘要和待检测状态；分级检测进入后续模块规划 | 已梳理 L0 可用性、L1 快检、L2 标准检测、L3 深度检测、L4 人工复核，以及用户公开报告复用策略 | 当前任务只打磨 UI；后续再单独设计 rollup 数据结构、调度预算、用户报告复用和后台复核 | [API 中转模型检测分级报告规划](archive/pending/modules/2026-07-10_api-transit-tiered-model-detection-plan.md) |
 | SEO / GEO / 宣发 | 进行中 | P0 技术基础、官方自助订阅内容承接包、首轮真实数据基线已收尾，商品页隐式 SEO R1 已落地 | 品牌事实卡、意图词库、核心页审计、AI 答案监测文档、ChatGPT 平台页、ChatGPT 指南、卡网可信度指南、价格层解释指南、官方自助订阅系列、README R1、商品页 R1、SEO 总控路线图、Search Console / GA4 / GitHub / Umami 基线已完成或阶段完成 | 7-14 天观察商品页 R1 数据；下一轮选择 R2：P1 长尾商品页 metadata 补齐或 API 平台页增强 | [商品页隐式 SEO 规划](archive/done/growth/2026-06-09_product-page-seo-plan.md)、[SEO 总控路线图与关键词地图](archive/in-progress/growth/2026-06-07_priceai-seo-roadmap-and-keyword-map.md) |
 | GitHub README SEO 入口 | 待观察 | R1 低风险增强已完成 | README 首屏、在线入口、FAQ、用户指南和 topics 已完成，commit `6f255e9` | 记录 Search Console / Umami 基线，7-14 天后决定是否做 R2 | [README SEO 保护方案](archive/done/growth/2026-06-07_github-readme-seo-protection-plan.md) |
@@ -107,6 +108,7 @@
 
 | 日期 | 事项 | 状态 | 证据 | 后续观察 |
 | --- | --- | --- | --- | --- |
+| 2026-07-14 | API 中转综合排序中立性重构 | 已上线，目标版规划中 | commit `5fb509b`；Cloudflare Actions `29267043533`；生产 `/api-transit`、13 个站点详情和 Cloudflare smoke 通过；浏览器实际综合排序中 APINode 为第 8 | 后续按[中转 API 综合推荐算法产品规划](archive/pending/product/2026-07-14_api-transit-composite-recommendation-algorithm-product-plan.md)确认线路级评分、模型质量、TTFT/TPS 和“全部”页面方向 |
 | 2026-07-11 | PriceAI 总定位、模块命名与官方 API 路径调整 | 已完成 | 总标题统一为“AI 低价卡网订阅与中转 API 比价雷达”；正式模块统一为卡网订阅、官方订阅、官方 API、中转 API；`/api-models/*` 永久跳转到 `/official-api/*` | 继续逐份讨论卡网订阅和中转 API 的独立 PRD Lite |
 | 2026-07-11 | 旧产品规划首轮清理 | 已完成 | 8 份旧规划补充收尾记录并移入 `archive/done/product/`；保留公告系统等真实未完成规划 | 后续按 Idea-to-Product 文档讨论产品，技术 PRD 与 checklist 作为内部执行材料维护 |
 | 2026-07-11 | 轻量用户登录 V1 | 已收尾 | commit `3bf1825`、`7c9bb00`；Google 登录、账户页、我的反馈和我的检测报告已落地 | 后续能力按真实需求分别立项 |
@@ -133,7 +135,7 @@
 
 | 优先级 | 待办 | 为什么重要 | 建议下一步 |
 | --- | --- | --- | --- |
-| P0 | 修复 API 中转默认综合排序的商业关系影响 | 当前 `sponsored / partner / listed / affiliate` 会直接进入综合分，与公开中立承诺冲突 | 后续恢复开发时先单独建任务，删除直接商业加分，审计间接监测优势，并补商业字段排序不变量测试 |
+| P1 | 推进 API 中转线路级综合推荐 | 商业关系退出自然排序的 P0 已上线；下一阶段仍需解决站点、模型与分组数据混合、重复监测样本、缺失指标、模型质量和 TTFT/TPS 口径 | 先确认[中转 API 综合推荐算法产品规划](archive/pending/product/2026-07-14_api-transit-composite-recommendation-algorithm-product-plan.md)中的线路级评分、证据覆盖度和“全部”页面方向，再拆独立实现任务 |
 | P0 | 建立核心业务回归与生产发布门禁 | 现有 6 个测试程序本地可运行，但 Quality 和 Cloudflare Deploy 都不执行；回滚 promotion workflow 还引用缺失的 npm script | 先收口当前 WIP；新增统一 `npm test` 和显式 typecheck，让 Quality / Deploy 同 SHA 运行核心测试，修复 promotion 入口，并把商业中立、最低可用价、来源优先级、证据和后台写权限设为首批不变量 |
 | P0 | 复盘 README R1 后的数据变化 | GitHub 已成为重要入口，不能盲目大改 README | 7-14 天后记录 Search Console 和 Umami 基线 |
 | P0 | 持续修复卡网分类和下架同步 | 用户最直观看到的是价格和分类是否可信 | 以最近错分/下架反馈为样本更新规则和测试 |
