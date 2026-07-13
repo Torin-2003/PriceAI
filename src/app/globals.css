@@ -130,12 +130,16 @@ a {
 
 html[data-theme="dark"] img[src*="/brand-icons/github.svg"],
 html[data-theme="dark"] img[src*="/brand-icons/x.png"],
-html[data-theme="dark"] img[src*="/brand-icons/apple.png"] {
+html[data-theme="dark"] img[src*="/brand-icons/apple.png"],
+html[data-theme="dark"] img[src*="/brand-icons/chatgpt.svg"] {
   filter: invert(1) hue-rotate(180deg);
 }
 
 html[data-theme="dark"] [class~="bg-white"],
 html[data-theme="dark"] [class~="bg-[#fbfcfc]"],
+html[data-theme="dark"] [class~="bg-[#f9fbfb]"],
+html[data-theme="dark"] [class~="bg-[#f8fafa]"],
+html[data-theme="dark"] [class~="bg-[#f7f8f8]"],
 html[data-theme="dark"] [class~="bg-white/75"],
 html[data-theme="dark"] [class~="bg-white/80"] {
   background-color: var(--color-panel) !important;
@@ -191,12 +195,19 @@ html[data-theme="dark"] [class~="bg-[#e8f3ec]"] {
   background-color: var(--color-success-bg) !important;
 }
 
-html[data-theme="dark"] [class~="bg-[#f5fbf7]"] {
+html[data-theme="dark"] [class~="bg-[#f5fbf7]"],
+html[data-theme="dark"] [class~="bg-[#f4fbf7]"],
+html[data-theme="dark"] [class~="bg-[#eef8f1]"],
+html[data-theme="dark"] [class~="bg-[#edf8f1]"],
+html[data-theme="dark"] [class~="bg-[#edf7f3]"] {
   background-color: rgb(69 191 120 / 0.10) !important;
 }
 
 html[data-theme="dark"] [class~="bg-[#fff7e8]"],
-html[data-theme="dark"] [class~="bg-[#fffaf0]"] {
+html[data-theme="dark"] [class~="bg-[#fffaf0]"],
+html[data-theme="dark"] [class~="bg-[#fff7df]"],
+html[data-theme="dark"] [class~="bg-[#fffaf2]"],
+html[data-theme="dark"] [class~="bg-[#fff2dc]"] {
   background-color: var(--color-warning-bg) !important;
 }
 
@@ -206,7 +217,12 @@ html[data-theme="dark"] [class~="bg-[#eef8fe]"] {
 }
 
 html[data-theme="dark"] [class~="bg-[#fbe9e7]"],
-html[data-theme="dark"] [class~="bg-[#fbf7f6]"] {
+html[data-theme="dark"] [class~="bg-[#fbf7f6]"],
+html[data-theme="dark"] [class~="bg-[#ead8d5]"],
+html[data-theme="dark"] [class~="bg-[#fff0ed]"],
+html[data-theme="dark"] [class~="bg-[#fff2ef]"],
+html[data-theme="dark"] [class~="bg-[#fff7f5]"],
+html[data-theme="dark"] [class~="bg-[#fff4f2]"] {
   background-color: var(--color-danger-bg) !important;
 }
 
@@ -221,7 +237,9 @@ html[data-theme="dark"] [class~="bg-[#f59e0b]"] {
 }
 
 html[data-theme="dark"] [class~="bg-[#202829]/35"],
-html[data-theme="dark"] [class~="bg-[#202829]/30"] {
+html[data-theme="dark"] [class~="bg-[#202829]/40"],
+html[data-theme="dark"] [class~="bg-[#202829]/30"],
+html[data-theme="dark"] [class~="bg-[#202829]/28"] {
   background-color: var(--color-overlay) !important;
 }
 
@@ -233,6 +251,12 @@ html[data-theme="dark"] [class~="text-[#1f5d36]"] {
 
 html[data-theme="dark"] [class~="text-[#5a6061]"],
 html[data-theme="dark"] [class~="text-[#4d5657]"],
+html[data-theme="dark"] [class~="text-[#6c7677]"],
+html[data-theme="dark"] [class~="text-[#73797a]"],
+html[data-theme="dark"] [class~="text-[#7a8284]"],
+html[data-theme="dark"] [class~="text-[#7a8587]"],
+html[data-theme="dark"] [class~="text-[#7c8586]"],
+html[data-theme="dark"] [class~="text-[#7d8789]"],
 html[data-theme="dark"] [class~="text-[#5e5e5e]"],
 html[data-theme="dark"] [class~="text-[#6b7374]"],
 html[data-theme="dark"] [class~="text-[#7a8182]"],
@@ -241,6 +265,11 @@ html[data-theme="dark"] [class~="text-[#8a9293]"],
 html[data-theme="dark"] [class~="text-[#8b9192]"],
 html[data-theme="dark"] [class~="text-[#9aa1a2]"] {
   color: var(--color-text-muted) !important;
+}
+
+html[data-theme="dark"] [class~="text-[#3d4749]"],
+html[data-theme="dark"] [class~="text-[#3e484a]"] {
+  color: var(--color-text-body) !important;
 }
 
 html[data-theme="dark"] [class~="text-[#adb3b4]"] {
@@ -260,7 +289,13 @@ html[data-theme="dark"] [class~="text-[#2f7a4b]"] {
   color: var(--color-success-text) !important;
 }
 
-html[data-theme="dark"] [class~="text-[#7a541b]"] {
+html[data-theme="dark"] [class~="text-[#2f6247]"] {
+  color: var(--color-success-text) !important;
+}
+
+html[data-theme="dark"] [class~="text-[#7a541b]"],
+html[data-theme="dark"] [class~="text-[#8a5a10]"],
+html[data-theme="dark"] [class~="text-[#6a4b16]"] {
   color: var(--color-warning-text) !important;
 }
 
@@ -269,12 +304,16 @@ html[data-theme="dark"] [class~="text-[#23658a]"] {
   color: var(--color-info-text) !important;
 }
 
-html[data-theme="dark"] [class~="text-[#9b3328]"] {
+html[data-theme="dark"] [class~="text-[#9b3328]"],
+html[data-theme="dark"] [class~="text-[#8f2f24]"],
+html[data-theme="dark"] [class~="text-[#7b2f26]"] {
   color: var(--color-danger-text) !important;
 }
 
 html[data-theme="dark"] [class~="border-[#dfe4e5]"],
 html[data-theme="dark"] [class~="border-[#edf0f1]"],
+html[data-theme="dark"] [class~="border-[#e5eaea]"],
+html[data-theme="dark"] [class~="border-[#d8e3df]"],
 html[data-theme="dark"] [class~="border-[#efdfbd]"],
 html[data-theme="dark"] [class~="border-[#f0dfb8]"],
 html[data-theme="dark"] [class~="border-[#fff1cf]"] {
@@ -315,17 +354,37 @@ html[data-theme="dark"] [class~="ring-[#adb3b4]/15"],
 html[data-theme="dark"] [class~="ring-[#adb3b4]/20"],
 html[data-theme="dark"] [class~="ring-[#adb3b4]/25"],
 html[data-theme="dark"] [class~="ring-[#adb3b4]/30"],
+html[data-theme="dark"] [class~="ring-[#adb3b4]/35"],
+html[data-theme="dark"] [class~="ring-[#dbe2e3]"],
+html[data-theme="dark"] [class~="ring-[#d8e3df]"],
 html[data-theme="dark"] [class~="ring-[#edf0f1]"] {
   --tw-ring-color: var(--color-border-soft) !important;
 }
 
+html[data-theme="dark"] [class~="border-[#efd38a]"],
+html[data-theme="dark"] [class~="ring-[#efd38a]"],
+html[data-theme="dark"] [class~="ring-[#efdfbd]"] {
+  border-color: rgb(232 199 131 / 0.28) !important;
+  --tw-ring-color: rgb(232 199 131 / 0.28) !important;
+}
+
+html[data-theme="dark"] [class~="border-[#efc4bc]"],
+html[data-theme="dark"] [class~="ring-[#efc4bc]"],
+html[data-theme="dark"] [class~="ring-[#efd0ca]"],
+html[data-theme="dark"] [class~="ring-[#ead8d5]"] {
+  border-color: rgb(233 154 141 / 0.25) !important;
+  --tw-ring-color: rgb(233 154 141 / 0.25) !important;
+}
+
 html[data-theme="dark"] [class~="ring-[#45bf78]/15"],
-html[data-theme="dark"] [class~="ring-[#45bf78]/20"] {
+html[data-theme="dark"] [class~="ring-[#45bf78]/20"],
+html[data-theme="dark"] [class~="ring-[#b9d8c9]"] {
   --tw-ring-color: rgb(95 213 142 / 0.24) !important;
 }
 
 html[data-theme="dark"] [class~="placeholder:text-[#9aa2a3]"]::placeholder,
-html[data-theme="dark"] [class~="placeholder:text-[#9aa3a5]"]::placeholder {
+html[data-theme="dark"] [class~="placeholder:text-[#9aa3a5]"]::placeholder,
+html[data-theme="dark"] [class~="placeholder:text-[#7d8789]"]::placeholder {
   color: var(--color-text-placeholder) !important;
 }
 
@@ -336,12 +395,45 @@ html[data-theme="dark"] [class*="shadow-[0_-"] {
 
 html[data-theme="dark"] [class~="hover:bg-[#edf0f1]"]:hover,
 html[data-theme="dark"] [class~="hover:bg-[#ebeeef]"]:hover,
+html[data-theme="dark"] [class~="hover:bg-[#eef1f1]"]:hover,
 html[data-theme="dark"] [class~="hover:bg-[#e3e9e9]"]:hover,
 html[data-theme="dark"] [class~="hover:bg-[#f2f4f4]"]:hover,
 html[data-theme="dark"] [class~="hover:bg-[#f5f7f7]"]:hover,
 html[data-theme="dark"] [class~="hover:bg-[#f7f9f9]"]:hover,
 html[data-theme="dark"] [class~="hover:bg-[#fbfcfc]"]:hover {
   background-color: var(--color-surface-hover) !important;
+}
+
+html[data-theme="dark"] [class~="hover:bg-[#fff1c7]"]:hover {
+  background-color: rgb(217 154 43 / 0.22) !important;
+}
+
+html[data-theme="dark"] [class~="hover:bg-[#fde5e0]"]:hover {
+  background-color: rgb(217 87 69 / 0.20) !important;
+}
+
+html[data-theme="dark"] [class~="focus:border-[#2d3435]"]:focus {
+  border-color: var(--color-brand) !important;
+}
+
+html[data-theme="dark"] [class~="focus:ring-[#adb3b4]/35"]:focus {
+  --tw-ring-color: rgb(101 204 140 / 0.28) !important;
+}
+
+html[data-theme="dark"] [class~="hover:border-[#5a6061]/35"]:hover {
+  border-color: var(--color-border) !important;
+}
+
+html[data-theme="dark"] [class~="hover:text-[#2f7a4b]"]:hover {
+  color: var(--color-success-text) !important;
+}
+
+html[data-theme="dark"] [class~="hover:text-[#1d4d34]"]:hover {
+  color: var(--color-success-text) !important;
+}
+
+html[data-theme="dark"] [class~="hover:text-[#9b3328]"]:hover {
+  color: var(--color-danger-text) !important;
 }
 
 html[data-theme="dark"] [class~="hover:bg-[#dde4e5]"]:hover,

@@ -115,7 +115,7 @@ export default async function ProductDetail({
           <ProductReturnLink />
         </div>
 
-        <section className="bg-transparent py-1 md:rounded-lg md:bg-[#f2f4f4] md:p-5 md:shadow-[0_20px_60px_rgba(45,52,53,0.04)] lg:p-6">
+        <section className="bg-transparent py-1 md:rounded-lg md:bg-[var(--color-surface)] md:p-5 md:shadow-[0_20px_60px_rgba(45,52,53,0.04)] lg:p-6">
           <div className="min-w-0 max-w-4xl">
             <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
               <Badge>{platformIcon(product.platform, product.id)} {product.platform}</Badge>

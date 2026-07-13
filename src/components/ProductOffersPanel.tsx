@@ -1246,7 +1246,7 @@ function OfferSourceTitle({ title, mode, sharedAccess }: { title: string; mode: 
   return (
     <p className="mt-1 text-sm leading-5 text-[#5a6061]" title={title}>
       {sharedAccess ? <OfferSharedAccessBadge /> : null}
-      <span className="line-clamp-1">{title}</span>
+      <span className="line-clamp-2 min-h-10">{title}</span>
     </p>
   );
 }
