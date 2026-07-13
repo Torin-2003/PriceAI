@@ -48,7 +48,7 @@
 | 数据采集 / 竞品线索 | 待复盘 | Nodebits 渠道线索已提取并分组 | 已输出竞品分析和候选渠道清单；部分线索已进入待办 | 对候选源做去重、试采集、注销/不可用分组复核 | [Nodebits 渠道线索](archive/done/research/2026-06-03_nodebits-channel-leads.md) |
 | 长期产品矩阵 | 已收尾，远期参考 | PriceAI / GuideAI / EarnAI 方向已沉淀 | PriceAI 聚焦双雷达；GuideAI / EarnAI 不进入本仓库排期 | 未来如启动姊妹产品，在独立仓库重新做 Idea-to-Product 规划 | [AI 生态长期路线图](archive/done/product/2026-06-05_ai-ecosystem-long-term-roadmap.md) |
 | 轻量用户登录 | V1 已收尾 | Google 登录、账户页、我的反馈、我的检测报告和任务归属已落地 | 公开浏览继续免登录；登录用于反馈追踪和检测任务归属 | 商家认领、收藏、评论和提醒有真实需求时分别立项 | [用户登录系统产品规划](archive/done/product/2026-06-29_priceai-user-login-system-product-plan.md) |
-| B2B 批发撮合 | 规划中，待确认 | 批发撮合专区 V1 草案已沉淀 | 定位为登录后供需撮合层，先做线索撮合、资料核验、人工对接和成交回填，不做担保交易或平台内付款 | 先做 R0 人工试运行：收集 5-10 个上游供给、10-20 个站长需求，验证真实对接和服务费接受度 | [B2B 批发撮合专区产品规划](archive/pending/product/2026-06-30_priceai-b2b-wholesale-matching-plan.md) |
+| B2B 批发撮合 | 规划中，提交模板已细化 | 已补充买方 / 卖方 × API 中转 / 卡网订阅四套结构化示例模板 | 每个商品或号池的信息在同一行写清来源、价格、预计量或起批量与月供；保留结构化字段但不做生硬问卷；黑充、盗刷、拒付等只作为风险或禁入类型 | 确认最终示例文案后，再进入前台模板切换、提交校验、结构化入库和后台摘要展示设计 | [B2B 批发撮合专区产品规划](archive/pending/product/2026-06-30_priceai-b2b-wholesale-matching-plan.md)、[批发合作线索提交模板规划](archive/pending/product/2026-07-14_priceai-wholesale-intake-template-plan.md) |
 | 数据归因 / 后台分析 | P1 已收尾，待观察 | 一方外链点击归因和后台分析区已落地 | 卡网、中转站和赞助入口点击已进入自有业务账本；前台不公开点击数 | 先观察真实数据，曝光、CTR 和商家报表如需推进再另开规划 | [数据归因与后台分析专区产品规划](archive/done/product/2026-07-05_priceai-attribution-analytics-product-plan.md) |
 
 ## 4. 阶段状态明细
