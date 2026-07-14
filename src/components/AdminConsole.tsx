@@ -9888,7 +9888,7 @@ const feedbackWorkFilters: Array<{ value: FeedbackWorkFilter; label: string }> =
   { value: "precheck", label: "可批量处理" },
   { value: "transient", label: "临时数据" },
   { value: "category", label: "分类问题" },
-  { value: "aftersales", label: "售后/发货" },
+  { value: "aftersales", label: "交付/使用/售后" },
   { value: "high_risk", label: "商家质量/高风险" },
   { value: "other", label: "其他问题" },
   { value: "site", label: "站点意见" },
@@ -10154,9 +10154,9 @@ function feedbackReasonLabel(value: OfferFeedback["reason"]): string {
   const labels: Record<OfferFeedback["reason"], string> = {
     wrong_price: "价格不准",
     description_mismatch: "标题党/商家描述误导",
-    item_removed: "商品已下架",
+    item_removed: "商品/链接不可用",
     stock_mismatch: "库存不准",
-    aftersales_shipping: "售后/发货",
+    aftersales_shipping: "交付/使用/售后",
     fraud: "疑似虚假",
     wrong_category: "分类错误",
     bad_source: "渠道问题",
@@ -10188,7 +10188,7 @@ function feedbackVerificationStatusLabel(value: OfferFeedback["verificationStatu
 function feedbackVerificationResultLabel(value: NonNullable<OfferFeedback["verificationResult"]>): string {
   const labels: Record<NonNullable<OfferFeedback["verificationResult"]>, string> = {
     offer_changed: "报价已变化",
-    item_removed: "商品已下架",
+    item_removed: "商品/链接不可用",
     out_of_stock: "已缺货",
     still_available: "仍可购买",
     recollection_created: "已创建重采",

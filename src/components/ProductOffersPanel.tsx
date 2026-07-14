@@ -1453,7 +1453,7 @@ function OfferRiskDetailDialog({ offer, onClose }: { offer: RawOffer; onClose: (
 
 function riskFeedbackReasonLabel(reason: "description_mismatch" | "aftersales_shipping" | "bad_source" | "fraud"): string {
   if (reason === "description_mismatch") return "标题党/商家描述误导";
-  if (reason === "aftersales_shipping") return "售后/发货问题";
+  if (reason === "aftersales_shipping") return "交付/使用/售后问题";
   if (reason === "bad_source") return "渠道不可信";
   return "疑似虚假/欺诈";
 }
@@ -1831,10 +1831,7 @@ export function OfferFeedbackDialog({
   const requiresEvidence = needsHighRiskEvidence(reason, userExpectedAction);
   const requiresImageEvidence = needsHighRiskImageEvidence(reason, userExpectedAction);
   const requiresContact = feedbackRequiresContact(reason);
-  const requiresAftersalesFirstReminder =
-    reason === AFTERSALES_FEEDBACK_REASON ||
-    reason === "fraud" ||
-    reason === "bad_source";
+  const supportEscalationReminder = feedbackSupportEscalationReminder(reason);
   const isDescriptionMismatchFeedback = reason === "description_mismatch";
 
   useEffect(() => {
@@ -2023,9 +2020,12 @@ export function OfferFeedbackDialog({
               ))}
             </select>
           </label>
-          {requiresAftersalesFirstReminder ? (
+          {supportEscalationReminder ? (
             <div className="rounded-lg border border-[#f1d6a8] bg-[#fff7e8] px-3 py-2 text-xs leading-5 text-[#7a541b]">
-              提交前建议先联系商家售后和交易平台售后；如果处理无果，再把沟通记录、订单页或截图提交给 PriceAI 做渠道质量核验。
+              <p className="font-semibold text-[#6f4917]">{supportEscalationReminder.title}</p>
+              {supportEscalationReminder.lines.map((line) => (
+                <p key={line} className="mt-1">{line}</p>
+              ))}
             </div>
           ) : null}
           <label className="block">
@@ -2156,14 +2156,14 @@ export function OfferFeedbackDialog({
 
 const feedbackReasonOptions = [
   { value: "wrong_price", label: "价格不准" },
-  { value: "item_removed", label: "商品已下架" },
+  { value: "item_removed", label: "商品/链接不可用" },
   { value: "stock_mismatch", label: "库存状态不准" },
   { value: "wrong_category", label: "分类错误" },
   { value: "description_mismatch", label: "标题党 / 商家描述误导" },
-  { value: AFTERSALES_FEEDBACK_REASON, label: "售后/发货问题" },
+  { value: AFTERSALES_FEEDBACK_REASON, label: "交付/使用/售后问题" },
   { value: "fraud", label: "疑似虚假/欺诈" },
   { value: "bad_source", label: "渠道不可信" },
-  { value: "other", label: "其他问题" },
+  { value: "other", label: "其他问题（以上都不符合）" },
 ];
 
 const expectedActionOptions = [
@@ -2184,6 +2184,44 @@ function needsHighRiskEvidence(reason: string, userExpectedAction: string): bool
 
 function needsHighRiskImageEvidence(reason: string, userExpectedAction: string): boolean {
   return feedbackRequiresImageEvidence(reason, userExpectedAction);
+}
+
+function feedbackSupportEscalationReminder(
+  reason: OfferFeedbackReason | "",
+): { title: string; lines: string[] } | null {
+  if (!reason) return null;
+  if (reason === AFTERSALES_FEEDBACK_REASON) {
+    return {
+      title: "建议先走原交易链路",
+      lines: [
+        "这类问题建议按顺序处理：商家售后 → 平台售后/投诉 → PriceAI 反馈。",
+        "PriceAI 会记录并审核这类反馈，用于风险提示和商家质量观察，但不能替代商家或平台处理订单。",
+      ],
+    };
+  }
+  if (
+    reason === "description_mismatch" ||
+    reason === "fraud" ||
+    reason === "bad_source"
+  ) {
+    return {
+      title: "PriceAI 是保底反馈入口",
+      lines: [
+        "如果你已经购买，建议先联系商家售后；商家无法处理后，再联系交易平台售后或投诉入口。",
+        "仍无法解决时，再提交到 PriceAI 作为保底反馈；请尽量补充订单页、沟通记录或截图。",
+      ],
+    };
+  }
+  if (reason === "other") {
+    return {
+      title: "请先确认是否有更准确的类型",
+      lines: [
+        "如果是链接打不开、没货、账号不能用、描述不符或渠道不可信，请优先选择对应问题类型。",
+        "已经购买且需要反馈体验时，也建议先联系商家售后和平台售后；无果后再提交给 PriceAI 记录。",
+      ],
+    };
+  }
+  return null;
 }
 
 function formatFileSize(size: number): string {
