@@ -2763,7 +2763,8 @@ async function readCollectionMonitoringBehaviorSummary(input: {
   try {
     const authHeaders = await getUmamiAuthHeaders(config);
     const eventTotals = new Map<string, number>();
-    const propertyValues = await readUmamiPropertyValues(config, authHeaders, window);
+    const propertyResult = await readUmamiPropertyValues(config, authHeaders, window);
+    const propertyValues = propertyResult.values;
     const events = buildUmamiBehaviorEvents(eventTotals, propertyValues);
     const sourceHeat = buildUmamiSourceHeatRows({
       sources: input.sources,
@@ -2782,7 +2783,9 @@ async function readCollectionMonitoringBehaviorSummary(input: {
       windowDays: UMAMI_MONITORING_WINDOW_DAYS,
       startAt: window.startAt,
       endAt: window.endAt,
-      message: "当前使用 Umami 事件属性值聚合统计。",
+      message: propertyResult.errors.length > 0
+        ? `部分 Umami 属性读取失败：${propertyResult.errors.slice(0, 3).join("；")}`
+        : "当前使用 Umami 事件属性值聚合统计。",
       events,
       totals: {
         trackedEventCount,
@@ -2913,26 +2916,35 @@ async function readUmamiPropertyValues(
   config: UmamiMonitoringConfig,
   authHeaders: Record<string, string>,
   window: ReturnType<typeof collectionBehaviorWindow>,
-): Promise<Map<UmamiPropertyKey, Array<{ value: string; count: number }>>> {
-  const entries = await Promise.all(
-    UMAMI_EVENT_DEFINITIONS.flatMap((definition) =>
-      definition.properties.map(async (property): Promise<[UmamiPropertyKey, Array<{ value: string; count: number }>]> => {
-        const key: UmamiPropertyKey = `${definition.eventName}:${property.propertyName}`;
-        try {
-          const payload = await fetchUmamiJson(config, authHeaders, `/api/websites/${config.websiteId}/event-data/values`, {
-            startAt: String(window.startMs),
-            endAt: String(window.endMs),
-            eventName: definition.eventName,
-            propertyName: property.propertyName,
-          });
-          return [key, normalizeUmamiValueRows(payload).slice(0, 20)];
-        } catch {
-          return [key, []];
-        }
-      }),
-    ),
-  );
-  return new Map(entries);
+): Promise<{
+  values: Map<UmamiPropertyKey, Array<{ value: string; count: number }>>;
+  errors: string[];
+}> {
+  const entries: Array<[UmamiPropertyKey, Array<{ value: string; count: number }>]> = [];
+  const errors: string[] = [];
+
+  for (const definition of UMAMI_EVENT_DEFINITIONS) {
+    for (const property of definition.properties) {
+      const key: UmamiPropertyKey = `${definition.eventName}:${property.propertyName}`;
+      try {
+        const payload = await fetchUmamiJson(config, authHeaders, `/api/websites/${config.websiteId}/event-data/values`, {
+          startAt: String(window.startMs),
+          endAt: String(window.endMs),
+          eventName: definition.eventName,
+          propertyName: property.propertyName,
+        });
+        entries.push([key, normalizeUmamiValueRows(payload).slice(0, 20)]);
+      } catch (error) {
+        errors.push(`${key}: ${errorMessage(error).slice(0, 120)}`);
+        entries.push([key, []]);
+      }
+    }
+  }
+
+  return {
+    values: new Map(entries),
+    errors,
+  };
 }
 
 async function fetchUmamiJson(
