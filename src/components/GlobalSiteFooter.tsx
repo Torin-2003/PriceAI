@@ -35,14 +35,10 @@ export function GlobalSiteFooter() {
   if (pathname.startsWith("/admin")) return null;
 
   return (
-    <footer className="bg-[var(--color-page)] px-5 pb-2 pt-3 sm:px-8 sm:pb-3 sm:pt-4" aria-label="PriceAI 站点入口">
-      <div className="mx-auto max-w-[1500px] border-t border-[var(--color-border-soft)] pt-2 sm:pt-3">
-        <p className="mx-auto max-w-[72ch] text-center text-[11px] leading-4 text-[var(--color-text-soft)] sm:text-xs sm:leading-5">
-          PriceAI 只整理公开信息，不售卖、不代下单；赞助与合作明确标注，不影响自然排序。
-        </p>
-
+    <footer className="bg-[var(--color-page)] px-5 pt-2 sm:px-8 sm:pt-3" aria-label="PriceAI 站点入口">
+      <div className="mx-auto max-w-[1500px] border-b border-[var(--color-border-soft)] pb-2 sm:pb-3">
         <nav
-          className="mt-1.5 flex min-h-10 flex-wrap items-center justify-center gap-1.5 border-y border-[var(--color-border-soft)] px-1 py-1 text-[11px] text-[var(--color-text-soft)] sm:mt-2 sm:min-h-11 sm:gap-2 sm:px-2 sm:py-2 sm:text-sm"
+          className="flex min-h-10 flex-wrap items-center justify-center gap-1.5 px-1 py-1 text-[11px] text-[var(--color-text-soft)] sm:min-h-11 sm:gap-2 sm:px-2 sm:py-2 sm:text-sm"
           aria-label="站点底部导航"
         >
           {footerLinks.map((item) => {
