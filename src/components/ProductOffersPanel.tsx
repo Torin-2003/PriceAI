@@ -148,6 +148,11 @@ export function ProductOffersPanel({
   const [outboundOffer, setOutboundOffer] = useState<RawOffer | null>(null);
   const pagingControllerRef = useRef<AbortController | null>(null);
   const isDesktop = useMediaQuery("(min-width: 768px)");
+  const purchaseTermsMockEnabled = useSyncExternalStore(
+    subscribePurchaseTermsMock,
+    isPurchaseTermsMockEnabled,
+    disabledPurchaseTermsMockSnapshot,
+  );
 
   useEffect(() => {
     activeCacheKeyRef.current = activeCacheKey;
@@ -275,8 +280,12 @@ export function ProductOffersPanel({
   ]);
 
   const activeData = dataCacheKey === activeCacheKey ? data : null;
-  const offers = activeData?.offers ?? [];
-  const total = activeData?.total ?? (selectedFilterTags.length > 0 || Boolean(offerQueryKey || offerExcludeQueryKey || offerMinPriceKey || offerMaxPriceKey || selectedCollector !== "all") ? 0 : initialCount);
+  const visibleData = useMemo(
+    () => purchaseTermsMockEnabled ? withPurchaseTermsMock(activeData) : activeData,
+    [activeData, purchaseTermsMockEnabled],
+  );
+  const offers = visibleData?.offers ?? [];
+  const total = visibleData?.total ?? (selectedFilterTags.length > 0 || Boolean(offerQueryKey || offerExcludeQueryKey || offerMinPriceKey || offerMaxPriceKey || selectedCollector !== "all") ? 0 : initialCount);
   const filterFacets = productOfferFilterFacets(
     activeData?.filterFacets,
     data?.filterFacets,
@@ -394,8 +403,8 @@ export function ProductOffersPanel({
 
   return (
     <>
-      {activeData?.degraded ? (
-        <DegradedBanner message={activeData.message} />
+      {visibleData?.degraded ? (
+        <DegradedBanner message={visibleData.message} />
       ) : null}
       {error ? (
         <InlineErrorBanner message={error} />
@@ -406,7 +415,7 @@ export function ProductOffersPanel({
         selectedCollector={selectedCollector}
         total={total}
         active={activeFilters}
-        pending={loading || !activeData}
+        pending={loading || !visibleData}
         excludeInput={excludeInput}
         activeExcludeQuery={offerExcludeQueryKey}
         filterOpen={filterOpen}
@@ -427,7 +436,7 @@ export function ProductOffersPanel({
         onSearchSubmit={handleSearchSubmit}
         onToggle={handleToggleFilterTag}
       />
-      {loading || !activeData ? (
+      {loading || !visibleData ? (
         <OfferTableSkeleton count={Math.min(Math.max(total, 3), 6)} />
       ) : offers.length ? (
         isDesktop === false ? (
@@ -557,6 +566,54 @@ function productOfferFilterFacets(
 
 function firstProductOfferFilterFacets(...candidates: Array<OfferFilterTagFacet[] | undefined>) {
   return candidates.find((candidate) => candidate && candidate.length > 0) ?? [];
+}
+
+function isPurchaseTermsMockEnabled(): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  if (typeof window === "undefined") return false;
+
+  return new URL(window.location.href).searchParams.get("mockPurchaseTerms") === "1";
+}
+
+function disabledPurchaseTermsMockSnapshot(): boolean {
+  return false;
+}
+
+function subscribePurchaseTermsMock(onChange: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  window.addEventListener("popstate", onChange);
+  return () => window.removeEventListener("popstate", onChange);
+}
+
+function withPurchaseTermsMock(data: ProductOffersResponse | null): ProductOffersResponse | null {
+  if (!data?.offers.length) return data;
+
+  return {
+    ...data,
+    offers: data.offers.map((offer, index) => {
+      if (index === 0) {
+        return {
+          ...offer,
+          minOrderQuantity: 10,
+          bulkPricingTiers: [
+            { minQuantity: 10, value: Math.max(0, Number(((offer.price ?? 0) * 0.96).toFixed(2))), discountType: 1 },
+            { minQuantity: 50, value: Math.max(0, Number(((offer.price ?? 0) * 0.9).toFixed(2))), discountType: 1 },
+          ],
+        };
+      }
+
+      if (index === 1) {
+        return {
+          ...offer,
+          minOrderQuantity: 5,
+          bulkPricingTiers: offer.bulkPricingTiers?.length ? offer.bulkPricingTiers : [],
+        };
+      }
+
+      return offer;
+    }),
+  };
 }
 
 function rememberProductOffers(cacheKey: string, value: ProductOffersResponse) {
@@ -1078,16 +1135,15 @@ function OfferTable({
   return (
     <section className="mt-6 hidden overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15 md:block">
       <div className="overflow-x-auto">
-        <table className="min-w-[1260px] w-full table-fixed border-collapse text-left text-sm">
+        <table className="min-w-[1120px] w-full table-fixed border-collapse text-left text-sm">
           <colgroup>
             <col className="w-[112px]" />
-            <col className="w-[250px]" />
+            <col className="w-[240px]" />
             <col />
-            <col className="w-[115px]" />
-            <col className="w-[120px]" />
             <col className="w-[118px]" />
-            <col className="w-[130px]" />
-            <col className="w-[64px]" />
+            <col className="w-[112px]" />
+            <col className="w-[108px]" />
+            <col className="w-[168px]" />
           </colgroup>
           <thead className="bg-[#f2f4f4] text-[0.68rem] font-semibold text-[#5a6061]">
             <tr>
@@ -1098,7 +1154,6 @@ function OfferTable({
               <TableHead>更新时间</TableHead>
               <TableHead className="text-center">风险</TableHead>
               <TableHead className="text-center">操作</TableHead>
-              <TableHead className="text-center">反馈</TableHead>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#edf0f1]">
@@ -1149,10 +1204,13 @@ function OfferTable({
                     <OfferRiskCell offer={offer} />
                   </td>
                   <td className="px-3 py-3 text-center">
-                    <OfferLink offer={offer} available={available} compact onRequestPurchase={onRequestPurchase} />
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    <OfferFeedbackButton offer={offer} onFeedback={onFeedback} compact />
+                    <OfferActions
+                      offer={offer}
+                      available={available}
+                      onFeedback={onFeedback}
+                      onRequestPurchase={onRequestPurchase}
+                      compact
+                    />
                   </td>
                 </tr>
               );
