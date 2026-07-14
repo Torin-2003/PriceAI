@@ -1,7 +1,9 @@
-export const qqGroupNumber = "761822700";
-export const qqGroupUrl = "https://qm.qq.com/q/ze2W6ADwKk";
-export const qqGroupQrCodeUrl = "/community/priceai-qq-group.png";
-export const telegramUrl = "https://t.me/priceaicc";
+import { DEFAULT_COMMUNITY_SETTINGS } from "@/lib/community-settings-shared";
+
+export const qqGroupNumber = DEFAULT_COMMUNITY_SETTINGS.qqGroupNumber;
+export const qqGroupUrl = DEFAULT_COMMUNITY_SETTINGS.qqGroupUrl;
+export const qqGroupQrCodeUrl = DEFAULT_COMMUNITY_SETTINGS.qqGroupQrCodeUrl;
+export const telegramUrl = DEFAULT_COMMUNITY_SETTINGS.telegramUrl;
 export const qqGroupPromptEventName = "priceai:qq-group-open";
 
 const qqGroupPromptHashes = new Set(["#qq-group", "#qqgroup"]);

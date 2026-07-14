@@ -9,7 +9,8 @@ import { createPortal } from "react-dom";
 import { AppLogo } from "@/components/AppLogo";
 import { FeedbackDialog, FeedbackLink, GitHubLink, QQGroupDialog, QQGroupLink, TelegramLink } from "@/components/FeedbackLink";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { qqGroupNumber, telegramUrl } from "@/lib/community";
+import { useCommunitySettings } from "@/lib/community-settings-client";
+import type { CommunitySettingsSummary } from "@/lib/community-settings-shared";
 import { supportPagePath } from "@/lib/support";
 
 const navItems = [
@@ -45,6 +46,7 @@ export function SiteHeader({
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [qqGroupOpen, setQqGroupOpen] = useState(false);
+  const communitySettings = useCommunitySettings();
 
   return (
     <header>
@@ -129,10 +131,11 @@ export function SiteHeader({
             setMobileDrawerOpen(false);
             setQqGroupOpen(true);
           }}
+          communitySettings={communitySettings}
         />
       ) : null}
       {feedbackOpen ? <FeedbackDialog onClose={() => setFeedbackOpen(false)} /> : null}
-      {qqGroupOpen ? <QQGroupDialog onClose={() => setQqGroupOpen(false)} /> : null}
+      {qqGroupOpen ? <QQGroupDialog settings={communitySettings} onClose={() => setQqGroupOpen(false)} /> : null}
     </header>
   );
 }
@@ -145,6 +148,7 @@ function MobileModuleDrawer({
   onClose,
   onFeedback,
   onQQGroup,
+  communitySettings,
 }: {
   activeKey?: (typeof navItems)[number]["key"];
   aboutActive: boolean;
@@ -153,6 +157,7 @@ function MobileModuleDrawer({
   onClose: () => void;
   onFeedback: () => void;
   onQQGroup: () => void;
+  communitySettings: CommunitySettingsSummary;
 }) {
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -274,30 +279,34 @@ function MobileModuleDrawer({
                 意见反馈
               </span>
             </button>
-            <button
-              type="button"
-              onClick={onQQGroup}
-              className="flex h-11 w-full items-center justify-between rounded-lg px-3 text-left text-sm font-semibold text-[var(--color-text-body)] transition hover:bg-[var(--color-surface-hover)]"
-              title={`QQ 群：${qqGroupNumber}`}
-            >
-              <span className="inline-flex items-center gap-3">
-                <Image src="/brand-icons/qq.svg" alt="" aria-hidden="true" width={18} height={18} className="h-[18px] w-[18px] shrink-0 object-contain" />
-                QQ 交流群
-              </span>
-            </button>
-            <a
-              href={telegramUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="flex h-11 items-center justify-between rounded-lg px-3 text-sm font-semibold text-[var(--color-text-body)] transition hover:bg-[var(--color-surface-hover)]"
-              onClick={onClose}
-            >
-              <span className="inline-flex items-center gap-3">
-                <Image src="/brand-icons/telegram.svg" alt="" aria-hidden="true" width={18} height={18} className="h-[18px] w-[18px] shrink-0 object-contain" />
-                Telegram 交流群
-              </span>
-              <ExternalLink size={14} className="text-[var(--color-text-soft)]" />
-            </a>
+            {communitySettings.qqGroupEnabled ? (
+              <button
+                type="button"
+                onClick={onQQGroup}
+                className="flex h-11 w-full items-center justify-between rounded-lg px-3 text-left text-sm font-semibold text-[var(--color-text-body)] transition hover:bg-[var(--color-surface-hover)]"
+                title={`QQ 群：${communitySettings.qqGroupNumber}`}
+              >
+                <span className="inline-flex items-center gap-3">
+                  <Image src="/brand-icons/qq.svg" alt="" aria-hidden="true" width={18} height={18} className="h-[18px] w-[18px] shrink-0 object-contain" />
+                  QQ 交流群
+                </span>
+              </button>
+            ) : null}
+            {communitySettings.telegramEnabled ? (
+              <a
+                href={communitySettings.telegramUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex h-11 items-center justify-between rounded-lg px-3 text-sm font-semibold text-[var(--color-text-body)] transition hover:bg-[var(--color-surface-hover)]"
+                onClick={onClose}
+              >
+                <span className="inline-flex items-center gap-3">
+                  <Image src="/brand-icons/telegram.svg" alt="" aria-hidden="true" width={18} height={18} className="h-[18px] w-[18px] shrink-0 object-contain" />
+                  Telegram 交流群
+                </span>
+                <ExternalLink size={14} className="text-[var(--color-text-soft)]" />
+              </a>
+            ) : null}
             <a
               href={githubUrl}
               target="_blank"

@@ -121,6 +121,7 @@ type ApiProviderCandidate = ApiModelAdminData["providerCandidates"][number];
 type ApiProviderSubmission = ApiModelAdminData["providerSubmissions"][number];
 type RiskReviewSettings = AdminSummary["riskReviewSettings"];
 type SponsorSettings = AdminSummary["sponsorSettings"];
+type CommunitySettings = AdminSummary["communitySettings"];
 type SponsorPlacementKind = keyof SponsorSettings["placements"];
 type SponsorPlacementConfig = SponsorSettings["placements"][SponsorPlacementKind];
 type PasswordStatus = AdminSummary["passwordStatus"];
@@ -245,6 +246,7 @@ const adminTabValues = [
   "review",
   "todo",
   "feedback",
+  "community",
   "sponsors",
   "security",
   "history",
@@ -438,6 +440,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
   const [apiProviderSubmissions, setApiProviderSubmissions] = useState<ApiProviderSubmission[]>(data.apiModels.providerSubmissions || []);
   const [riskReviewSettings, setRiskReviewSettings] = useState<RiskReviewSettings>(data.riskReviewSettings);
   const [sponsorSettings, setSponsorSettings] = useState<SponsorSettings>(data.sponsorSettings);
+  const [communitySettings, setCommunitySettings] = useState<CommunitySettings>(data.communitySettings);
   const [passwordStatus, setPasswordStatus] = useState<PasswordStatus>(data.passwordStatus);
   const [collectorStatus, setCollectorStatus] = useState<CollectorStatusState>({
     generatedAt: data.collectorHealth.generatedAt || data.generatedAt,
@@ -975,6 +978,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
         items: [
           { id: "review", label: "渠道提交", count: reviewSubmissions.length, icon: <Inbox size={15} />, description: "处理用户提交的新渠道，支持试采集、通过、转待办和拒绝。" },
           { id: "feedback", label: "反馈处理", count: pendingFeedbackCount, icon: <Flag size={15} />, description: "处理报价举报和站点意见，沉淀核验结果与临时处置。" },
+          { id: "community", label: "社群入口", count: activeCommunityChannelCount(communitySettings) || null, icon: <MessageCircle size={15} />, description: "配置 QQ 群、加群二维码和 Telegram 入口。" },
           { id: "sponsors", label: "赞助审核", count: sponsorSettings.enabled ? activeSponsorPlacementCount(sponsorSettings) || null : null, icon: <Megaphone size={15} />, description: "管理赞助素材、披露文案和前台展示状态。" },
         ],
       },
@@ -1025,7 +1029,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
         ],
       },
     ],
-    [apiModels.offers.length, apiTransitPendingSubmissionCount, collectorHealthIssueCount, collectorStatus.crawlRuns.length, collectorTodoSubmissions.length, data.apiTransit.metrics.candidateOffers, data.apiTransit.metrics.failedRuns, data.apiTransit.metrics.pendingOffers, data.apiTransit.metrics.pendingStations, failedRunCount, officialPrices.currentPrices.length, pendingFeedbackCount, reviewSubmissions.length, sources.length, sponsorSettings, wholesalePendingLeadCount],
+    [apiModels.offers.length, apiTransitPendingSubmissionCount, collectorHealthIssueCount, collectorStatus.crawlRuns.length, collectorTodoSubmissions.length, communitySettings, data.apiTransit.metrics.candidateOffers, data.apiTransit.metrics.failedRuns, data.apiTransit.metrics.pendingOffers, data.apiTransit.metrics.pendingStations, failedRunCount, officialPrices.currentPrices.length, pendingFeedbackCount, reviewSubmissions.length, sources.length, sponsorSettings, wholesalePendingLeadCount],
   );
 
   /* ─── Keyboard shortcuts ─── */
@@ -1976,6 +1980,21 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       router.refresh();
     } else {
       setGlobalMessage({ type: "error", text: result.message || "保存赞助位配置失败。" });
+    }
+  }
+
+  async function saveCommunitySettings(settings: CommunitySettings) {
+    setLoadingAction("community-settings");
+    const payload = buildCommunitySettingsPayload(settings);
+    const result = await requestWithMethod("/api/admin/community-settings", "PATCH", password, payload);
+    setLoadingAction(null);
+
+    if (result.ok && result.settings) {
+      setCommunitySettings(result.settings as CommunitySettings);
+      setGlobalMessage({ type: "success", text: "社群入口配置已保存，相关前台页面正在刷新。" });
+      router.refresh();
+    } else {
+      setGlobalMessage({ type: "error", text: result.message || "保存社群入口配置失败。" });
     }
   }
 
@@ -3370,6 +3389,18 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                   </section>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Community tab */}
+            {activeTab === "community" && (
+              <div role="tabpanel" id="tabpanel-community">
+                <CommunitySettingsPanel
+                  key={communitySettings.updatedAt || communitySettings.message || "community-settings"}
+                  settings={communitySettings}
+                  loading={loadingAction === "community-settings"}
+                  onSave={saveCommunitySettings}
+                />
               </div>
             )}
 
@@ -5354,6 +5385,148 @@ function AdminPasswordPanel({
   );
 }
 
+function CommunitySettingsPanel({
+  settings,
+  loading,
+  onSave,
+}: {
+  settings: CommunitySettings;
+  loading: boolean;
+  onSave: (settings: CommunitySettings) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<CommunitySettings>(settings);
+  const activeCount = activeCommunityChannelCount(draft);
+  const statusClass = activeCount > 0
+    ? "bg-[#e8f3ec] text-[#2f7a4b]"
+    : "bg-[#f2f4f4] text-[#5a6061]";
+
+  return (
+    <section className="rounded-lg border border-[#adb3b4]/20 bg-white p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <MessageCircle size={15} className="text-[#5a6061]" />
+            <h3 className="text-sm font-semibold text-[#202829]">社群入口配置</h3>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusClass}`}>
+              {activeCount} 个入口启用
+            </span>
+          </div>
+          <p className="mt-1 max-w-[78ch] text-xs leading-5 text-[#5a6061]">
+            这里控制前台顶部导航、反馈提示和自动加群弹窗里的 QQ / Telegram 入口。
+          </p>
+          {settings.message ? <p className="mt-1 text-xs text-[#9b3328]">{settings.message}</p> : null}
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#8a9293]">
+          {settings.updatedAt ? <span>更新：{formatRelativeTime(settings.updatedAt)}</span> : <span>尚未保存</span>}
+        </div>
+      </div>
+
+      <form
+        className="mt-4 space-y-4"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          await onSave(draft);
+        }}
+      >
+        <div className="grid gap-3 xl:grid-cols-2">
+          <div className="rounded-lg border border-[#dfe4e5] bg-[#fbfcfc] p-3">
+            <label className="flex items-center gap-2 text-sm font-semibold text-[#2d3435]">
+              <input
+                type="checkbox"
+                checked={draft.qqGroupEnabled}
+                onChange={(event) => setDraft((current) => ({ ...current, qqGroupEnabled: event.target.checked }))}
+                className="h-4 w-4 accent-[#2d3435]"
+              />
+              开启 QQ 群入口
+            </label>
+            <div className="mt-3 grid gap-3 md:grid-cols-[160px_minmax(0,1fr)]">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-[#5a6061]">QQ群号</span>
+                <input
+                  value={draft.qqGroupNumber}
+                  onChange={(event) => setDraft((current) => ({ ...current, qqGroupNumber: event.target.value }))}
+                  className={adminInputClassName}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-[#5a6061]">加群链接</span>
+                <input
+                  value={draft.qqGroupUrl}
+                  onChange={(event) => setDraft((current) => ({ ...current, qqGroupUrl: event.target.value }))}
+                  type="url"
+                  className={adminInputClassName}
+                />
+              </label>
+            </div>
+            <label className="mt-3 block">
+              <span className="mb-1 block text-xs font-medium text-[#5a6061]">二维码图片</span>
+              <input
+                value={draft.qqGroupQrCodeUrl}
+                onChange={(event) => setDraft((current) => ({ ...current, qqGroupQrCodeUrl: event.target.value }))}
+                className={adminInputClassName}
+              />
+            </label>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              <a
+                href={draft.qqGroupUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4]"
+              >
+                <ExternalLink size={13} />
+                打开加群链接
+              </a>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-[#dfe4e5] bg-[#fbfcfc] p-3">
+            <label className="flex items-center gap-2 text-sm font-semibold text-[#2d3435]">
+              <input
+                type="checkbox"
+                checked={draft.telegramEnabled}
+                onChange={(event) => setDraft((current) => ({ ...current, telegramEnabled: event.target.checked }))}
+                className="h-4 w-4 accent-[#2d3435]"
+              />
+              开启 Telegram 入口
+            </label>
+            <label className="mt-3 block">
+              <span className="mb-1 block text-xs font-medium text-[#5a6061]">Telegram 链接</span>
+              <input
+                value={draft.telegramUrl}
+                onChange={(event) => setDraft((current) => ({ ...current, telegramUrl: event.target.value }))}
+                type="url"
+                className={adminInputClassName}
+              />
+            </label>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              <a
+                href={draft.telegramUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4]"
+              >
+                <ExternalLink size={13} />
+                打开 Telegram
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={loading}
+            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-[#2d3435] px-4 text-xs font-medium text-white transition-colors hover:bg-[#202829] disabled:opacity-60 sm:w-auto"
+          >
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            保存社群配置
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
 function SponsorSettingsPanel({
   settings,
   loading,
@@ -6016,8 +6189,23 @@ function buildSponsorSettingsPayload(settings: SponsorSettings) {
   };
 }
 
+function buildCommunitySettingsPayload(settings: CommunitySettings) {
+  return {
+    qqGroupEnabled: settings.qqGroupEnabled,
+    qqGroupNumber: settings.qqGroupNumber,
+    qqGroupUrl: settings.qqGroupUrl,
+    qqGroupQrCodeUrl: settings.qqGroupQrCodeUrl,
+    telegramEnabled: settings.telegramEnabled,
+    telegramUrl: settings.telegramUrl,
+  };
+}
+
 function activeSponsorPlacementCount(settings: SponsorSettings): number {
   return Object.values(settings.placements).filter((placement) => placement.enabled).length;
+}
+
+function activeCommunityChannelCount(settings: CommunitySettings): number {
+  return Number(settings.qqGroupEnabled) + Number(settings.telegramEnabled);
 }
 
 function updateSponsorPlacement(settings: SponsorSettings, kind: string, patch: Partial<SponsorSettings["placements"][keyof SponsorSettings["placements"]]>): SponsorSettings {

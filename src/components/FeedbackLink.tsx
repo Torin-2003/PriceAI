@@ -14,7 +14,8 @@ import Image from "next/image";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
-import { qqGroupNumber, qqGroupQrCodeUrl, qqGroupUrl, telegramUrl } from "@/lib/community";
+import { useCommunitySettings } from "@/lib/community-settings-client";
+import type { CommunitySettingsSummary } from "@/lib/community-settings-shared";
 import { supportPagePath } from "@/lib/support";
 
 const githubUrl = "https://github.com/physics-dimension/PriceAI";
@@ -164,7 +165,9 @@ export function QQGroupLink({
   compact?: boolean;
   labelFrom?: HeaderActionLabelFrom;
 }) {
+  const settings = useCommunitySettings();
   const [open, setOpen] = useState(false);
+  if (!settings.qqGroupEnabled) return null;
 
   return (
     <>
@@ -174,18 +177,26 @@ export function QQGroupLink({
         className={`inline-flex shrink-0 items-center justify-center rounded-full bg-white text-sm font-semibold text-[#2d3435] shadow-[0_10px_30px_rgba(45,52,53,0.06)] ring-1 ring-[#adb3b4]/25 transition hover:-translate-y-0.5 hover:bg-[#f5f7f7] hover:text-[#202829] ${
           compact ? getCompactButtonClassName(labelFrom, "sm:px-3", "2xl:px-3") : "h-10 gap-2 px-3.5"
         }`}
-        aria-label={`查看 PriceAI QQ 交流群加入方式，群号 ${qqGroupNumber}`}
-        title={`QQ 群：${qqGroupNumber}`}
+        aria-label={`查看 PriceAI QQ 交流群加入方式，群号 ${settings.qqGroupNumber}`}
+        title={`QQ 群：${settings.qqGroupNumber}`}
       >
         <QQIcon className="h-5 w-5" />
         <span className={getLabelClassName(compact, labelFrom)}>QQ 群</span>
       </button>
-      {open ? <QQGroupDialog onClose={() => setOpen(false)} /> : null}
+      {open ? <QQGroupDialog settings={settings} onClose={() => setOpen(false)} /> : null}
     </>
   );
 }
 
-export function QQGroupDialog({ onClose }: { onClose: () => void }) {
+export function QQGroupDialog({
+  settings: providedSettings,
+  onClose,
+}: {
+  settings?: CommunitySettingsSummary;
+  onClose: () => void;
+}) {
+  const loadedSettings = useCommunitySettings();
+  const settings = providedSettings || loadedSettings;
   const titleId = useId();
   const [copied, setCopied] = useState(false);
 
@@ -200,13 +211,15 @@ export function QQGroupDialog({ onClose }: { onClose: () => void }) {
 
   async function copyGroupNumber() {
     try {
-      await navigator.clipboard.writeText(qqGroupNumber);
+      await navigator.clipboard.writeText(settings.qqGroupNumber);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
     } catch {
       setCopied(false);
     }
   }
+
+  if (!settings.qqGroupEnabled) return null;
 
   return createPortal(
     <div
@@ -247,7 +260,7 @@ export function QQGroupDialog({ onClose }: { onClose: () => void }) {
               <div className="rounded-lg border border-[#dfe4e5] bg-white px-3 py-3">
                 <p className="text-xs font-semibold text-[#5a6061]">QQ群号</p>
                 <div className="mt-2 flex items-center justify-between gap-3">
-                  <p className="text-xl font-extrabold tracking-wide text-[#202829]">{qqGroupNumber}</p>
+                  <p className="text-xl font-extrabold tracking-wide text-[#202829]">{settings.qqGroupNumber}</p>
                   <button
                     type="button"
                     onClick={copyGroupNumber}
@@ -262,7 +275,7 @@ export function QQGroupDialog({ onClose }: { onClose: () => void }) {
                 手机用户可以直接点击按钮打开 QQ；桌面用户可以用手机 QQ 扫描右侧二维码。
               </p>
               <a
-                href={qqGroupUrl}
+                href={settings.qqGroupUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-full bg-[#2d3435] px-4 text-sm font-semibold text-white transition hover:bg-[#202829] sm:w-auto"
@@ -274,8 +287,8 @@ export function QQGroupDialog({ onClose }: { onClose: () => void }) {
 
             <div className="rounded-lg border border-[#dfe4e5] bg-white p-2">
               <Image
-                src={qqGroupQrCodeUrl}
-                alt={`PriceAI QQ 交流群二维码，群号 ${qqGroupNumber}`}
+                src={settings.qqGroupQrCodeUrl}
+                alt={`PriceAI QQ 交流群二维码，群号 ${settings.qqGroupNumber}`}
                 width={1284}
                 height={2289}
                 className="mx-auto h-auto max-h-[280px] w-full rounded-md object-contain sm:max-h-[320px]"
@@ -303,8 +316,15 @@ function QQIcon({ className }: { className?: string }) {
   );
 }
 
-export function QQGroupPromptButton() {
+export function QQGroupPromptButton({
+  settings: providedSettings,
+}: {
+  settings?: CommunitySettingsSummary;
+} = {}) {
+  const loadedSettings = useCommunitySettings();
+  const settings = providedSettings || loadedSettings;
   const [open, setOpen] = useState(false);
+  if (!settings.qqGroupEnabled) return null;
 
   return (
     <>
@@ -312,12 +332,12 @@ export function QQGroupPromptButton() {
         type="button"
         onClick={() => setOpen(true)}
         className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full bg-white px-3 text-xs font-semibold text-[#2d3435] shadow-[0_10px_30px_rgba(45,52,53,0.06)] ring-1 ring-[#adb3b4]/25 transition hover:-translate-y-0.5 hover:bg-[#f5f7f7] hover:text-[#202829]"
-        aria-label={`查看 PriceAI QQ 交流群加入方式，群号 ${qqGroupNumber}`}
+        aria-label={`查看 PriceAI QQ 交流群加入方式，群号 ${settings.qqGroupNumber}`}
       >
         <QQIcon className="h-3.5 w-3.5" />
         QQ 群
       </button>
-      {open ? <QQGroupDialog onClose={() => setOpen(false)} /> : null}
+      {open ? <QQGroupDialog settings={settings} onClose={() => setOpen(false)} /> : null}
     </>
   );
 }
@@ -329,9 +349,12 @@ export function TelegramLink({
   compact?: boolean;
   labelFrom?: HeaderActionLabelFrom;
 }) {
+  const settings = useCommunitySettings();
+  if (!settings.telegramEnabled) return null;
+
   return (
     <a
-      href={telegramUrl}
+      href={settings.telegramUrl}
       target="_blank"
       rel="noreferrer"
       className={`inline-flex shrink-0 items-center justify-center rounded-full bg-white text-sm font-semibold text-[#2d3435] shadow-[0_10px_30px_rgba(45,52,53,0.06)] ring-1 ring-[#adb3b4]/25 transition hover:-translate-y-0.5 hover:bg-[#f5f7f7] hover:text-[#202829] ${
@@ -360,29 +383,36 @@ export function CommunityPrompt({
   children: ReactNode;
   className?: string;
 }) {
+  const settings = useCommunitySettings();
+  const hasCommunityActions = settings.qqGroupEnabled || settings.telegramEnabled;
+
   return (
     <div className={`rounded-lg border border-[#dfe4e5] bg-[#f7fafa] px-3 py-2 text-sm leading-6 text-[#4f5b5d] ${className}`}>
       <p>{children}</p>
-      <div className="mt-2 flex flex-wrap gap-2">
-        <QQGroupPromptButton />
-        <a
-          href={telegramUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex h-8 items-center gap-1.5 rounded-full bg-white px-3 text-xs font-bold text-[#2d3435] ring-1 ring-[#adb3b4]/35 transition hover:bg-[#edf0f1]"
-          aria-label="加入 PriceAI Telegram 交流群"
-        >
-          <Image
-            src="/brand-icons/telegram.svg"
-            alt=""
-            aria-hidden="true"
-            width={14}
-            height={14}
-            className="h-3.5 w-3.5 shrink-0 object-contain"
-          />
-          Telegram
-        </a>
-      </div>
+      {hasCommunityActions ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          <QQGroupPromptButton settings={settings} />
+          {settings.telegramEnabled ? (
+            <a
+              href={settings.telegramUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-8 items-center gap-1.5 rounded-full bg-white px-3 text-xs font-bold text-[#2d3435] ring-1 ring-[#adb3b4]/35 transition hover:bg-[#edf0f1]"
+              aria-label="加入 PriceAI Telegram 交流群"
+            >
+              <Image
+                src="/brand-icons/telegram.svg"
+                alt=""
+                aria-hidden="true"
+                width={14}
+                height={14}
+                className="h-3.5 w-3.5 shrink-0 object-contain"
+              />
+              Telegram
+            </a>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

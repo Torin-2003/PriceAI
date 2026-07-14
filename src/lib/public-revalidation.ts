@@ -29,6 +29,16 @@ const sponsorPublicPaths = [
   "/api/sponsor-settings",
 ] as const;
 
+const communityPublicPaths = [
+  "/",
+  "/channels",
+  "/api-transit",
+  "/api-transit/submit",
+  "/official-api",
+  "/guides",
+  "/api/community-settings",
+] as const;
+
 export function revalidatePublicOfferPaths(): string[] {
   for (const path of publicOfferPaths) {
     revalidatePath(path);
@@ -61,6 +71,14 @@ export function revalidateSponsorPublicPaths(): string[] {
     revalidatePath(path);
   }
   return [...sponsorPublicPaths];
+}
+
+export function revalidateCommunityPublicPaths(): string[] {
+  for (const path of communityPublicPaths) {
+    revalidatePath(path);
+  }
+  revalidatePath("/products/[id]", "page");
+  return [...communityPublicPaths, "/products/[id]"];
 }
 
 const PREWARM_TIMEOUT_MS = 8_000;

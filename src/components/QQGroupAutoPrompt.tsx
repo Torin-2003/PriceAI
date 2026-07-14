@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { QQGroupDialog } from "@/components/FeedbackLink";
+import { useCommunitySettings } from "@/lib/community-settings-client";
 import {
   isQQGroupPromptHash,
   qqGroupPromptEventName,
@@ -29,6 +30,7 @@ function getHashSnapshot() {
 }
 
 export function QQGroupAutoPrompt() {
+  const settings = useCommunitySettings();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -57,7 +59,7 @@ export function QQGroupAutoPrompt() {
     }
   }
 
-  return clientReady && promptKey && dismissedPromptKey !== promptKey
-    ? <QQGroupDialog onClose={closePrompt} />
+  return settings.qqGroupEnabled && clientReady && promptKey && dismissedPromptKey !== promptKey
+    ? <QQGroupDialog settings={settings} onClose={closePrompt} />
     : null;
 }

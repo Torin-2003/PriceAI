@@ -1,6 +1,7 @@
 import type { ApiBillingMode, ApiPriceValue, ApiProviderType } from "@/lib/api-models";
 import type { ApiTransitAdminData } from "@/lib/api-transit-admin-types";
 import type { AdminPasswordStatus } from "@/lib/admin-auth";
+import type { CommunitySettingsSummary } from "@/lib/community-settings-shared";
 import type { SponsorSettingsSummary } from "@/lib/sponsor-settings-shared";
 
 export type OfferStatus = "in_stock" | "low_stock" | "out_of_stock" | "unknown";
@@ -236,6 +237,7 @@ export type AdminSummary = DashboardData & {
   feedbackRawOffers: RawOffer[];
   riskReviewSettings: RiskReviewSettingsSummary;
   sponsorSettings: SponsorSettingsSummary;
+  communitySettings: CommunitySettingsSummary;
   passwordStatus: AdminPasswordStatus;
 };
 
