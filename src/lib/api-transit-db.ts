@@ -18,6 +18,7 @@ import {
   withTransitCommercialOfferDisclosure,
 } from "@/lib/api-transit";
 import { readPublicApiSnapshot, writePublicApiSnapshot } from "@/lib/public-api-snapshots";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { getSupabaseServerClient } from "@/lib/supabase";
 
 let cached: TransitStation[] | null = null;
@@ -314,18 +315,24 @@ export async function getTransitStations(): Promise<TransitStation[]> {
       return snapshot.stations;
     }
     setTransitStationsCache(stations, now);
-    if (stations.length) await writeTransitStationsSnapshot(stations);
+    if (stations.length && !hasStaticDemoTransitStations(stations)) await writeTransitStationsSnapshot(stations);
     return stations;
   } catch (error) {
-    const fallback = staleMemory || snapshot?.stations || null;
-    if (fallback?.length) {
+    const fallback = filterStaticDemoTransitStations(staleMemory || snapshot?.stations || []);
+    if (fallback.length) {
       console.warn("Using cached API transit stations because Supabase read failed:", error);
       setTransitStationsCache(fallback, now);
       return fallback;
     }
-    console.warn("Falling back to static API transit stations because Supabase read failed:", error);
-    setTransitStationsCache(seedStations, now);
-    return seedStations;
+    const demoFallback = staticTransitDemoFallbackStations("Supabase read failed");
+    if (demoFallback.length) {
+      console.warn("Falling back to static API transit demo stations because Supabase read failed:", error);
+      setTransitStationsCache(demoFallback, now);
+      return demoFallback;
+    }
+    console.warn("Rendering API transit as empty because Supabase read failed and no public fallback is available:", error);
+    setTransitStationsCache([], now);
+    return [];
   }
 }
 
@@ -348,9 +355,12 @@ async function readTransitStationsSnapshot(): Promise<{ stations: TransitStation
   const snapshot = await readPublicApiSnapshot<TransitStation[]>("api_transit", API_TRANSIT_SNAPSHOT_KEY);
   if (!snapshot || !isTransitStationsSnapshot(snapshot.value)) return null;
 
+  const stations = filterStaticDemoTransitStations(snapshot.value);
+  if (!stations.length) return null;
+
   const generatedAt = new Date(snapshot.generatedAt).getTime();
   return {
-    stations: snapshot.value,
+    stations,
     fresh: Number.isFinite(generatedAt) && Date.now() - generatedAt <= API_TRANSIT_SNAPSHOT_MAX_STALE_MS,
   };
 }
@@ -373,6 +383,36 @@ function isTransitStationsSnapshot(value: unknown): value is TransitStation[] {
     const record = station as Record<string, unknown>;
     return typeof record.slug === "string" && typeof record.name === "string";
   });
+}
+
+function filterStaticDemoTransitStations(stations: TransitStation[]): TransitStation[] {
+  if (shouldUseStaticTransitDemoFallback()) return stations;
+  return stations.filter((station) => !isStaticDemoTransitStation(station));
+}
+
+function hasStaticDemoTransitStations(stations: TransitStation[]): boolean {
+  return stations.some(isStaticDemoTransitStation);
+}
+
+function isStaticDemoTransitStation(station: TransitStation): boolean {
+  const riskLabels = Array.isArray(station.riskLabels) ? station.riskLabels : [];
+  return (
+    station.id.startsWith("stn-") ||
+    riskLabels.includes("sample_data")
+  );
+}
+
+function staticTransitDemoFallbackStations(reason: string): TransitStation[] {
+  if (shouldUseStaticTransitDemoFallback()) return seedStations;
+  console.warn(`API transit ${reason}; returning empty public data instead of static demo stations.`);
+  return [];
+}
+
+function shouldUseStaticTransitDemoFallback(): boolean {
+  const override = getRuntimeEnv("PRICEAI_ENABLE_API_TRANSIT_SEED_FALLBACK")?.trim().toLowerCase();
+  if (override === "1" || override === "true" || override === "yes") return true;
+  if (override === "0" || override === "false" || override === "no") return false;
+  return process.env.NODE_ENV !== "production";
 }
 
 export async function getTransitStationBySlug(
@@ -416,7 +456,7 @@ async function getTransitStationFallbackBySlug(slug: string): Promise<TransitSta
     return snapshotStation;
   }
 
-  return findTransitStationBySlug(seedStations, slug);
+  return findTransitStationBySlug(staticTransitDemoFallbackStations("station detail fallback is unavailable"), slug);
 }
 
 function getCachedStationBySlug(
@@ -438,7 +478,7 @@ function findTransitStationBySlug(stations: TransitStation[], slug: string): Tra
 
 async function readStationsFromSupabase(options: TransitStationsReadOptions = {}): Promise<TransitStation[]> {
   const supabase = getSupabaseServerClient();
-  if (!supabase) return seedStations;
+  if (!supabase) return staticTransitDemoFallbackStations("Supabase is not configured");
   const client = supabase;
   const signal = options.signal || publicTransitReadSignal();
 
@@ -534,7 +574,10 @@ async function readStationsFromSupabase(options: TransitStationsReadOptions = {}
 
 async function readStationFromSupabaseBySlug(slug: string): Promise<TransitStation | undefined> {
   const supabase = getSupabaseServerClient();
-  if (!supabase) return seedStations.find((station) => station.slug === slug || station.id === slug);
+  if (!supabase) {
+    return staticTransitDemoFallbackStations("Supabase is not configured")
+      .find((station) => station.slug === slug || station.id === slug);
+  }
 
   const stationRow = (await queryPublishedStationRows(supabase, publicTransitReadSignal(), slug))[0];
   if (!stationRow) return undefined;
