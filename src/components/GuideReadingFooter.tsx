@@ -16,6 +16,7 @@ export function GuideReadingFooter({ currentHref }: { currentHref: string }) {
         <FooterNavLink direction="previous" item={navigationItems.previous} />
         <Link
           href="/guides"
+          prefetch={false}
           className="inline-flex min-h-11 items-center justify-center rounded-md px-3 text-sm font-semibold text-[#2d3435] transition hover:bg-[#edf0f1]"
         >
           指南目录
@@ -36,6 +37,7 @@ export function GuideReadingFooter({ currentHref }: { currentHref: string }) {
               <Link
                 key={guide.href}
                 href={guide.href}
+                prefetch={false}
                 className="group flex items-start justify-between gap-4 rounded-md py-2 text-sm transition hover:bg-[#edf0f1] sm:px-2"
               >
                 <span className="min-w-0">
@@ -82,6 +84,7 @@ function FooterNavLink({
   return (
     <Link
       href={item.href}
+      prefetch={false}
       className={`group inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold text-[#202829] transition hover:bg-[#edf0f1] ${
         isPrevious ? "justify-start" : "justify-start sm:justify-end"
       }`}

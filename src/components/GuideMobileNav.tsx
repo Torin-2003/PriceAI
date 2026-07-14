@@ -135,6 +135,7 @@ export function GuideMobileNav({ currentHref }: { currentHref: string }) {
           </div>
           <Link
             href="/guides"
+            prefetch={false}
             className="inline-flex h-10 shrink-0 items-center rounded-md bg-[#edf0f1] px-3 text-sm font-semibold text-[#2d3435] transition hover:bg-[#dde4e5]"
           >
             入门
@@ -175,6 +176,7 @@ export function GuideMobileNav({ currentHref }: { currentHref: string }) {
             <div className="mt-5">
               <Link
                 href="/guides"
+                prefetch={false}
                 onClick={() => setOpen(false)}
                 className={`flex h-10 items-center gap-2 rounded-md px-3 text-sm font-semibold transition ${
                   currentHref === "/guides"
@@ -202,6 +204,7 @@ export function GuideMobileNav({ currentHref }: { currentHref: string }) {
                             <Link
                               key={guide.href}
                               href={guide.href}
+                              prefetch={false}
                               onClick={() => setOpen(false)}
                               className={`block rounded-md px-3 py-2 text-sm leading-5 transition ${
                                 active

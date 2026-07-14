@@ -255,6 +255,7 @@ function OfficialPlanMobileList({
           <Link
             key={summary.id}
             href={href}
+            prefetch={false}
             onClick={listDetailClickHandler(href, returnQuery)}
             className="rounded-lg bg-white p-4 shadow-[0_16px_45px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15 transition active:scale-[0.995]"
           >
@@ -318,7 +319,7 @@ function OfficialPlanTable({
               return (
                 <tr key={summary.id} className="transition hover:bg-[#f7f9f9]">
                   <td className="max-w-[320px] px-5 py-4">
-                    <Link href={href} onClick={listDetailClickHandler(href, returnQuery)} className="group flex min-w-0 items-center gap-3">
+                    <Link href={href} prefetch={false} onClick={listDetailClickHandler(href, returnQuery)} className="group flex min-w-0 items-center gap-3">
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f2f4f4]">
                         <BrandIcon platform={summary.platform} className="h-[18px] w-[18px]" />
                       </span>
@@ -346,6 +347,7 @@ function OfficialPlanTable({
                   <td className="w-[120px] px-5 py-4 text-center">
                     <Link
                       href={href}
+                      prefetch={false}
                       onClick={listDetailClickHandler(href, returnQuery)}
                       className="inline-flex h-9 min-w-[76px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-[#2d3435] px-3 text-xs font-semibold text-[#f8f8f8] transition hover:bg-[#1f2526]"
                     >
@@ -393,6 +395,7 @@ function OfficialOfferMobileCard({ row, returnQuery }: { row: OfficialPriceOffer
             <div className="min-w-0">
               <Link
                 href={href}
+                prefetch={false}
                 onClick={listDetailClickHandler(href, returnQuery)}
                 className="block truncate text-base font-bold leading-6 text-[#202829]"
               >
@@ -467,6 +470,7 @@ function OfficialOfferTable({
                   <td className="max-w-[260px] px-5 py-4">
                     <Link
                       href={href}
+                      prefetch={false}
                       onClick={listDetailClickHandler(href, returnQuery)}
                       className="block truncate font-semibold text-[#202829] hover:text-[#2f7a4b]"
                     >

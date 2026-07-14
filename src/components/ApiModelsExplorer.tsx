@@ -673,6 +673,7 @@ function ApiOfferTable({
                     <div className="grid min-w-0 gap-3">
                       <Link
                         href={modelHref}
+                        prefetch={false}
                         onClick={listDetailClickHandler(modelHref, returnQuery)}
                         className="group flex min-w-0 items-center gap-3"
                       >
@@ -687,6 +688,7 @@ function ApiOfferTable({
                       <div className="flex min-w-0 flex-wrap items-center gap-2 pl-[52px]">
                         <Link
                           href={providerHref}
+                          prefetch={false}
                           onClick={listDetailClickHandler(providerHref, returnQuery)}
                           className="group inline-flex min-w-0 items-center gap-2"
                         >
@@ -767,6 +769,7 @@ function ApiOfferMobileList({
                   <div className="min-w-0">
                     <Link
                       href={modelHref}
+                      prefetch={false}
                       onClick={listDetailClickHandler(modelHref, returnQuery)}
                       className="block truncate text-base font-bold leading-6 text-[#202829]"
                     >
@@ -779,6 +782,7 @@ function ApiOfferMobileList({
 
                 <Link
                   href={providerHref}
+                  prefetch={false}
                   onClick={listDetailClickHandler(providerHref, returnQuery)}
                   className="mt-3 inline-flex max-w-full items-center gap-2"
                 >
@@ -845,6 +849,7 @@ function ApiModelSummaryMobileList({
           <Link
             key={summary.id}
             href={href}
+            prefetch={false}
             onClick={listDetailClickHandler(href, returnQuery)}
             className="rounded-lg bg-white px-4 py-3.5 ring-1 ring-[#adb3b4]/15 transition active:scale-[0.995]"
           >
@@ -927,7 +932,7 @@ function ApiModelSummaryTable({
               return (
                 <tr key={summary.id} className="align-top transition hover:bg-[#f7f9f9]">
                   <td className="px-5 py-4">
-                    <Link href={href} onClick={listDetailClickHandler(href, returnQuery)} className="group flex min-w-0 items-center gap-3">
+                    <Link href={href} prefetch={false} onClick={listDetailClickHandler(href, returnQuery)} className="group flex min-w-0 items-center gap-3">
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f2f4f4] ring-1 ring-[#adb3b4]/15">
                         <ApiModelIcon family={summary.family} modelName={summary.displayName} className="h-7 w-7" />
                       </span>
@@ -951,6 +956,7 @@ function ApiModelSummaryTable({
                   <td className="w-[120px] px-5 py-4 text-center">
                     <Link
                       href={href}
+                      prefetch={false}
                       onClick={listDetailClickHandler(href, returnQuery)}
                       className="inline-flex h-9 min-w-[76px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-[#2d3435] px-3 text-xs font-semibold text-[#f8f8f8] transition hover:bg-[#1f2526]"
                     >
@@ -1005,7 +1011,7 @@ function ApiProviderSummaryTable({
               return (
                 <tr key={summary.id} className="align-top transition hover:bg-[#f7f9f9]">
                   <td className="max-w-[330px] px-5 py-4">
-                    <Link href={href} onClick={listDetailClickHandler(href, returnQuery)} className="group flex min-w-0 items-center gap-3">
+                    <Link href={href} prefetch={false} onClick={listDetailClickHandler(href, returnQuery)} className="group flex min-w-0 items-center gap-3">
                       <ApiProviderIcon provider={provider} />
                       <span className="min-w-0">
                         <span className="block truncate font-semibold text-[#202829] group-hover:text-[#2f7a4b]">{provider.name}</span>
@@ -1032,6 +1038,7 @@ function ApiProviderSummaryTable({
                     <p className="text-sm text-[#5a6061]">{formatDatasetDate(summary.latestUpdatedAt)}</p>
                     <Link
                       href={href}
+                      prefetch={false}
                       onClick={listDetailClickHandler(href, returnQuery)}
                       className="mt-3 inline-flex h-9 min-w-[76px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-[#2d3435] px-3 text-xs font-semibold text-[#f8f8f8] transition hover:bg-[#1f2526]"
                     >
@@ -1068,6 +1075,7 @@ function ApiProviderSummaryMobileList({
           <Link
             key={summary.id}
             href={href}
+            prefetch={false}
             onClick={listDetailClickHandler(href, returnQuery)}
             className="rounded-lg bg-white p-4 shadow-[0_16px_45px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15 transition active:scale-[0.995]"
           >

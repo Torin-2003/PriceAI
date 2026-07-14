@@ -138,6 +138,7 @@ export default function GuidesIndexPage() {
                 <Link
                   key={item.href}
                   href={item.href}
+                  prefetch={false}
                   className="group grid gap-3 py-5 transition hover:bg-[#edf0f1]/60 sm:grid-cols-[36px_minmax(0,1fr)_auto] sm:px-2"
                 >
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#edf0f1] text-sm font-bold text-[#5a6061] group-hover:bg-[#dde4e5]">
@@ -191,6 +192,7 @@ export default function GuidesIndexPage() {
                   <Link
                     key={item.title}
                     href={item.href}
+                    prefetch={false}
                     className="group grid gap-4 py-5 transition hover:bg-[#edf0f1]/60 sm:grid-cols-[32px_minmax(0,1fr)_auto] sm:px-2"
                   >
                     <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#edf0f1] text-[#5a6061] group-hover:bg-[#dde4e5] group-hover:text-[#202829]">
@@ -228,6 +230,7 @@ export default function GuidesIndexPage() {
                 <Link
                   key={item.href}
                   href={item.href}
+                  prefetch={false}
                   className="group grid gap-2 py-4 transition hover:bg-[#edf0f1]/60 sm:grid-cols-[minmax(0,1fr)_auto] sm:px-2"
                 >
                   <span className="min-w-0">

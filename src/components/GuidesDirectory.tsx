@@ -35,6 +35,7 @@ export function GuidesDirectory() {
                   <Link
                     key={guide.href}
                     href={guide.href}
+                    prefetch={false}
                     className="group grid gap-2 py-3 transition hover:bg-[#edf0f1]/70 sm:grid-cols-[minmax(0,1fr)_auto] sm:px-2"
                   >
                     <span className="min-w-0">

@@ -1,13 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ExternalLink, Handshake, HeartHandshake, Info, Menu, MessageCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AppLogo } from "@/components/AppLogo";
 import { FeedbackDialog, FeedbackLink, GitHubLink, QQGroupDialog, QQGroupLink, TelegramLink } from "@/components/FeedbackLink";
+import { IntentPrefetchLink } from "@/components/IntentPrefetchLink";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useCommunitySettings } from "@/lib/community-settings-client";
 import type { CommunitySettingsSummary } from "@/lib/community-settings-shared";
@@ -61,9 +61,9 @@ export function SiteHeader({
           >
             <Menu size={18} />
           </button>
-          <Link href={homeHref} aria-label="PriceAI 首页" className="inline-flex min-h-11 min-w-0 shrink-0 items-center">
+          <IntentPrefetchLink href={homeHref} aria-label="PriceAI 首页" className="inline-flex min-h-11 min-w-0 shrink-0 items-center">
             <AppLogo compact={logoCompact} />
-          </Link>
+          </IntentPrefetchLink>
         </div>
 
         <nav className={`${desktopCenterNavClassName} max-w-full justify-self-center overflow-x-auto min-[720px]:col-start-2 xl:absolute xl:left-1/2 xl:top-1/2 xl:col-start-1 xl:col-end-4 xl:-translate-x-1/2 xl:-translate-y-1/2`}>
@@ -71,7 +71,7 @@ export function SiteHeader({
             const active = activeSection ? item.key === activeSection : item.match(pathname);
 
             return (
-              <Link
+              <IntentPrefetchLink
                 key={item.href}
                 href={item.href}
                 className={`inline-flex h-9 items-center whitespace-nowrap rounded-full px-3 transition xl:px-4 ${
@@ -82,7 +82,7 @@ export function SiteHeader({
                 aria-current={active ? "page" : undefined}
               >
                 {item.label}
-              </Link>
+              </IntentPrefetchLink>
             );
           })}
         </nav>
@@ -92,7 +92,7 @@ export function SiteHeader({
         </div>
 
         <div className={`relative z-10 hidden min-w-0 items-center justify-end justify-self-end min-[720px]:col-start-3 min-[720px]:flex ${actionGroupGapClassName}`}>
-          <Link
+          <IntentPrefetchLink
             href="/wholesale"
             className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-full px-3 text-sm font-semibold transition ${
               wholesaleActive
@@ -107,7 +107,7 @@ export function SiteHeader({
             <span className={compactActionLabelFrom === "sm" ? "hidden sm:inline" : "hidden xl:inline"}>
               批发合作
             </span>
-          </Link>
+          </IntentPrefetchLink>
           <ThemeToggle compact labelFrom={compactActionLabelFrom} />
           <FeedbackLink compact labelFrom={compactActionLabelFrom} />
           <QQGroupLink compact labelFrom={compactActionLabelFrom} />
@@ -183,9 +183,9 @@ function MobileModuleDrawer({
         aria-label="模块导航"
       >
         <div className="mb-4 flex items-center justify-between gap-3 px-1">
-          <Link href={homeHref} aria-label="PriceAI 首页" className="min-w-0 shrink-0" onClick={onClose}>
+          <IntentPrefetchLink href={homeHref} aria-label="PriceAI 首页" className="min-w-0 shrink-0" onClick={onClose}>
             <AppLogo compact />
-          </Link>
+          </IntentPrefetchLink>
           <button
             type="button"
             onClick={onClose}
@@ -201,7 +201,7 @@ function MobileModuleDrawer({
             const active = item.key === activeKey;
 
             return (
-              <Link
+              <IntentPrefetchLink
                 key={item.href}
                 href={item.href}
                 onClick={onClose}
@@ -214,14 +214,14 @@ function MobileModuleDrawer({
               >
                 <span>{item.label}</span>
                 {active ? <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-brand)]" aria-hidden="true" /> : null}
-              </Link>
+              </IntentPrefetchLink>
             );
           })}
         </nav>
 
         <div className="mt-4 border-t border-[var(--color-border-soft)] pt-3">
           <div className="space-y-1">
-            <Link
+            <IntentPrefetchLink
               href="/wholesale"
               onClick={onClose}
               className={`flex h-11 items-center justify-between rounded-lg px-3 text-sm font-semibold transition ${
@@ -236,8 +236,8 @@ function MobileModuleDrawer({
                 批发合作
               </span>
               {wholesaleActive ? <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-brand)]" aria-hidden="true" /> : null}
-            </Link>
-            <Link
+            </IntentPrefetchLink>
+            <IntentPrefetchLink
               href="/about"
               onClick={onClose}
               className={`flex h-11 items-center justify-between rounded-lg px-3 text-sm font-semibold transition ${
@@ -252,8 +252,8 @@ function MobileModuleDrawer({
                 边界与披露
               </span>
               {aboutActive ? <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-brand)]" aria-hidden="true" /> : null}
-            </Link>
-            <Link
+            </IntentPrefetchLink>
+            <IntentPrefetchLink
               href={supportPagePath}
               onClick={onClose}
               className={`flex h-11 items-center justify-between rounded-lg px-3 text-sm font-semibold transition ${
@@ -268,7 +268,7 @@ function MobileModuleDrawer({
                 支持维护
               </span>
               {supportActive ? <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-brand)]" aria-hidden="true" /> : null}
-            </Link>
+            </IntentPrefetchLink>
             <button
               type="button"
               onClick={onFeedback}

@@ -1231,6 +1231,7 @@ function ProductTable({
                   <td className="max-w-[310px] px-5 py-4">
                     <Link
                       href={productHref}
+                      prefetch={false}
                       onClick={handleProductClick}
                       className="group flex min-w-0 items-center gap-3"
                     >
@@ -1252,6 +1253,7 @@ function ProductTable({
                   <td className="px-5 py-4">
                     <Link
                       href={productHref}
+                      prefetch={false}
                       onClick={handleProductClick}
                       aria-label={`查看 ${product.displayName} 最低价报价`}
                       title="查看最低价报价"
@@ -1293,6 +1295,7 @@ function ProductTable({
                   <td className="px-5 py-4">
                     <Link
                       href={productHref}
+                      prefetch={false}
                       onClick={handleProductClick}
                       className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-[#2d3435] px-3 text-xs font-semibold text-[#f8f8f8] transition hover:bg-[#1f2526]"
                     >
@@ -1975,6 +1978,7 @@ function MobileProductCard({
     <article className="group relative rounded-lg bg-white px-4 py-3.5 ring-1 ring-[#adb3b4]/15 transition hover:bg-[var(--color-panel-soft)] active:bg-[var(--color-surface-hover)] md:hidden">
       <Link
         href={productHref}
+        prefetch={false}
         onClick={handleProductClick}
         className="absolute inset-0 z-10 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-text-muted)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-page)]"
         aria-label={`查看 ${product.displayName} 详情`}
@@ -2058,6 +2062,7 @@ function WarrantyLowestPrice({
     return (
       <Link
         href={href}
+        prefetch={false}
         onClick={handleWarrantyClick}
         title="查看长期质保报价"
         className="group inline-flex flex-col gap-1"
@@ -2078,6 +2083,7 @@ function WarrantyLowestPrice({
     return (
       <Link
         href={href}
+        prefetch={false}
         onClick={handleWarrantyClick}
         className="pointer-events-auto relative z-20 mt-1 inline-flex max-w-full items-center gap-1.5 text-xs font-semibold text-[#47657a]"
       >
@@ -2092,6 +2098,7 @@ function WarrantyLowestPrice({
   return (
     <Link
       href={href}
+      prefetch={false}
       onClick={handleWarrantyClick}
       className="mt-3 flex min-h-[40px] items-center justify-between gap-3 rounded-lg bg-[#eef3f8] px-4 py-2 text-sm text-[#47657a] transition hover:bg-[#e3edf5]"
     >

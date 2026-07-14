@@ -276,6 +276,35 @@ for (const publicAssetRoute of [
   assert(/writePublicAssetCache\(cacheKey,\s*new Response/.test(text), `${publicAssetRoute}: public image reads must cache successful R2 responses.`);
 }
 
+const openNextConfigText = read("open-next.config.ts");
+assert(/overrides\/queue\/do-queue/.test(openNextConfigText), "open-next.config.ts: production ISR revalidation must use the durable object queue override.");
+assert(/queue:\s*doQueue/.test(openNextConfigText), "open-next.config.ts: the durable object queue must be wired into the Cloudflare adapter config.");
+
+const wranglerConfigText = read("wrangler.jsonc");
+assert(/"name"\s*:\s*"NEXT_CACHE_DO_QUEUE"/.test(wranglerConfigText), "wrangler.jsonc: the OpenNext revalidation queue must keep its durable object binding.");
+assert(/"new_sqlite_classes"[\s\S]{0,120}"DOQueueHandler"/.test(wranglerConfigText), "wrangler.jsonc: the OpenNext queue durable object must keep its SQLite migration.");
+
+const intentPrefetchLinkText = read("src/components/IntentPrefetchLink.tsx");
+assert(/prefetch=\{shouldPrefetch \? null : false\}/.test(intentPrefetchLinkText), "src/components/IntentPrefetchLink.tsx: main navigation must wait for hover or focus intent before prefetching.");
+
+const siteHeaderText = read("src/components/SiteHeader.tsx");
+assert(/IntentPrefetchLink/.test(siteHeaderText), "src/components/SiteHeader.tsx: high-traffic module navigation must use intent-based prefetching.");
+
+for (const longListFile of [
+  "src/components/PriceExplorer.tsx",
+  "src/components/OfficialPricesExplorer.tsx",
+  "src/components/ApiModelsExplorer.tsx",
+  "src/components/TransitStationExplorer.tsx",
+  "src/components/GuidesDirectory.tsx",
+  "src/components/GuideDocsLayout.tsx",
+  "src/components/GuideReadingFooter.tsx",
+  "src/components/GuideMobileNav.tsx",
+  "src/app/guides/page.tsx",
+]) {
+  const text = read(longListFile);
+  assert(/prefetch=\{false\}/.test(text), `${longListFile}: long link lists must not prefetch every viewport entry.`);
+}
+
 const probeText = read("scripts/probe-api-transit.mjs");
 assert(/api_transit_availability_samples/.test(probeText), "scripts/probe-api-transit.mjs: availability rollup must use structured sample rows.");
 assert(

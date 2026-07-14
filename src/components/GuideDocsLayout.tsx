@@ -51,6 +51,7 @@ function GuideSidebar({ currentHref }: { currentHref: string }) {
     <nav aria-label="指南目录" className="text-sm">
       <Link
         href="/guides"
+        prefetch={false}
         className={`flex h-10 items-center gap-2 rounded-md px-3 font-semibold transition ${
           currentHref === "/guides"
             ? "bg-[#2d3435] text-[#f8f8f8]"
@@ -77,6 +78,7 @@ function GuideSidebar({ currentHref }: { currentHref: string }) {
                     <Link
                       key={guide.href}
                       href={guide.href}
+                      prefetch={false}
                       className={`block rounded-md px-3 py-2 leading-5 transition ${
                         active
                           ? "bg-[#e8f3ec] font-semibold text-[#2f7a4b]"

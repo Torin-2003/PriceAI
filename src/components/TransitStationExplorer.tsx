@@ -642,6 +642,7 @@ function StationRow({
       <td className="px-5 py-4 text-center">
         <Link
           href={href}
+          prefetch={false}
           onClick={(event) => event.stopPropagation()}
           onFocus={onWarm}
           onMouseEnter={onWarm}
@@ -841,6 +842,7 @@ function ModelDetectionCell({
         ) : (
           <Link
             href={detectorHref}
+            prefetch={false}
             onClick={(event) => event.stopPropagation()}
             className="shrink-0 text-[#2f7a4b] hover:text-[#245f3b]"
           >
