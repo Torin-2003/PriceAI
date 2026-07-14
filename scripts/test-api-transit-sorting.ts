@@ -14,6 +14,7 @@ import {
   getTransitStationDetectionSummary,
   getTransitReviewTags,
   getTransitStationRankingBreakdowns,
+  formatAvailability,
   formatTransitModelDetectionLabel,
   formatTransitModelDetectionMeta,
   hasPublicTransitModelDetectionReport,
@@ -107,6 +108,19 @@ assertEqual(scoreTransitReliability(0.99, 600) > scoreTransitReliability(1, 3), 
 assertEqual(scoreTransitTtft(500, [500, 2000]) > scoreTransitTtft(2000, [500, 2000]), true);
 assertEqual(getRechargeCoefficientFromRatio("1 CNY = 1 USD balance"), 1);
 assertEqual(getRechargeCoefficientFromRatio("1 CNY = 5 USD balance"), 0.2);
+assertEqual(
+  formatAvailability({
+    sevenDayRate: null,
+    sevenDaySamples: 0,
+    recentSamples: [
+      { ok: true, checkedAt: "2026-07-14T10:00:00.000Z" },
+      { ok: false, checkedAt: "2026-07-14T10:01:00.000Z" },
+      { ok: true, checkedAt: "2026-07-14T10:02:00.000Z" },
+    ],
+  }),
+  "最近 66.7% · 3 次",
+);
+assertEqual(formatAvailability({ sevenDayRate: null, sevenDaySamples: 0 }), "样本不足");
 
 const neko = station({
   id: "999555999-com",

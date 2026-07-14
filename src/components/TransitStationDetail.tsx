@@ -1416,7 +1416,14 @@ function PriceGroupMobileCard({
           title={TRANSIT_CACHE_HIT_RATE_EXPLANATION}
         />
         <MobilePriceFact label="覆盖" value={`${group.prices.length} 个模型`} />
-        <MobilePriceFact label="可用率" value={formatPercent(group.sevenDayRate)} />
+        <MobilePriceFact
+          label="可用性"
+          value={formatAvailability({
+            sevenDayRate: group.sevenDayRate,
+            sevenDaySamples: group.sevenDaySamples,
+            recentSamples: group.recentSamples,
+          })}
+        />
       </div>
 
       <div className="mt-3">
@@ -1566,7 +1573,13 @@ function PriceGroupRow({
           ))}
         </div>
         <div className="mt-2 flex items-center gap-2">
-          <span className="text-xs font-bold text-[#202829]">{formatPercent(group.sevenDayRate)}</span>
+          <span className="text-xs font-bold text-[#202829]">
+            {formatAvailability({
+              sevenDayRate: group.sevenDayRate,
+              sevenDaySamples: group.sevenDaySamples,
+              recentSamples: group.recentSamples,
+            })}
+          </span>
           <TransitAvailabilityStrip
             rate={group.sevenDayRate}
             samples={group.sevenDaySamples}
@@ -1771,7 +1784,11 @@ function AvailabilityTable({ station }: { station: TransitStation }) {
         latestLatencyMs: summary.latestLatencyMs,
         avgLatency7dMs: summary.avgLatency7dMs,
         monitorModel: getFamilyMonitorModelLabel(station, family),
-        note: formatAvailability({ sevenDayRate: summary.sevenDayRate, sevenDaySamples: summary.sevenDaySamples }),
+        note: formatAvailability({
+          sevenDayRate: summary.sevenDayRate,
+          sevenDaySamples: summary.sevenDaySamples,
+          recentSamples: summary.recentSamples,
+        }),
         source: getFamilyAvailabilitySourceMeta(station, family),
       };
     }),
@@ -1924,8 +1941,7 @@ function AvailabilityStatus({
   return (
     <div className="min-w-[126px]">
       <div className="whitespace-nowrap text-sm font-semibold text-[#2d3435]">
-        {formatPercent(rate)}
-        <span className="ml-1.5 text-xs font-medium text-[#5a6061]">样本 {samples}</span>
+        {formatAvailability({ sevenDayRate: rate, sevenDaySamples: samples, recentSamples })}
       </div>
       <TransitAvailabilityStrip
         rate={rate}

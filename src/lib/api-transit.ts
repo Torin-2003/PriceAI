@@ -2136,10 +2136,20 @@ function formatCompactNumber(value: number): string {
 }
 
 export function formatAvailability(
-  availability: Pick<TransitStation["availability"], "sevenDayRate" | "sevenDaySamples">
+  availability: Pick<TransitAvailability, "sevenDayRate" | "sevenDaySamples"> &
+    Partial<Pick<TransitAvailability, "recentSamples">>
 ): string {
-  if (availability.sevenDaySamples <= 0 || availability.sevenDayRate === null) return "样本不足";
+  if (availability.sevenDaySamples <= 0 || availability.sevenDayRate === null) {
+    return formatRecentAvailability(availability.recentSamples) || "样本不足";
+  }
   return `${formatPercent(availability.sevenDayRate)} · 样本 ${availability.sevenDaySamples}`;
+}
+
+function formatRecentAvailability(recentSamples: TransitAvailability["recentSamples"]): string | null {
+  const samples = normalizeRecentAvailabilitySamples(recentSamples || []) || [];
+  if (!samples.length) return null;
+  const okCount = samples.filter((sample) => sample.ok).length;
+  return `最近 ${formatPercent(okCount / samples.length)} · ${samples.length} 次`;
 }
 
 export type AvailabilitySourceTone = "success" | "info" | "warning" | "muted";
