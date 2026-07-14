@@ -59,6 +59,7 @@ const PRODUCT_OFFERS_CACHE_TTL_MS = PRICE_DATA_CACHE_TTL_MS;
 const PRODUCT_OFFERS_REFRESH_TIMEOUT_MS = 10_000;
 const PRODUCT_OFFERS_MEMORY_CACHE_LIMIT = 40;
 const FEEDBACK_EVIDENCE_MAX_IMAGES = 5;
+const INVENTORY_NUMBER_FORMATTER = new Intl.NumberFormat("zh-CN");
 const productOffersMemoryCache = new Map<string, ProductOffersResponse>();
 
 type UploadedFeedbackEvidence = {
@@ -531,7 +532,7 @@ function productOffersCacheKey(
   minPrice = "",
   maxPrice = "",
 ): string {
-  return `priceai:product-offers:v13-live-tags:${productId}:${offset}:${OFFER_PAGE_SIZE}:${filterTags.join(",") || "all"}:${query || "none"}:${excludeQuery || "none"}:${collector}:${minPrice || "none"}:${maxPrice || "none"}`;
+  return `priceai:product-offers:v14-purchase-terms:${productId}:${offset}:${OFFER_PAGE_SIZE}:${filterTags.join(",") || "all"}:${query || "none"}:${excludeQuery || "none"}:${collector}:${minPrice || "none"}:${maxPrice || "none"}`;
 }
 
 function productOfferFilterFacets(
@@ -1077,9 +1078,9 @@ function OfferTable({
   return (
     <section className="mt-6 hidden overflow-hidden rounded-lg bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)] ring-1 ring-[#adb3b4]/15 md:block">
       <div className="overflow-x-auto">
-        <table className="min-w-[1220px] w-full table-fixed border-collapse text-left text-sm">
+        <table className="min-w-[1260px] w-full table-fixed border-collapse text-left text-sm">
           <colgroup>
-            <col className="w-[90px]" />
+            <col className="w-[112px]" />
             <col className="w-[250px]" />
             <col />
             <col className="w-[115px]" />
@@ -1090,7 +1091,7 @@ function OfferTable({
           </colgroup>
           <thead className="bg-[#f2f4f4] text-[0.68rem] font-semibold text-[#5a6061]">
             <tr>
-              <TableHead>状态</TableHead>
+              <TableHead>库存</TableHead>
               <TableHead>渠道</TableHead>
               <TableHead>原始商品名</TableHead>
               <TableHead>价格</TableHead>
@@ -1119,7 +1120,7 @@ function OfferTable({
                   className={`group/row transition hover:bg-[#f7f9f9] ${available ? "" : "bg-[#fbf7f6]"}`}
                 >
                   <td className="px-5 py-4">
-                    <OfferStatusBadge available={available} />
+                    <OfferInventorySummary offer={offer} available={available} />
                   </td>
                   <td className="px-4 py-4">
                     <span className="flex min-w-0 items-center gap-2">
@@ -1139,9 +1140,7 @@ function OfferTable({
                     <OfferSourceTitle title={offer.sourceTitle} mode="table" sharedAccess={sharedAccess} />
                   </td>
                   <td className="px-4 py-4">
-                    <span className={`text-lg font-bold ${available ? "text-[#202829]" : "text-[#9b3328]"}`}>
-                      {formatCurrency(offer.price, offer.currency)}
-                    </span>
+                    <OfferPriceCell offer={offer} available={available} />
                   </td>
                   <td className="whitespace-nowrap px-4 py-4 text-[#5a6061]">
                     <OfferRelativeTime value={offerTimestamp(offer)} />
@@ -1206,13 +1205,14 @@ function OfferListItem({
             ) : null}
           </div>
         </div>
-        <OfferStatusBadge available={available} />
+        <OfferInventorySummary offer={offer} available={available} compact />
       </div>
       <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 gap-y-2">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+        <div className="flex min-w-0 flex-wrap items-end gap-x-2 gap-y-1">
           <p className={`text-2xl font-bold leading-none tracking-normal ${available ? "text-[#202829]" : "text-[#9b3328]"}`}>
             {formatCurrency(offer.price, offer.currency)}
           </p>
+          <OfferPurchaseTerms offer={offer} available={available} />
           <p className="text-xs font-medium text-[#5a6061]">
             <OfferRelativeTime value={offerTimestamp(offer)} />
           </p>
@@ -1595,6 +1595,77 @@ function OfferExitNoticeDialog({ offer, onClose }: { offer: RawOffer; onClose: (
       </div>
     </div>
   );
+}
+
+function OfferInventorySummary({ offer, available, compact = false }: { offer: RawOffer; available: boolean; compact?: boolean }) {
+  const stockCount = typeof offer.stockCount === "number" && Number.isFinite(offer.stockCount)
+    ? Math.max(0, Math.trunc(offer.stockCount))
+    : null;
+
+  return (
+    <span className={`flex shrink-0 flex-col gap-1 ${compact ? "items-end" : "items-start"}`}>
+      <OfferStatusBadge available={available} />
+      {available && stockCount !== null ? (
+        <span className="whitespace-nowrap text-[0.68rem] font-semibold leading-4 text-[#5a6061]">
+          库存 {formatInventoryCount(stockCount)}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function OfferPriceCell({ offer, available }: { offer: RawOffer; available: boolean }) {
+  return (
+    <span className="block">
+      <span className={`block text-lg font-bold ${available ? "text-[#202829]" : "text-[#9b3328]"}`}>
+        {formatCurrency(offer.price, offer.currency)}
+      </span>
+      <OfferPurchaseTerms offer={offer} available={available} className="mt-1" />
+    </span>
+  );
+}
+
+function OfferPurchaseTerms({ offer, available, className = "" }: { offer: RawOffer; available: boolean; className?: string }) {
+  if (!available) return null;
+
+  const minOrderQuantity = typeof offer.minOrderQuantity === "number" && offer.minOrderQuantity > 1
+    ? Math.trunc(offer.minOrderQuantity)
+    : null;
+  const hasBulkPricing = Boolean(offer.bulkPricingTiers?.length);
+  if (!minOrderQuantity && !hasBulkPricing) return null;
+
+  return (
+    <span className={`inline-flex min-w-0 flex-wrap items-center gap-1.5 align-bottom text-[0.68rem] font-semibold leading-5 ${className}`}>
+      {minOrderQuantity ? (
+        <span className="whitespace-nowrap rounded-full bg-[#f2f4f4] px-2 text-[#5a6061]">
+          {minOrderQuantity}件起购
+        </span>
+      ) : null}
+      {hasBulkPricing ? (
+        <span className="whitespace-nowrap rounded-full bg-[#eef3f8] px-2 text-[#47657a]" title={bulkPricingTitle(offer)}>
+          阶梯价
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function formatInventoryCount(value: number): string {
+  return INVENTORY_NUMBER_FORMATTER.format(value);
+}
+
+function bulkPricingTitle(offer: RawOffer): string {
+  const tiers = offer.bulkPricingTiers || [];
+  if (!tiers.length) return "阶梯价";
+
+  const summary = tiers
+    .slice(0, 4)
+    .map((tier) => {
+      const value = typeof tier.value === "number" ? ` ${tier.value}` : "";
+      return `${tier.minQuantity}件起${value}`;
+    })
+    .join(" / ");
+  return summary ? `阶梯价：${summary}` : "阶梯价";
 }
 
 function OfferStatusBadge({ available }: { available: boolean }) {

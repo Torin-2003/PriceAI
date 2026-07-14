@@ -77,6 +77,8 @@ export type RawOffer = {
   tags: string[];
   filterTags?: string[];
   stockCount?: number | null;
+  minOrderQuantity?: number | null;
+  bulkPricingTiers?: OfferBulkPricingTier[];
   hidden?: boolean;
   canonicalProductId?: string | null;
   categorySlug?: string | null;
@@ -94,6 +96,13 @@ export type RawOffer = {
   lastFailedAt?: string | null;
   failureReason?: string | null;
   riskFeedback?: PublicRiskFeedback | null;
+};
+
+export type OfferBulkPricingTier = {
+  minQuantity: number;
+  value?: number | null;
+  discountType?: number | null;
+  label?: string | null;
 };
 
 export type PublicRiskFeedback = {
@@ -149,6 +158,8 @@ export type PublicOfferSummary = Pick<
   | "currency"
   | "status"
   | "url"
+  | "minOrderQuantity"
+  | "bulkPricingTiers"
 >;
 
 export type ExplorerProductSummary = Omit<ProductGroup, "offers" | "lowestOffer" | "warrantyLowestOffer"> & {
@@ -886,6 +897,8 @@ export type OfferInput = {
   url: string;
   tags?: string[];
   stockCount?: number | null;
+  minOrderQuantity?: number | null;
+  bulkPricingTiers?: OfferBulkPricingTier[];
 };
 
 export type SubmissionStatus = "pending" | "approved" | "rejected";

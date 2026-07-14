@@ -415,6 +415,8 @@ async function collectShopApi(target) {
           if (!title || listedPrice === null || isNonComparableTitle(title)) continue;
 
           const stockCount = numberOrNull(item.extend?.stock_count);
+          const minOrderQuantity = shopApiMinOrderQuantity(item.extend?.limit_count);
+          const bulkPricingTiers = shopApiBulkPricingTiers(item.multipleoffers);
           const status = Number(item.status ?? 1) !== 1 ? "out_of_stock" : statusFromStock(stockCount);
           const categoryName = cleanText(item.category?.name || "");
           const effectivePrice = await resolveShopApiEffectivePrice({
@@ -442,6 +444,8 @@ async function collectShopApi(target) {
                 effectiveStatus: shopAvailability.closed ? "unavailable" : "available",
                 failureReason: shopAvailability.closed ? shopAvailability.reason : null,
                 stockCount,
+                minOrderQuantity,
+                bulkPricingTiers,
                 url: itemUrl,
                 tags: compact([
                   categoryName,
@@ -916,6 +920,32 @@ async function resolveShopApiEffectivePrice({ base, goodsKey, listedPrice, chann
   };
 }
 
+function shopApiMinOrderQuantity(value) {
+  const quantity = numberOrNull(value);
+  return Number.isInteger(quantity) && quantity > 1 ? quantity : null;
+}
+
+function shopApiBulkPricingTiers(multipleOffers) {
+  if (!multipleOffers || Number(multipleOffers.available ?? 0) !== 1 || !Array.isArray(multipleOffers.rules)) {
+    return [];
+  }
+
+  const discountType = numberOrNull(multipleOffers.discount_type);
+  return multipleOffers.rules
+    .map((rule) => {
+      const minQuantity = numberOrNull(rule?.condition);
+      const value = numberOrNull(rule?.value);
+      if (!Number.isInteger(minQuantity) || minQuantity < 1 || value === null) return null;
+
+      return {
+        minQuantity,
+        value,
+        ...(discountType === null ? {} : { discountType }),
+      };
+    })
+    .filter(Boolean);
+}
+
 function makeOffer(target, input) {
   return {
     sourceId: target.sourceId,
@@ -935,6 +965,8 @@ function makeOffer(target, input) {
     url: absolutize(input.url || target.sourceUrl, target.baseUrl),
     tags: input.tags || [],
     stockCount: input.stockCount ?? null,
+    minOrderQuantity: input.minOrderQuantity ?? null,
+    bulkPricingTiers: input.bulkPricingTiers || [],
   };
 }
 
@@ -1078,6 +1110,8 @@ function printOfferPreview(offers) {
       price: offer.price,
       status: offer.status,
       stock: offer.stockCount,
+      minOrder: offer.minOrderQuantity,
+      bulkTiers: offer.bulkPricingTiers?.length || 0,
       store: offer.sourceStoreName,
     })),
   );
@@ -1252,7 +1286,9 @@ function cleanText(value) {
 
 function numberOrNull(value) {
   if (value === null || value === undefined || value === "") return null;
-  const number = Number(String(value).replace(/[^\d.]/g, ""));
+  const numericText = String(value).replace(/[^\d.-]/g, "");
+  if (!numericText || numericText === "-" || numericText === "." || numericText === "-.") return null;
+  const number = Number(numericText);
   return Number.isFinite(number) ? number : null;
 }
 

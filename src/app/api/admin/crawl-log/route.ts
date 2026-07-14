@@ -14,6 +14,13 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { stableId } from "@/lib/utils";
 import { z } from "zod";
 
+const bulkPricingTierSchema = z.object({
+  minQuantity: z.number().int().min(1),
+  value: z.number().nonnegative().nullable().optional(),
+  discountType: z.number().int().nullable().optional(),
+  label: z.string().max(80).nullable().optional(),
+});
+
 const offerSchema = z.object({
   sourceId: z.string().min(1).optional(),
   sourceName: z.string().min(1),
@@ -33,6 +40,8 @@ const offerSchema = z.object({
   url: z.string().url(),
   tags: z.array(z.string()).optional(),
   stockCount: z.number().int().nullable().optional(),
+  minOrderQuantity: z.number().int().min(2).nullable().optional(),
+  bulkPricingTiers: z.array(bulkPricingTierSchema).max(20).optional(),
 });
 
 const crawlLogPayloadSchema = z.object({

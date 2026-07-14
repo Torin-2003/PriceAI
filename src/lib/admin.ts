@@ -474,6 +474,8 @@ export async function upsertRawOffer(input: OfferInput & { sourceId?: string | n
     url: input.url,
     tags,
     stockCount: input.stockCount ?? null,
+    minOrderQuantity: input.minOrderQuantity ?? null,
+    bulkPricingTiers: input.bulkPricingTiers ?? [],
     hidden: Boolean(existingManualHidden),
     canonicalProductId: canonical.id,
     categorySlug: canonical.platform,
@@ -556,6 +558,8 @@ export async function upsertRawOffers(
       url: offer.url,
       tags,
       stockCount: offer.stockCount ?? null,
+      minOrderQuantity: offer.minOrderQuantity ?? null,
+      bulkPricingTiers: offer.bulkPricingTiers ?? [],
       hidden: false,
       canonicalProductId: canonical.id,
       categorySlug: canonical.platform,
@@ -629,7 +633,7 @@ async function getExistingOfferRowsById(ids: string[]): Promise<Map<string, Reco
   for (const idChunk of chunks(Array.from(new Set(ids)), 100)) {
     const { data, error } = await supabase
       .from("raw_offers")
-      .select("id,source_id,source_name,source_store_name,source_title,price,listed_price,fee_amount,price_basis,currency,status,source_status,effective_status,freshness_status,expires_at,source_priority,confidence,url,tags,stock_count,hidden,canonical_product_id,category_slug,last_seen_at,verified_at,updated_at,last_failed_at,failure_reason")
+      .select("id,source_id,source_name,source_store_name,source_title,price,listed_price,fee_amount,price_basis,currency,status,source_status,effective_status,freshness_status,expires_at,source_priority,confidence,url,tags,stock_count,min_order_quantity,bulk_pricing_tiers,hidden,canonical_product_id,category_slug,last_seen_at,verified_at,updated_at,last_failed_at,failure_reason")
       .in("id", idChunk);
 
     if (error) throw error;
@@ -659,6 +663,8 @@ function isRawOfferRowUnchanged(next: Record<string, unknown>, existing?: Record
     "url",
     "tags",
     "stock_count",
+    "min_order_quantity",
+    "bulk_pricing_tiers",
     "hidden",
     "canonical_product_id",
     "category_slug",
@@ -873,11 +879,28 @@ function isPriorMissingCandidate(candidate: Record<string, unknown>, checkedAt: 
 }
 
 function comparableValue(value: unknown): string {
-  if (Array.isArray(value)) return JSON.stringify(value.map(String).sort());
+  if (Array.isArray(value)) {
+    if (value.every((item) => item === null || item === undefined || typeof item !== "object")) {
+      return JSON.stringify(value.map(String).sort());
+    }
+    return JSON.stringify(value.map(stableComparableJsonValue));
+  }
   if (value === null || value === undefined) return "";
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
   if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "object") return JSON.stringify(stableComparableJsonValue(value));
   return String(value);
+}
+
+function stableComparableJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableComparableJsonValue);
+  if (!value || typeof value !== "object") return value;
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => [key, stableComparableJsonValue(item)]),
+  );
 }
 
 function isSourceRowUnchanged(next: Record<string, unknown>, existing: Record<string, unknown>): boolean {
@@ -1429,6 +1452,8 @@ export function toRawOfferRow(offer: RawOffer) {
     url: normalizeOfferUrlForStorage(offer.url),
     tags: offer.tags,
     stock_count: offer.stockCount,
+    min_order_quantity: offer.minOrderQuantity ?? null,
+    bulk_pricing_tiers: offer.bulkPricingTiers ?? [],
     hidden: offer.hidden ?? false,
     canonical_product_id: offer.canonicalProductId,
     category_slug: offer.categorySlug,

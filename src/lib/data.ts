@@ -63,6 +63,7 @@ import type {
   ExplorerData,
   ExplorerProductSummary,
   MerchantCollectorFilter,
+  OfferBulkPricingTier,
   PublicMerchantSummary,
   PublicOfferSummary,
   PublicRiskFeedback,
@@ -182,6 +183,8 @@ const RAW_OFFER_PUBLIC_SELECT_FIELDS = [
   "url",
   "tags",
   "stock_count",
+  "min_order_quantity",
+  "bulk_pricing_tiers",
   "hidden",
   "canonical_product_id",
   "category_slug",
@@ -3933,7 +3936,7 @@ export async function listPublicProductOffers(id: string, filters: ProductOfferL
   const collector = parseMerchantCollectorFilter(filters.collector);
   const minPrice = normalizeProductOfferPriceFilter(filters.minPrice);
   const maxPrice = normalizeProductOfferPriceFilter(filters.maxPrice);
-  const cacheKey = `${id}:${limit}:${offset}:${filterTags.join(",") || "all"}:${query || "none"}:${excludeQuery || "none"}:${collector}:${minPrice ?? "none"}:${maxPrice ?? "none"}:offer-filter-v7-live-tags`;
+  const cacheKey = `${id}:${limit}:${offset}:${filterTags.join(",") || "all"}:${query || "none"}:${excludeQuery || "none"}:${collector}:${minPrice ?? "none"}:${maxPrice ?? "none"}:offer-filter-v8-purchase-terms`;
   const now = Date.now();
   const cached = productOffersCache.get(cacheKey);
 
@@ -5360,6 +5363,8 @@ function compactPublicOffer(offer: RawOffer): RawOffer {
     tags: [],
     filterTags: offer.filterTags,
     stockCount: offer.stockCount,
+    minOrderQuantity: offer.minOrderQuantity,
+    bulkPricingTiers: offer.bulkPricingTiers,
     capturedAt: offer.capturedAt,
     sourceUpdatedAt: offer.sourceUpdatedAt,
     lastSeenAt: offer.lastSeenAt,
@@ -5575,6 +5580,46 @@ function truncateJsonSafeString(value: unknown, maxLength: number): string {
   return output;
 }
 
+function minOrderQuantityFromValue(value: unknown): number | null {
+  const quantity = Number(value);
+  return Number.isInteger(quantity) && quantity > 1 ? quantity : null;
+}
+
+function bulkPricingTiersFromValue(value: unknown): OfferBulkPricingTier[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item): OfferBulkPricingTier | null => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      const minQuantity = Number(record.minQuantity ?? record.min_quantity ?? record.condition);
+      if (!Number.isInteger(minQuantity) || minQuantity < 1) return null;
+
+      const tierValue = numberOrNull(record.value);
+      const discountType = integerOrNull(record.discountType ?? record.discount_type);
+      const label = String(record.label || "").trim();
+
+      return {
+        minQuantity,
+        ...(tierValue === null ? {} : { value: tierValue }),
+        ...(discountType === null ? {} : { discountType }),
+        ...(label ? { label } : {}),
+      };
+    })
+    .filter((item): item is OfferBulkPricingTier => Boolean(item));
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function integerOrNull(value: unknown): number | null {
+  const number = numberOrNull(value);
+  return number !== null && Number.isInteger(number) ? number : null;
+}
+
 function compactExplorerOffer(offer: RawOffer | null): PublicOfferSummary | null {
   if (!offer) return null;
 
@@ -5589,6 +5634,8 @@ function compactExplorerOffer(offer: RawOffer | null): PublicOfferSummary | null
     currency: offer.currency,
     status: offer.status,
     url: offer.url,
+    minOrderQuantity: offer.minOrderQuantity,
+    bulkPricingTiers: offer.bulkPricingTiers,
   };
 }
 
@@ -5604,6 +5651,8 @@ function mapPublicOfferSummary(row: Record<string, unknown>): PublicOfferSummary
     currency: String(row.currency || "CNY"),
     status: String(row.status || "unknown") as RawOffer["status"],
     url: String(row.url || ""),
+    minOrderQuantity: minOrderQuantityFromValue(row.min_order_quantity),
+    bulkPricingTiers: bulkPricingTiersFromValue(row.bulk_pricing_tiers),
   };
 }
 
@@ -5885,6 +5934,8 @@ export function mapRawOffer(row: Record<string, unknown>): RawOffer {
     tags,
     filterTags,
     stockCount: row.stock_count === null || row.stock_count === undefined ? null : Number(row.stock_count),
+    minOrderQuantity: minOrderQuantityFromValue(row.min_order_quantity),
+    bulkPricingTiers: bulkPricingTiersFromValue(row.bulk_pricing_tiers),
     hidden: Boolean(row.hidden),
     canonicalProductId: classified.id,
     categorySlug: classified.platform,

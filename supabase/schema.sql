@@ -65,6 +65,8 @@ create table if not exists raw_offers (
   url text not null,
   tags text[] not null default '{}',
   stock_count integer,
+  min_order_quantity integer,
+  bulk_pricing_tiers jsonb not null default '[]'::jsonb,
   hidden boolean not null default false,
   canonical_product_id text references canonical_products(id) on delete set null,
   category_slug text,
@@ -93,6 +95,8 @@ alter table raw_offers add column if not exists source_priority integer not null
 alter table raw_offers add column if not exists confidence numeric not null default 0.5;
 alter table raw_offers add column if not exists last_failed_at timestamptz;
 alter table raw_offers add column if not exists failure_reason text;
+alter table raw_offers add column if not exists min_order_quantity integer;
+alter table raw_offers add column if not exists bulk_pricing_tiers jsonb not null default '[]'::jsonb;
 
 update raw_offers
 set
@@ -493,6 +497,8 @@ select
   raw_offers.tags,
   raw_offers.public_filter_tags,
   raw_offers.stock_count,
+  raw_offers.min_order_quantity,
+  coalesce(raw_offers.bulk_pricing_tiers, '[]'::jsonb) as bulk_pricing_tiers,
   raw_offers.hidden,
   raw_offers.canonical_product_id,
   raw_offers.category_slug,
@@ -591,6 +597,8 @@ returns table (
   url text,
   tags text[],
   stock_count integer,
+  min_order_quantity integer,
+  bulk_pricing_tiers jsonb,
   hidden boolean,
   canonical_product_id text,
   category_slug text,
@@ -649,6 +657,8 @@ as $$
     ranked.url,
     ranked.tags,
     ranked.stock_count,
+    ranked.min_order_quantity,
+    ranked.bulk_pricing_tiers,
     ranked.hidden,
     ranked.canonical_product_id,
     ranked.category_slug,
@@ -701,6 +711,8 @@ returns table (
   url text,
   tags text[],
   stock_count integer,
+  min_order_quantity integer,
+  bulk_pricing_tiers jsonb,
   hidden boolean,
   canonical_product_id text,
   category_slug text,
@@ -802,6 +814,8 @@ as $$
     ranked.url,
     ranked.tags,
     ranked.stock_count,
+    ranked.min_order_quantity,
+    ranked.bulk_pricing_tiers,
     ranked.hidden,
     ranked.canonical_product_id,
     ranked.category_slug,
@@ -854,6 +868,8 @@ returns table (
   url text,
   tags text[],
   stock_count integer,
+  min_order_quantity integer,
+  bulk_pricing_tiers jsonb,
   hidden boolean,
   canonical_product_id text,
   category_slug text,
@@ -988,6 +1004,8 @@ as $$
     matched.url,
     matched.tags,
     matched.stock_count,
+    matched.min_order_quantity,
+    matched.bulk_pricing_tiers,
     matched.hidden,
     matched.canonical_product_id,
     matched.category_slug,
