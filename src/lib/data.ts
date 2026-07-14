@@ -2940,6 +2940,7 @@ async function fetchUmamiJson(
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      "User-Agent": "PriceAI-Monitor/1.0",
       ...authHeaders,
       ...(init.headers || {}),
     },
