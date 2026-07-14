@@ -2026,7 +2026,8 @@ function isModelDetectionEvent(
     text.includes("检测报告") ||
     text.includes("真实性") ||
     text.includes("真伪") ||
-    text.includes("路由") ||
+    text.includes("暗调路由") ||
+    text.includes("模型路由") ||
     text.includes("暗调") ||
     text.includes("掺水");
   if (!hasDetectionSignal) return false;

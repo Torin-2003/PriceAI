@@ -417,6 +417,55 @@
     "adminNote": "用户提交口径：sub2api 系统 / 官网 https://api.1pkapi.com / 公开价格页 https://api.1pkapi.com/public/transit。PriceAI 2026-07-12 读取公开 /.well-known/ai-transit.json 与 /api/public/transit/v1/snapshot 成功，快照显示站点名皓悦 API、1:1 充值、7 个分组、47 个模型条目、公开监控和缓存命中率；当前 autoPublish=false，仅进入后台待审核草稿，不上前台。正式上架前建议补充主体类型、发票、售后/退款、AFF/合作关系、模型来源说明和是否提供测试 Key。"
   },
   {
+    "id": "onepig123-com",
+    "name": "粉猪模型网关/路由层",
+    "websiteUrl": "https://onepig123.com/",
+    "apiBaseUrl": "https://onepig123.com/v1",
+    "pricingUrl": "https://onepig123.com/public/transit",
+    "pricingEndpointUrl": "https://onepig123.com/api/public/transit/v1/snapshot",
+    "monitorUrl": "https://onepig123.com/public/transit?view=monitoring",
+    "collectorKind": "ai_transit_snapshot",
+    "stationSystem": "sub_to_api",
+    "rechargeRatio": "1:1",
+    "autoPublish": false,
+    "commercialRelation": "none",
+    "operatorType": "unknown",
+    "invoiceSupport": "unknown",
+    "channelTypes": ["reverse_engineered", "mixed", "undisclosed"],
+    "accountPools": ["mixed", "undisclosed"],
+    "supportChannels": ["QQ：2197474866"],
+    "riskLabels": ["mixed_pool", "undisclosed_upstream", "insufficient_samples", "pending_feedback"],
+    "summary": "粉猪模型网关/路由层使用 Sub2API 系统，公开 ai-transit.v1 快照可读取 Claude 和 GPT 5.5 分组倍率、10 个模型价格、缓存命中率和公开监控时间线；公开资料显示 1:1 充值，当前先作为后台待审核草稿保存，不进入前台公开展示。",
+    "strengths": [
+      "公开 /.well-known/ai-transit.json 可发现结构化快照，/api/public/transit/v1/snapshot 返回分组、模型价格、缓存命中率和监控时间线。",
+      "快照无需登录即可读取，包含 2 个分组、10 个公开模型条目，并提供 claude-opus-4-8 与 gpt-5.5 公开监控目标。"
+    ],
+    "cautions": [
+      "公开监测样本来自粉猪模型网关/路由层页面，不等同 PriceAI 使用测试 Key 的真实扣费和可用性检测。",
+      "公开快照披露为 mixed / reverse 上游口径，精确上游账号、Key、Cookie 和内部渠道 ID 未公开；首次使用仍建议小额测试。",
+      "当前仅根据公开页和公开快照补充资料；主体类型、发票、售后/退款、AFF 或合作关系仍需后续确认。"
+    ],
+    "verificationEvents": [
+      {
+        "id": "onepig123-ai-transit-v1-2026-07-14",
+        "source": "priceai",
+        "status": "success",
+        "title": "ai-transit.v1 公开快照可读取",
+        "description": "2026-07-14 检查 https://onepig123.com/.well-known/ai-transit.json 可发现 snapshot_url，/api/public/transit/v1/snapshot 返回 2 个分组、10 个模型条目、1:1 充值口径、缓存命中率和公开监控时间线。",
+        "happenedAt": "2026-07-14T08:00:19.000Z"
+      },
+      {
+        "id": "onepig123-public-page-2026-07-14",
+        "source": "priceai",
+        "status": "info",
+        "title": "公开页显示 Sub2API 站点资料",
+        "description": "2026-07-14 检查 https://onepig123.com/public/transit 返回站点名粉猪模型网关/路由层、public_transit_enabled=true、公开监控入口和 QQ 联系方式。",
+        "happenedAt": "2026-07-14T08:00:19.000Z"
+      }
+    ],
+    "adminNote": "用户提交口径：sub2api 系统 / 官网 https://onepig123.com / 公开价格页 https://onepig123.com/public/transit。PriceAI 2026-07-14 读取公开 /.well-known/ai-transit.json 与 /api/public/transit/v1/snapshot 成功，快照显示站点名粉猪模型网关/路由层、1:1 充值、2 个分组、10 个模型条目、公开监控和缓存命中率；当前 autoPublish=false，仅进入后台待审核草稿，不上前台。正式上架前建议补充主体类型、发票、售后/退款、AFF/合作关系、模型来源说明和是否提供测试 Key。"
+  },
+  {
     "id": "sudocode-chat",
     "name": "SudoCode",
     "websiteUrl": "https://sudocode.chat/",

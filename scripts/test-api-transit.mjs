@@ -105,6 +105,24 @@ assert.ok(
   configuredOnePkapiSource.adminNote.includes("autoPublish=false"),
   "皓悦 API 后台备注必须明确保持待审核草稿，不自动上前台。",
 );
+const configuredOnepigSource = transitSourceConfig.find((source) => source.id === "onepig123-com");
+assert.ok(configuredOnepigSource, "粉猪模型网关/路由层 must stay saved as an API transit draft source.");
+assert.equal(configuredOnepigSource.collectorKind, "ai_transit_snapshot");
+assert.equal(configuredOnepigSource.stationSystem, "sub_to_api");
+assert.equal(configuredOnepigSource.websiteUrl, "https://onepig123.com/");
+assert.equal(configuredOnepigSource.apiBaseUrl, "https://onepig123.com/v1");
+assert.equal(configuredOnepigSource.pricingUrl, "https://onepig123.com/public/transit");
+assert.equal(configuredOnepigSource.pricingEndpointUrl, "https://onepig123.com/api/public/transit/v1/snapshot");
+assert.equal(configuredOnepigSource.monitorUrl, "https://onepig123.com/public/transit?view=monitoring");
+assert.equal(configuredOnepigSource.rechargeRatio, "1:1");
+assert.equal(configuredOnepigSource.autoPublish, false);
+assert.equal(configuredOnepigSource.commercialRelation, "none");
+assert.equal(configuredOnepigSource.operatorType, "unknown");
+assert.equal(configuredOnepigSource.invoiceSupport, "unknown");
+assert.ok(
+  configuredOnepigSource.adminNote.includes("autoPublish=false"),
+  "粉猪模型网关/路由层后台备注必须明确保持待审核草稿，不自动上前台。",
+);
 const configuredYujianSource = transitSourceConfig.find((source) => source.id === "yujianwudi-top");
 assert.ok(configuredYujianSource, "天机阁 must stay saved as an API transit draft source.");
 assert.equal(configuredYujianSource.collectorKind, "new_api_pricing");

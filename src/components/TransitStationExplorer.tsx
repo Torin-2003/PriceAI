@@ -66,6 +66,7 @@ import {
   getTransitModelDetectionBadgeClass,
   getTransitPriceDetectionSummary,
   getTransitStationDetectionSummary,
+  hasPublicTransitModelDetectionReport,
   hasTransitAffRelation,
   getTransitReviewTags,
   getTransitStationSystemLabel,
@@ -806,8 +807,8 @@ function ModelDetectionCell({
     ? getTransitPriceDetectionSummary(station, price)
     : getTransitStationDetectionSummary(station);
   const detectorHref = buildTransitDetectorHref(station, price ?? undefined);
-  const hasReport = Boolean(summary && summary.verdict !== "untested" && summary.reportCount > 0);
-  const checkedAt = summary?.checkedAt ? formatDateShortMinute(summary.checkedAt) : null;
+  const hasReport = hasPublicTransitModelDetectionReport(summary);
+  const checkedAt = hasReport && summary.checkedAt ? formatDateShortMinute(summary.checkedAt) : null;
   const title = summary?.note ?? "暂无公开模型真实性检测报告。";
 
   return (
@@ -827,7 +828,7 @@ function ModelDetectionCell({
             {summary?.sourceLabel ?? "检测"} · {checkedAt}
           </span>
         ) : null}
-        {summary?.reportUrl ? (
+        {hasReport ? (
           <a
             href={summary.reportUrl}
             target="_blank"
@@ -863,7 +864,7 @@ function getScopedDetectionPrice(
   });
   const withReport = prices.find((price) => {
     const summary = getTransitPriceDetectionSummary(station, price);
-    return Boolean(summary && summary.verdict !== "untested" && summary.reportCount > 0);
+    return hasPublicTransitModelDetectionReport(summary);
   });
   return withReport ?? prices[0] ?? null;
 }

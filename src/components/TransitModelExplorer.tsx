@@ -574,7 +574,7 @@ function ModelDetectionCell({ entry }: { entry: TransitModelPriceEntry }) {
       </p>
       <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[10px] font-semibold">
         {checkedAt ? <span className="truncate text-[#7f8889]">{checkedAt}</span> : null}
-        {summary?.reportUrl ? (
+        {hasReport ? (
           <a
             href={summary.reportUrl}
             target="_blank"

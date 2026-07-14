@@ -11,8 +11,12 @@ import {
   getTransitModelSummaries,
   getNormalizedSourceTags,
   getTransitPriceAvailabilitySourceMeta,
+  getTransitStationDetectionSummary,
   getTransitReviewTags,
   getTransitStationRankingBreakdowns,
+  formatTransitModelDetectionLabel,
+  formatTransitModelDetectionMeta,
+  hasPublicTransitModelDetectionReport,
   normalizedTransitCommercialOfferDisclosure,
   getRechargeCoefficientFromRatio,
   scoreTransitRelativeCost,
@@ -319,6 +323,60 @@ assertEqual(
     (detectionScores.get(untestedStation.id)?.modelDetectionScore ?? 0),
   true,
 );
+
+const publicSnapshotOnlyStation = station({
+  id: "onepig123-com",
+  name: "粉猪模型网关/路由层",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+publicSnapshotOnlyStation.verificationEvents = [
+  {
+    id: "onepig123-ai-transit-v1-2026-07-14",
+    source: "priceai",
+    status: "success",
+    title: "ai-transit.v1 公开快照可读取",
+    description:
+      "2026-07-14 检查 https://onepig123.com/.well-known/ai-transit.json 可发现 snapshot_url，/api/public/transit/v1/snapshot 返回 2 个分组、10 个模型条目、1:1 充值口径、缓存命中率和公开监控时间线。",
+    happenedAt: now,
+  },
+  {
+    id: "onepig123-public-page-2026-07-14",
+    source: "priceai",
+    status: "info",
+    title: "公开页显示 Sub2API 站点资料",
+    description:
+      "2026-07-14 检查 https://onepig123.com/public/transit 返回站点名粉猪模型网关/路由层、public_transit_enabled=true、公开监控入口和 QQ 联系方式。",
+    happenedAt: now,
+  },
+];
+const publicSnapshotDetectionSummary = getTransitStationDetectionSummary(publicSnapshotOnlyStation);
+assertEqual(publicSnapshotDetectionSummary, null);
+assertEqual(hasPublicTransitModelDetectionReport(publicSnapshotDetectionSummary), false);
+assertEqual(formatTransitModelDetectionLabel(publicSnapshotDetectionSummary), "待检测");
+assertEqual(formatTransitModelDetectionMeta(publicSnapshotDetectionSummary), "暂无公开报告");
+
+const detectedByEventStation = station({
+  id: "detected-by-event-station",
+  name: "Detected By Event Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+detectedByEventStation.verificationEvents = [
+  {
+    id: "detected-by-event-report",
+    source: "priceai",
+    status: "warning",
+    title: "模型检测报告：Claude Fable 5 需复核",
+    description: "检测报告 https://example.test/reports/claude-fable-5 显示疑似暗调路由。",
+    happenedAt: now,
+  },
+];
+const detectedByEventSummary = getTransitStationDetectionSummary(detectedByEventStation, "Claude Fable 5");
+assertEqual(hasPublicTransitModelDetectionReport(detectedByEventSummary), true);
+assertEqual(formatTransitModelDetectionLabel(detectedByEventSummary), "需复核");
 
 const oldEvidenceStation = station({
   id: "old-evidence-station",
