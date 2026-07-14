@@ -49,7 +49,7 @@ async function supabaseFetchWithCircuitBreaker(
     }
     return response;
   } catch (error) {
-    if (isAbortLikeError(error)) openSupabaseCircuitBreaker();
+    if (isTransportFailure(error)) openSupabaseCircuitBreaker();
     throw error;
   }
 }
@@ -58,10 +58,21 @@ function openSupabaseCircuitBreaker(): void {
   supabaseUnavailableUntil = Date.now() + SUPABASE_CIRCUIT_BREAKER_COOLDOWN_MS;
 }
 
-function isAbortLikeError(error: unknown): boolean {
+function isTransportFailure(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
-  const record = error as { name?: unknown; code?: unknown };
-  return record.name === "AbortError" || record.name === "TimeoutError" || record.code === "ABORT_ERR";
+  const record = error as { message?: unknown; name?: unknown };
+  const name = typeof record.name === "string" ? record.name : "";
+  const message = typeof record.message === "string" ? record.message.toLowerCase() : "";
+
+  if (name === "AbortError" || name === "TimeoutError") return false;
+
+  return (
+    name === "TypeError" ||
+    message.includes("fetch failed") ||
+    message.includes("network") ||
+    message.includes("connection") ||
+    message.includes("econnreset")
+  );
 }
 
 function abortLikeError(message: string): Error {

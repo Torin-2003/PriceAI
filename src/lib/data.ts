@@ -83,6 +83,7 @@ const PUBLIC_SUPABASE_BUILD_READ_TIMEOUT_MS = 15_000;
 const NEXT_PRODUCTION_BUILD_PHASE = "phase-production-build";
 const DASHBOARD_DATA_CACHE_TTL_MS = 30_000;
 const ADMIN_DATA_CACHE_TTL_MS = 120_000;
+const ADMIN_DATA_ERROR_CACHE_TTL_MS = 5_000;
 const ADMIN_OFFER_SAMPLE_LIMIT = 80;
 const EXPLORER_OFFER_SEARCH_TEXT_MAX_LENGTH = 480;
 const STALE_PUBLIC_DATA_MESSAGE = "报价服务响应变慢，已先显示最近缓存结果。";
@@ -1582,8 +1583,9 @@ export async function getAdminSummary(options: { isAuthenticated?: boolean } = {
 
   adminSummaryPromise = readAdminSummary()
     .then((value) => {
+      const ttl = value.loadErrors.length > 0 ? ADMIN_DATA_ERROR_CACHE_TTL_MS : ADMIN_DATA_CACHE_TTL_MS;
       adminSummaryCache = {
-        expiresAt: Date.now() + ADMIN_DATA_CACHE_TTL_MS,
+        expiresAt: Date.now() + ttl,
         value,
       };
       return value;
