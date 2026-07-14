@@ -1,6 +1,6 @@
 # PriceAI 规划状态总控台
 
-> 最后更新：2026-07-12
+> 最后更新：2026-07-14
 > 维护范围：`docs/planning/` 下的产品规划、增长规划、采集规划、执行跟踪和复盘文档
 > 用途：作为内部规划的统一状态窗口，方便在任何新对话里快速判断“哪些阶段已经完成、哪些仍在排队、下一步该做什么”。
 
@@ -38,7 +38,8 @@
 | 工程质量与可维护性 | 规划完成，待分阶段实施 | 已完成架构、测试/脚本/CI、产品规划上下文三路核验；确定“门禁优先、契约优先、兼容迁移、按业务切片”路线 | 现有脚本测试本地全部通过，但尚未进入 Quality / Deploy；`data.ts`、`admin.ts` 和 `AdminConsole` 仍是高风险中心，Cloudflare promotion workflow 另有 npm script 断链 | 先收口当前 API 中转 WIP 和冲突任务，再独立实施统一 `npm test`、发布门禁、商业排序不变量与 promotion 修复；之后才开始兼容式拆分 | [工程质量与可维护性规划](archive/pending/product/2026-07-10_priceai-engineering-quality-and-maintainability-plan.md)、[信任与工程治理行动备忘](archive/pending/product/2026-07-10_priceai-product-focus-and-trust-governance-plan.md) |
 | 后台管理信息架构与组件拆分 | 规划完成，待实施 | 已确认从顶部横向 Tab 调整为左侧一级/二级导航 + 右侧工作区；执行上采用 Admin Shell 先行、按工作流迁移、先行为等价再视觉增强 | 当前只是产品与执行规划，未改后台代码；`AdminConsole.tsx` 仍是约 1 万行高风险组件，`ApiTransitAdminConsole.tsx` 也需防止继续膨胀 | 先调整 `05-13-admin-review-redesign` 任务口径；再开 Phase 0/1 实现任务做后台功能地图和 Admin Shell；首个业务迁移切片建议选择 API 中转 | [后台管理左侧导航与工作流拆分规划](archive/pending/product/2026-07-12_admin-console-left-nav-workflow-split-plan.md)、[工程质量与可维护性规划](archive/pending/product/2026-07-10_priceai-engineering-quality-and-maintainability-plan.md) |
 | 订阅比价 / 卡网渠道 | 进行中 | P2 分类体系持续优化 | 有货最低价、下架同步、渠道停用、批量提交等能力已有多轮修复；Apple ID、其他辅助分类、语义图标和归类一致性已有改动；早期反馈/分类/采集路线已阶段收尾 | 按真实错分样本继续修分类；规划 AI 错分巡检后台，先做规则审计 + 大模型辅助判断 + 管理员裁决，不直接自动改生产分类 | [数据与分类重构方案](archive/in-progress/data-collection/2026-05-14_data-classification-redesign.md)、[反馈自动化与分类预审](archive/pending/product/2026-07-08_feedback-automation-and-classification-precheck-plan.md) |
-| 低价订阅渠道稳定性反馈 | 规划中，待确认 | 已按 Idea-to-Product PRD Lite 沉淀产品规划；推荐先做轻量信号层，不做公开评论墙 | 方案围绕商品、商家、商品渠道三层反馈；用近 7/30 天样本、卖家标称渠道、证据门槛和审核摘要服务购前判断 | 确认 P0 是否采用轻量信号层；确认渠道标签优先覆盖范围、样本阈值、高风险反馈联系方式和商家回应排期 | [低价订阅渠道稳定性反馈产品规划](archive/pending/product/2026-07-11_ai-subscription-channel-stability-feedback-product-plan.md) |
+| 报价反馈分类与证据门槛 | 规划完成，待实施 | 已确认“数据纠错低门槛、商家质量高证据、后台下架定向刷新”口径 | 问题类型将取消默认值；`商品描述/实际不符` 前台改为 `标题党 / 商家描述误导` 并归入商家质量；证据必填只按问题类型判断，不再按用户建议下架判断 | 进入 P0 实现：反馈弹窗、后端校验、后台文案和下架刷新联动 | [报价反馈分类、证据门槛与下架刷新规划](archive/pending/product/2026-07-14_offer-feedback-evidence-and-cache-refresh-plan.md) |
+| 资料核验商家与稳定性反馈 | 规划中，待确认 | 已将“优选店铺”、商家资料核验、商品渠道稳定性反馈、登录反刷和广告准入合并成综合 PRD Lite | 新方案以“资料核验商家”作为前台克制表达；所有挂到商家、商品渠道或公开质量信号上的正向/中性/负向反馈都必须登录；广告只作为显著披露的合作展示，不影响自然排序、最低价和风险提示 | 确认前台命名、P0 是否先选 3-5 个商家人工试运行、第一批渠道路径、反馈证据门槛和广告准入层级 | [资料核验商家与稳定性反馈综合规划](archive/pending/product/2026-07-12_verified-merchant-and-stability-feedback-product-plan.md)、[低价订阅渠道稳定性反馈原规划](archive/pending/product/2026-07-11_ai-subscription-channel-stability-feedback-product-plan.md) |
 | 官方订阅地区价 | 已收尾，规划中 | P1 远端库落地完成；下一阶段策略待定 | App Store 公开地区价、38 个地区、后台管理、远端 Supabase 写入已收尾；地区解析又经过增强 | 规划尽量覆盖全部国家；确认更新周期按天、按周，或继续采用静态方案 | [执行跟踪](archive/done/execution/2026-06-05_implementation-tracker.md) |
 | 官方 API | 已收尾，规划中 | P1/P2 静态数据和后台维护闭环已收尾；官方状态页汇总进入规划 | 价格数据、免费渠道、后台可编辑、候选池和后台上下文已可用；公开模块名和路径已调整为“官方 API”与 `/official-api` | 不再规划候选采集器补齐和完整自动采集；新增「官方状态页汇总」作为模型 API 可用性辅助信息，第一版不做节点探测 | [官方 API 路线图](archive/done/modules/2026-06-05_api-model-radar-roadmap.md)、[模型状态页汇总](archive/pending/modules/2026-06-08_ai-model-status-aggregator.md) |
 | API 中转综合推荐 | 当前版已上线，目标版规划中 | 商业关系已退出自然排序；当前版按成本、公开近 60 次、近 7 日、缓存和模型检测预留权重排序 | commit `5fb509b` 已部署生产；无倍率、无稳定性样本或监测过期的站点不进入综合推荐；线上排序已验证不再让 APINode 固定第一 | 后续确认线路级评分、证据覆盖度、模型质量、TTFT/TPS 与“全部”页面展示方式 | [中转 API 综合推荐算法产品规划](archive/pending/product/2026-07-14_api-transit-composite-recommendation-algorithm-product-plan.md) |
@@ -50,6 +51,7 @@
 | 轻量用户登录 | V1 已收尾 | Google 登录、账户页、我的反馈、我的检测报告和任务归属已落地 | 公开浏览继续免登录；登录用于反馈追踪和检测任务归属 | 商家认领、收藏、评论和提醒有真实需求时分别立项 | [用户登录系统产品规划](archive/done/product/2026-06-29_priceai-user-login-system-product-plan.md) |
 | B2B 批发撮合 | 规划中，提交模板已细化 | 已补充买方 / 卖方 × API 中转 / 卡网订阅四套结构化示例模板 | 每个商品或号池的信息在同一行写清来源、价格、预计量或起批量与月供；保留结构化字段但不做生硬问卷；黑充、盗刷、拒付等只作为风险或禁入类型 | 确认最终示例文案后，再进入前台模板切换、提交校验、结构化入库和后台摘要展示设计 | [B2B 批发撮合专区产品规划](archive/pending/product/2026-06-30_priceai-b2b-wholesale-matching-plan.md)、[批发合作线索提交模板规划](archive/pending/product/2026-07-14_priceai-wholesale-intake-template-plan.md) |
 | 数据归因 / 后台分析 | P1 已收尾，待观察 | 一方外链点击归因和后台分析区已落地 | 卡网、中转站和赞助入口点击已进入自有业务账本；前台不公开点击数 | 先观察真实数据，曝光、CTR 和商家报表如需推进再另开规划 | [数据归因与后台分析专区产品规划](archive/done/product/2026-07-05_priceai-attribution-analytics-product-plan.md) |
+| 数据监测 / 采集分层 | 规划完成，待实施 | 已确认“Umami 行为热度层 + 采集健康事实层 + 后台聚合建议层” | 新规划明确先做后台只读监测和异常队列，不直接自动改采集调度；点击热度只作为运营信号，不作为公开可信度或成交量 | 先做 P0 事件口径审计和后台只读总览，再观察 7-14 天进入分层建议队列 | [Umami 数据监测与采集分层规划](archive/pending/product/2026-07-14_umami-data-monitoring-and-collection-tiering-plan.md) |
 
 ## 4. 阶段状态明细
 
@@ -109,6 +111,8 @@
 | 日期 | 事项 | 状态 | 证据 | 后续观察 |
 | --- | --- | --- | --- | --- |
 | 2026-07-14 | API 中转综合排序中立性重构 | 已上线，目标版规划中 | commit `5fb509b`；Cloudflare Actions `29267043533`；生产 `/api-transit`、13 个站点详情和 Cloudflare smoke 通过；浏览器实际综合排序中 APINode 为第 8 | 后续按[中转 API 综合推荐算法产品规划](archive/pending/product/2026-07-14_api-transit-composite-recommendation-algorithm-product-plan.md)确认线路级评分、模型质量、TTFT/TPS 和“全部”页面方向 |
+| 2026-07-14 | 报价反馈分类、证据门槛与下架刷新规划 | 规划完成，待实施 | [报价反馈分类、证据门槛与下架刷新规划](archive/pending/product/2026-07-14_offer-feedback-evidence-and-cache-refresh-plan.md) | 进入 P0 实现：问题类型必选、标题党/商家描述误导证据必填、建议下架不再触发证据必填、下架后定向刷新 |
+| 2026-07-14 | Umami 数据监测与采集分层规划 | 规划完成，待实施 | [Umami 数据监测与采集分层规划](archive/pending/product/2026-07-14_umami-data-monitoring-and-collection-tiering-plan.md) | 先确认 P0 入口命名、覆盖范围和 Umami 事件口径，再拆实现任务 |
 | 2026-07-11 | PriceAI 总定位、模块命名与官方 API 路径调整 | 已完成 | 总标题统一为“AI 低价卡网订阅与中转 API 比价雷达”；正式模块统一为卡网订阅、官方订阅、官方 API、中转 API；`/api-models/*` 永久跳转到 `/official-api/*` | 继续逐份讨论卡网订阅和中转 API 的独立 PRD Lite |
 | 2026-07-11 | 旧产品规划首轮清理 | 已完成 | 8 份旧规划补充收尾记录并移入 `archive/done/product/`；保留公告系统等真实未完成规划 | 后续按 Idea-to-Product 文档讨论产品，技术 PRD 与 checklist 作为内部执行材料维护 |
 | 2026-07-11 | 轻量用户登录 V1 | 已收尾 | commit `3bf1825`、`7c9bb00`；Google 登录、账户页、我的反馈和我的检测报告已落地 | 后续能力按真实需求分别立项 |
@@ -136,10 +140,12 @@
 | 优先级 | 待办 | 为什么重要 | 建议下一步 |
 | --- | --- | --- | --- |
 | P1 | 推进 API 中转线路级综合推荐 | 商业关系退出自然排序的 P0 已上线；下一阶段仍需解决站点、模型与分组数据混合、重复监测样本、缺失指标、模型质量和 TTFT/TPS 口径 | 先确认[中转 API 综合推荐算法产品规划](archive/pending/product/2026-07-14_api-transit-composite-recommendation-algorithm-product-plan.md)中的线路级评分、证据覆盖度和“全部”页面方向，再拆独立实现任务 |
+| P0 | 建立 Umami 数据监测与采集异常总览 | 采集节点、代理、风控和店铺刷新问题需要一个统一后台视角；后续分层采集必须先有用户热度和采集健康数据基础 | 先按[Umami 数据监测与采集分层规划](archive/pending/product/2026-07-14_umami-data-monitoring-and-collection-tiering-plan.md)做 P0：事件口径审计、后台只读总览、高热度陈旧 / 高热度失败 / 长期失败异常队列 |
 | P0 | 建立核心业务回归与生产发布门禁 | 现有 6 个测试程序本地可运行，但 Quality 和 Cloudflare Deploy 都不执行；回滚 promotion workflow 还引用缺失的 npm script | 先收口当前 WIP；新增统一 `npm test` 和显式 typecheck，让 Quality / Deploy 同 SHA 运行核心测试，修复 promotion 入口，并把商业中立、最低可用价、来源优先级、证据和后台写权限设为首批不变量 |
 | P0 | 复盘 README R1 后的数据变化 | GitHub 已成为重要入口，不能盲目大改 README | 7-14 天后记录 Search Console 和 Umami 基线 |
 | P0 | 持续修复卡网分类和下架同步 | 用户最直观看到的是价格和分类是否可信 | 以最近错分/下架反馈为样本更新规则和测试 |
-| P1 | 确认低价订阅渠道稳定性反馈 MVP | 低价订阅用户最缺的是购前稳定性参考；当前已有反馈基础，但缺少商品渠道维度和近期样本表达 | 先确认轻量信号层 P0，暂不做公开评论墙；再拆商品页、反馈表单、商家卡片和后台审核任务 |
+| P0 | 实施报价反馈分类与证据门槛调整 | 反馈入口直接影响纠错效率、商家质量判断和后台处理准确性；当前建议下架会误触发证据必填，且问题类型默认值会污染统计 | 按[报价反馈分类、证据门槛与下架刷新规划](archive/pending/product/2026-07-14_offer-feedback-evidence-and-cache-refresh-plan.md)先做 P0：表单必选、证据规则、后台语义和下架刷新 |
+| P1 | 确认资料核验商家与稳定性反馈 MVP | 低价订阅用户最缺的是购前稳定性参考和可解释的正向筛选入口；当前已有商家视图、登录和反馈基础，但缺少资料核验、商品渠道维度和登录后的正向/中性/负向样本表达 | 先确认“资料核验商家”命名和 P0 人工试运行范围；再拆商品页、反馈表单、商家卡片、广告准入和后台审核任务 |
 | P1 | AI 错分巡检后台 | 分类问题会持续出现，单靠用户反馈和人工脚本排查不够稳定 | 先按[反馈自动化与分类预审](archive/pending/product/2026-07-08_feedback-automation-and-classification-precheck-plan.md)做 P0：分类预审可见化，再做一键应用和 override 沉淀 |
 | P0 | 官方地区价下一阶段策略 | 官方地区价还需要更完整国家覆盖和明确更新方式 | 决定尽量覆盖全部国家的范围；选择按天、按周定时采集，或继续静态快照 |
 | P1 | 非 ChatGPT 平台页扩展 | 当前只完成 ChatGPT 打样，Claude/Gemini/Grok/Google/API 平台页还没完成 | 选择下一批 2-3 个平台页 |

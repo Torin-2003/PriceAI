@@ -226,6 +226,7 @@ export type AdminSummary = DashboardData & {
   crawlRuns: CrawlRun[];
   collectionJobs: CollectionJob[];
   collectorHealth: CollectorHealthSummary;
+  collectionMonitoring: CollectionMonitoringSummary;
   officialPrices: OfficialSubscriptionAdminData;
   apiModels: ApiModelAdminData;
   apiTransit: ApiTransitAdminData;
@@ -455,6 +456,148 @@ export type CollectorHealthSummary = {
   recentFailures: CollectorHealthRunSummary[];
   recentRuns: CollectorHealthRunSummary[];
   heartbeats: CollectorHeartbeat[];
+};
+
+export type CollectionMonitoringFreshnessBand =
+  | "fresh_30"
+  | "fresh_60"
+  | "fresh_120"
+  | "stale_360"
+  | "stale_over_360"
+  | "never";
+
+export type CollectionMonitoringSource = {
+  id: string;
+  name: string;
+  host: string;
+  collectorKind: string;
+  enabled: boolean;
+  healthStatus: Source["healthStatus"];
+  freshnessBand: CollectionMonitoringFreshnessBand;
+  lastSuccessAt?: string | null;
+  lastCheckedAt?: string | null;
+  successAgeMinutes: number | null;
+  checkedAgeMinutes: number | null;
+  consecutiveFailures: number;
+  lastError?: string | null;
+  latestJobStatus?: CollectionJob["status"] | null;
+  latestJobAt?: string | null;
+  latestJobError?: string | null;
+};
+
+export type CollectionMonitoringBehaviorStatus = "ok" | "unconfigured" | "error";
+
+export type CollectionMonitoringBehaviorProperty = {
+  propertyName: string;
+  label: string;
+  required: boolean;
+  observedValueCount: number;
+  topValues: Array<{
+    value: string;
+    count: number;
+  }>;
+};
+
+export type CollectionMonitoringBehaviorEvent = {
+  eventName: string;
+  label: string;
+  required: boolean;
+  status: "tracked" | "missing" | "unknown";
+  total: number;
+  properties: CollectionMonitoringBehaviorProperty[];
+};
+
+export type CollectionMonitoringSourceHeat = {
+  sourceId: string;
+  sourceName: string;
+  host: string;
+  purchaseClicks: number;
+  freshnessBand: CollectionMonitoringFreshnessBand;
+  lastSuccessAt?: string | null;
+  successAgeMinutes: number | null;
+  healthStatus: Source["healthStatus"];
+  consecutiveFailures: number;
+  lastError?: string | null;
+};
+
+export type CollectionMonitoringFailureReason = {
+  key: "challenge" | "http_500" | "timeout" | "no_offers" | "lock_expired" | "other";
+  label: string;
+  count: number;
+  latestMessage?: string | null;
+};
+
+export type CollectionMonitoringSummary = {
+  generatedAt: string;
+  scopeLabel: string;
+  collectorKind: string;
+  sourceCount: number;
+  enabledSourceCount: number;
+  freshness: {
+    targetMinutes: number;
+    within30: number;
+    within60: number;
+    within120: number;
+    within360: number;
+    staleOver360: number;
+    never: number;
+    coverage30Percent: number;
+    coverage60Percent: number;
+    coverage120Percent: number;
+  };
+  health: {
+    healthy: number;
+    retrying: number;
+    failing: number;
+    partial: number;
+    unknown: number;
+  };
+  recentJobs: {
+    windowHours: number;
+    total: number;
+    pending: number;
+    running: number;
+    success: number;
+    failed: number;
+    cancelled: number;
+    staleLocked: number;
+    lockExpiredFailures: number;
+  };
+  behavior: {
+    provider: "umami";
+    status: CollectionMonitoringBehaviorStatus;
+    configured: boolean;
+    baseUrl: string | null;
+    websiteId: string | null;
+    windowDays: number;
+    startAt: string;
+    endAt: string;
+    message: string | null;
+    events: CollectionMonitoringBehaviorEvent[];
+    totals: {
+      trackedEventCount: number;
+      missingEventCount: number;
+      productDetailOpens: number;
+      platformProductDetailOpens: number;
+      purchaseLinkClicks: number;
+      platformFilterChanges: number;
+      scopeChanges: number;
+    };
+    sourceHeat: CollectionMonitoringSourceHeat[];
+    hotStaleSources: CollectionMonitoringSourceHeat[];
+    hotFailedSources: CollectionMonitoringSourceHeat[];
+  };
+  recentRuns: {
+    windowHours: number;
+    total: number;
+    success: number;
+    partial: number;
+    failed: number;
+    skipped: number;
+    successRatePercent: number;
+  };
+  failureReasons: CollectionMonitoringFailureReason[];
+  problemSources: CollectionMonitoringSource[];
 };
 
 export type OfficialSubscriptionPriceStatus =

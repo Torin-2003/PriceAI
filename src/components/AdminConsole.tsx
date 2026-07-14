@@ -127,9 +127,12 @@ type SponsorPlacementKind = keyof SponsorSettings["placements"];
 type SponsorPlacementConfig = SponsorSettings["placements"][SponsorPlacementKind];
 type PasswordStatus = AdminSummary["passwordStatus"];
 type CollectorHealthData = AdminSummary["collectorHealth"];
+type CollectionMonitoringData = AdminSummary["collectionMonitoring"];
 type CollectorHealthSourceRow = CollectorHealthData["sources"][number];
 type CollectorHealthNodeRow = CollectorHealthData["nodeSummaries"][number];
 type CollectorHealthRunRow = CollectorHealthData["recentRuns"][number];
+type CollectionMonitoringSourceRow = CollectionMonitoringData["problemSources"][number];
+type CollectionMonitoringHeatSourceRow = CollectionMonitoringData["behavior"]["sourceHeat"][number];
 type ApiModelEditableTarget = "model" | "provider" | "plan" | "offer";
 type ApiModelEditablePayload = Record<string, unknown> & {
   target: ApiModelEditableTarget;
@@ -971,6 +974,15 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       Number(health.overall.staleNodes || 0)
     );
   }, [collectorStatus.collectorHealth]);
+  const collectionMonitoringIssueCount = useMemo(() => {
+    const monitoring = data.collectionMonitoring;
+    return Math.max(
+      monitoring.enabledSourceCount - monitoring.freshness.within30,
+      monitoring.health.retrying + monitoring.health.failing + monitoring.recentJobs.pending + monitoring.recentJobs.running,
+      monitoring.behavior.totals.missingEventCount + monitoring.behavior.hotStaleSources.length + monitoring.behavior.hotFailedSources.length,
+      monitoring.problemSources.length,
+    );
+  }, [data.collectionMonitoring]);
   const adminNavigationSections: AdminNavSection[] = useMemo(
     () => [
       {
@@ -1017,7 +1029,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
         items: [
           { id: "todo", label: "解析器待办", count: collectorTodoSubmissions.length, icon: <ClipboardList size={15} />, description: "沉淀试采集失败、缺解析器或需要新增规则的渠道。" },
           { id: "collect", label: "任务队列", count: failedRunCount || null, icon: <RefreshCcw size={15} />, description: "创建采集任务、查看队列领取情况和最近运行状态。" },
-          { id: "health", label: "采集健康", count: collectorHealthIssueCount || null, icon: <Activity size={15} />, description: "查看采集节点、来源新鲜度、失败来源和健康指标。" },
+          { id: "health", label: "采集健康", count: (collectionMonitoringIssueCount || collectorHealthIssueCount) || null, icon: <Activity size={15} />, description: "查看刷新覆盖率、采集节点、来源新鲜度、失败来源和健康指标。" },
           { id: "logs", label: "运行记录", count: collectorStatus.crawlRuns.length, icon: <Clock size={15} />, description: "查看采集状态快照和最近运行日志。" },
         ],
       },
@@ -1030,7 +1042,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
         ],
       },
     ],
-    [apiModels.offers.length, apiTransitPendingSubmissionCount, collectorHealthIssueCount, collectorStatus.crawlRuns.length, collectorTodoSubmissions.length, communitySettings, data.apiTransit.metrics.candidateOffers, data.apiTransit.metrics.failedRuns, data.apiTransit.metrics.pendingOffers, data.apiTransit.metrics.pendingStations, failedRunCount, officialPrices.currentPrices.length, pendingFeedbackCount, reviewSubmissions.length, sources.length, sponsorSettings, wholesalePendingLeadCount],
+    [apiModels.offers.length, apiTransitPendingSubmissionCount, collectionMonitoringIssueCount, collectorHealthIssueCount, collectorStatus.crawlRuns.length, collectorTodoSubmissions.length, communitySettings, data.apiTransit.metrics.candidateOffers, data.apiTransit.metrics.failedRuns, data.apiTransit.metrics.pendingOffers, data.apiTransit.metrics.pendingStations, failedRunCount, officialPrices.currentPrices.length, pendingFeedbackCount, reviewSubmissions.length, sources.length, sponsorSettings, wholesalePendingLeadCount],
   );
 
   /* ─── Keyboard shortcuts ─── */
@@ -3548,6 +3560,9 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
             {/* Health tab */}
             {activeTab === "health" && (
               <div role="tabpanel" id="tabpanel-health">
+                <div className="mb-5">
+                  <CollectionMonitoringPanel monitoring={data.collectionMonitoring} />
+                </div>
                 <div className="mb-5">
                   <CollectorStatusSnapshot status={collectorStatus} onRefresh={refreshCollectorStatus} />
                 </div>
@@ -6619,6 +6634,73 @@ function healthPillClass(tone: CollectorHealthData["overall"]["tone"]): string {
   return "bg-[#f2f4f4] text-[#5a6061]";
 }
 
+function formatCoveragePercent(value: number): string {
+  if (!Number.isFinite(value)) return "0%";
+  return `${Number.isInteger(value) ? value : value.toFixed(1)}%`;
+}
+
+function collectionFreshnessTone(
+  band: CollectionMonitoringSourceRow["freshnessBand"],
+): CollectorHealthData["overall"]["tone"] {
+  if (band === "fresh_30") return "success";
+  if (band === "fresh_60") return "info";
+  if (band === "fresh_120") return "warn";
+  return "danger";
+}
+
+function collectionFreshnessLabel(band: CollectionMonitoringSourceRow["freshnessBand"]): string {
+  if (band === "fresh_30") return "30 分钟内";
+  if (band === "fresh_60") return "30-60 分钟";
+  if (band === "fresh_120") return "60-120 分钟";
+  if (band === "stale_360") return "2-6 小时";
+  if (band === "stale_over_360") return "超过 6 小时";
+  return "从未成功";
+}
+
+function failureReasonTone(reason: CollectionMonitoringData["failureReasons"][number]["key"]): BadgeTone {
+  if (reason === "challenge" || reason === "lock_expired") return "danger";
+  if (reason === "http_500" || reason === "timeout") return "warn";
+  if (reason === "no_offers") return "muted";
+  return "info";
+}
+
+function behaviorStatusTone(status: CollectionMonitoringData["behavior"]["status"]): CollectorHealthData["overall"]["tone"] {
+  if (status === "ok") return "success";
+  if (status === "unconfigured") return "muted";
+  return "warn";
+}
+
+function behaviorStatusLabel(status: CollectionMonitoringData["behavior"]["status"]): string {
+  if (status === "ok") return "已接入";
+  if (status === "unconfigured") return "未配置";
+  return "异常";
+}
+
+function behaviorEventStatusTone(status: CollectionMonitoringData["behavior"]["events"][number]["status"]): BadgeTone {
+  if (status === "tracked") return "success";
+  if (status === "missing") return "danger";
+  return "warn";
+}
+
+function behaviorEventStatusLabel(status: CollectionMonitoringData["behavior"]["events"][number]["status"]): string {
+  if (status === "tracked") return "已观测";
+  if (status === "missing") return "缺失";
+  return "待确认";
+}
+
+function mergeCollectionHeatSources(
+  failed: CollectionMonitoringHeatSourceRow[],
+  stale: CollectionMonitoringHeatSourceRow[],
+): CollectionMonitoringHeatSourceRow[] {
+  const byId = new Map<string, CollectionMonitoringHeatSourceRow>();
+  [...failed, ...stale].forEach((source) => {
+    const current = byId.get(source.sourceId);
+    if (!current || source.purchaseClicks > current.purchaseClicks) byId.set(source.sourceId, source);
+  });
+  return Array.from(byId.values())
+    .sort((left, right) => right.purchaseClicks - left.purchaseClicks || left.sourceName.localeCompare(right.sourceName, "zh-CN"));
+}
+
 function collectorSourceStatusLabel(status: CollectorHealthSourceRow["status"]): string {
   if (status === "fresh") return "正常";
   if (status === "aging") return "变慢";
@@ -8540,6 +8622,318 @@ function OfficialMetric({
       <p className="text-[0.68rem] font-semibold uppercase tracking-wider text-[#5a6061]">{label}</p>
       <p className={`mt-1 truncate text-sm font-semibold ${tone === "warn" ? "text-[#7a541b]" : "text-[#2d3435]"}`}>{value}</p>
     </div>
+  );
+}
+
+function CollectionMonitoringPanel({ monitoring }: { monitoring: CollectionMonitoringData }) {
+  const behavior = monitoring.behavior;
+  const heatSources = mergeCollectionHeatSources(behavior.hotFailedSources, behavior.hotStaleSources);
+  const problemRows = useAdminExpandableRows(
+    monitoring.problemSources,
+    `collection-monitoring-problems:${monitoring.generatedAt}:${monitoring.problemSources.length}`,
+    10,
+  );
+  const heatRows = useAdminExpandableRows(
+    heatSources,
+    `collection-monitoring-heat:${monitoring.generatedAt}:${heatSources.length}`,
+    6,
+  );
+  const freshnessTone: CollectorHealthData["overall"]["tone"] =
+    monitoring.freshness.coverage30Percent >= 90
+      ? "success"
+      : monitoring.freshness.coverage60Percent >= 90
+        ? "info"
+        : monitoring.freshness.coverage120Percent >= 90
+          ? "warn"
+          : "danger";
+  const jobTone: CollectorHealthData["overall"]["tone"] =
+    monitoring.recentJobs.failed || monitoring.recentJobs.staleLocked
+      ? "danger"
+      : monitoring.recentJobs.pending || monitoring.recentJobs.running
+        ? "info"
+        : "success";
+  const runTone: CollectorHealthData["overall"]["tone"] =
+    monitoring.recentRuns.total === 0
+      ? "muted"
+      : monitoring.recentRuns.successRatePercent >= 95
+        ? "success"
+        : monitoring.recentRuns.successRatePercent >= 80
+          ? "warn"
+          : "danger";
+
+  return (
+    <Panel title="数据监测与链动小铺刷新" icon={<Activity size={17} />}>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
+        <HealthMetric
+          label="30 分钟覆盖"
+          value={`${monitoring.freshness.within30}/${monitoring.enabledSourceCount} · ${formatCoveragePercent(monitoring.freshness.coverage30Percent)}`}
+          tone={freshnessTone}
+        />
+        <HealthMetric
+          label="60 分钟覆盖"
+          value={`${monitoring.freshness.within60}/${monitoring.enabledSourceCount} · ${formatCoveragePercent(monitoring.freshness.coverage60Percent)}`}
+          tone={monitoring.freshness.coverage60Percent >= 90 ? "success" : "warn"}
+        />
+        <HealthMetric
+          label="120 分钟覆盖"
+          value={`${monitoring.freshness.within120}/${monitoring.enabledSourceCount} · ${formatCoveragePercent(monitoring.freshness.coverage120Percent)}`}
+          tone={monitoring.freshness.coverage120Percent >= 95 ? "success" : "warn"}
+        />
+        <HealthMetric
+          label="最近任务"
+          value={`${monitoring.recentJobs.success}/${monitoring.recentJobs.total} 成功`}
+          tone={jobTone}
+        />
+        <HealthMetric
+          label="最近运行"
+          value={`${formatCoveragePercent(monitoring.recentRuns.successRatePercent)} 成功`}
+          tone={runTone}
+        />
+        <HealthMetric
+          label="购买点击"
+          value={behavior.status === "ok" ? `${behavior.totals.purchaseLinkClicks} 次` : behaviorStatusLabel(behavior.status)}
+          tone={behaviorStatusTone(behavior.status)}
+        />
+        <HealthMetric
+          label="热度陈旧"
+          value={`${behavior.hotStaleSources.length} 个`}
+          tone={behavior.hotStaleSources.length ? "warn" : behaviorStatusTone(behavior.status)}
+        />
+        <HealthMetric
+          label="待关注店铺"
+          value={`${monitoring.problemSources.length} 个`}
+          tone={monitoring.problemSources.length ? "warn" : "success"}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="overflow-x-auto rounded-lg border border-[#adb3b4]/20">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-[#f2f4f4] text-xs font-semibold uppercase tracking-wider text-[#5a6061]">
+              <tr>
+                <th className="px-3 py-2.5">店铺</th>
+                <th className="px-3 py-2.5">刷新状态</th>
+                <th className="px-3 py-2.5">最近成功</th>
+                <th className="px-3 py-2.5">最近尝试</th>
+                <th className="px-3 py-2.5">失败</th>
+                <th className="px-3 py-2.5">最近任务</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#adb3b4]/15">
+              {problemRows.visibleItems.map((source) => (
+                <CollectionMonitoringSourceRow key={source.id} source={source} />
+              ))}
+              {!problemRows.visibleItems.length ? (
+                <tr>
+                  <td colSpan={6} className="px-3 py-8">
+                    <EmptyState
+                      icon={<CheckCircle2 size={32} className="text-[#adb3b4]" />}
+                      title="暂无拖后腿店铺"
+                      description="当前监测范围内的店铺都在目标刷新窗口内，或没有明显失败信号。"
+                    />
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="space-y-3">
+          <div className="rounded-lg border border-[#adb3b4]/20 bg-[#f8f8f8] px-4 py-3">
+            <p className="text-sm font-semibold text-[#2d3435]">监测口径</p>
+            <p className="mt-1 text-xs leading-5 text-[#5a6061]">
+              范围：{monitoring.scopeLabel}，启用 {monitoring.enabledSourceCount}/{monitoring.sourceCount} 个。这里只做监测，不自动改变采集频率。
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[#5a6061]">
+              <span>健康 {monitoring.health.healthy}</span>
+              <span>重试 {monitoring.health.retrying}</span>
+              <span>失败 {monitoring.health.failing}</span>
+              <span>未知 {monitoring.health.unknown}</span>
+            </div>
+          </div>
+
+          <UmamiBehaviorSummaryCard behavior={behavior} />
+
+          <CollectionHeatSourceCard rows={heatRows.visibleItems} />
+          {heatRows.canToggle ? (
+            <AdminListPager
+              expanded={heatRows.expanded}
+              label={heatRows.statusLabel}
+              buttonLabel={heatRows.toggleLabel}
+              onToggle={heatRows.toggle}
+            />
+          ) : null}
+
+          <div className="rounded-lg border border-[#adb3b4]/20 bg-white px-4 py-3">
+            <p className="text-sm font-semibold text-[#2d3435]">失败原因分布</p>
+            {monitoring.failureReasons.length ? (
+              <div className="mt-3 space-y-2">
+                {monitoring.failureReasons.map((reason) => (
+                  <div key={reason.key} className="rounded-lg bg-[#f2f4f4] px-3 py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-medium text-[#2d3435]">{reason.label}</span>
+                      <Badge tone={failureReasonTone(reason.key)}>{reason.count}</Badge>
+                    </div>
+                    {reason.latestMessage ? (
+                      <p className="mt-1 line-clamp-2 break-words text-xs leading-5 text-[#5a6061]">{reason.latestMessage}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-xs leading-5 text-[#5a6061]">最近没有可归类的失败原因。</p>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-[#adb3b4]/20 bg-white px-4 py-3 text-xs leading-5 text-[#5a6061]">
+            任务窗口：近 {monitoring.recentJobs.windowHours} 小时；运行窗口：近 {monitoring.recentRuns.windowHours} 小时。
+            待执行 {monitoring.recentJobs.pending}，执行中 {monitoring.recentJobs.running}，失败 {monitoring.recentJobs.failed}，锁过期 {monitoring.recentJobs.lockExpiredFailures}。
+          </div>
+        </div>
+      </div>
+
+      {problemRows.canToggle ? (
+        <AdminListPager
+          expanded={problemRows.expanded}
+          label={problemRows.statusLabel}
+          buttonLabel={problemRows.toggleLabel}
+          onToggle={problemRows.toggle}
+        />
+      ) : null}
+    </Panel>
+  );
+}
+
+function UmamiBehaviorSummaryCard({ behavior }: { behavior: CollectionMonitoringData["behavior"] }) {
+  return (
+    <div className="rounded-lg border border-[#adb3b4]/20 bg-white px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-[#2d3435]">Umami 行为口径</p>
+          <p className="mt-1 text-xs leading-5 text-[#5a6061]">
+            近 {behavior.windowDays} 天，{behavior.configured ? "服务端 API 已配置" : "服务端 API 未配置"}。
+            {behavior.websiteId ? <span className="block truncate">Website: {behavior.websiteId}</span> : null}
+          </p>
+        </div>
+        <Badge tone={behaviorStatusTone(behavior.status) === "success" ? "success" : behaviorStatusTone(behavior.status) === "muted" ? "muted" : "warn"}>
+          {behaviorStatusLabel(behavior.status)}
+        </Badge>
+      </div>
+
+      {behavior.message ? (
+        <p className="mt-3 rounded-lg bg-[#fff7e8] px-3 py-2 text-xs leading-5 text-[#7a541b]">{behavior.message}</p>
+      ) : null}
+
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[#5a6061]">
+        <span>详情 {behavior.totals.productDetailOpens}</span>
+        <span>平台详情 {behavior.totals.platformProductDetailOpens}</span>
+        <span>购买 {behavior.totals.purchaseLinkClicks}</span>
+        <span>筛选 {behavior.totals.platformFilterChanges}</span>
+      </div>
+
+      <div className="mt-3 space-y-2">
+        {behavior.events.map((event) => (
+          <div key={event.eventName} className="rounded-lg bg-[#f2f4f4] px-3 py-2">
+            <div className="flex items-center justify-between gap-3">
+              <span className="min-w-0 truncate text-xs font-medium text-[#2d3435]">{event.label}</span>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <span className="text-xs text-[#5a6061]">{event.total}</span>
+                <Badge tone={behaviorEventStatusTone(event.status)}>{behaviorEventStatusLabel(event.status)}</Badge>
+              </div>
+            </div>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {event.properties.map((property) => (
+                <span
+                  key={property.propertyName}
+                  className={`rounded-full px-2 py-0.5 text-[0.68rem] ${
+                    property.required && !property.observedValueCount
+                      ? "bg-[#fbe9e7] text-[#9b3328]"
+                      : "bg-white text-[#5a6061]"
+                  }`}
+                >
+                  {property.label}: {property.observedValueCount}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CollectionHeatSourceCard({ rows }: { rows: CollectionMonitoringHeatSourceRow[] }) {
+  return (
+    <div className="rounded-lg border border-[#adb3b4]/20 bg-white px-4 py-3">
+      <p className="text-sm font-semibold text-[#2d3435]">热度异常来源</p>
+      {rows.length ? (
+        <div className="mt-3 space-y-2">
+          {rows.map((source) => (
+            <div key={source.sourceId} className="rounded-lg bg-[#f8f8f8] px-3 py-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-medium text-[#2d3435]">{source.sourceName}</p>
+                  <p className="mt-0.5 truncate text-[0.68rem] text-[#adb3b4]">{source.host || source.sourceId}</p>
+                </div>
+                <Badge tone="info">{source.purchaseClicks} 点击</Badge>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <HealthPill tone={collectionFreshnessTone(source.freshnessBand)}>
+                  {collectionFreshnessLabel(source.freshnessBand)}
+                </HealthPill>
+                {source.consecutiveFailures ? <Badge tone="warn">连续失败 {source.consecutiveFailures}</Badge> : null}
+                {source.healthStatus === "failing" ? <Badge tone="danger">采集失败</Badge> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-2 text-xs leading-5 text-[#5a6061]">
+          暂无“有点击但陈旧或失败”的来源。未配置 Umami 时这里只保留空态，不影响刷新监测。
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CollectionMonitoringSourceRow({ source }: { source: CollectionMonitoringSourceRow }) {
+  return (
+    <tr>
+      <td className="min-w-[220px] px-3 py-3">
+        <div className="font-medium text-[#2d3435]">{source.name}</div>
+        <div className="mt-0.5 truncate text-xs text-[#adb3b4]">{source.host || source.id}</div>
+      </td>
+      <td className="px-3 py-3">
+        <HealthPill tone={collectionFreshnessTone(source.freshnessBand)}>
+          {collectionFreshnessLabel(source.freshnessBand)}
+        </HealthPill>
+      </td>
+      <td className="px-3 py-3 text-[#5a6061]">
+        {source.lastSuccessAt ? formatRelativeTime(source.lastSuccessAt) : "未记录"}
+        {source.successAgeMinutes !== null ? <span className="block text-xs text-[#adb3b4]">{formatAgeMinutes(source.successAgeMinutes)}</span> : null}
+      </td>
+      <td className="px-3 py-3 text-[#5a6061]">
+        {source.lastCheckedAt ? formatRelativeTime(source.lastCheckedAt) : "未记录"}
+        {source.checkedAgeMinutes !== null ? <span className="block text-xs text-[#adb3b4]">{formatAgeMinutes(source.checkedAgeMinutes)}</span> : null}
+      </td>
+      <td className="min-w-[220px] px-3 py-3 text-[#5a6061]">
+        <span>连续 {source.consecutiveFailures} 次</span>
+        {source.lastError ? <span className="block break-words text-xs leading-5 text-[#9b3328]">{source.lastError}</span> : null}
+      </td>
+      <td className="px-3 py-3 text-[#5a6061]">
+        {source.latestJobStatus ? (
+          <>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${collectionJobStatusClass(source.latestJobStatus)}`}>
+              {collectionJobStatusLabel(source.latestJobStatus)}
+            </span>
+            {source.latestJobAt ? <span className="mt-1 block text-xs text-[#adb3b4]">{formatRelativeTime(source.latestJobAt)}</span> : null}
+            {source.latestJobError ? <span className="mt-1 block break-words text-xs leading-5 text-[#9b3328]">{source.latestJobError}</span> : null}
+          </>
+        ) : (
+          "无近期任务"
+        )}
+      </td>
+    </tr>
   );
 }
 

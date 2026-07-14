@@ -26,6 +26,7 @@ import {
 } from "./public-api-snapshots";
 import { getFallbackRiskReviewSettingsSummary, getRiskReviewSettingsSummary } from "./risk-review-settings";
 import { getCommunitySettingsSummary, getFallbackCommunitySettingsSummary } from "./community-settings";
+import { getRuntimeEnv } from "./runtime-env";
 import { getFallbackSponsorSettingsSummary, getSponsorSettingsSummary } from "./sponsor-settings";
 import {
   isMerchantCollectorPlatformFilter,
@@ -85,10 +86,60 @@ const ADMIN_DATA_CACHE_TTL_MS = 120_000;
 const ADMIN_OFFER_SAMPLE_LIMIT = 80;
 const EXPLORER_OFFER_SEARCH_TEXT_MAX_LENGTH = 480;
 const STALE_PUBLIC_DATA_MESSAGE = "报价服务响应变慢，已先显示最近缓存结果。";
+const UMAMI_MONITORING_WINDOW_DAYS = 30;
+const UMAMI_MONITORING_TIMEOUT_MS = 6_000;
+const UMAMI_EVENT_DEFINITIONS = [
+  {
+    eventName: "product_detail_open",
+    label: "商品详情打开",
+    required: true,
+    properties: [
+      { propertyName: "product_id", label: "商品 ID", required: true },
+      { propertyName: "platform", label: "平台", required: true },
+    ],
+  },
+  {
+    eventName: "platform_product_detail_open",
+    label: "平台页商品详情打开",
+    required: false,
+    properties: [
+      { propertyName: "product_id", label: "商品 ID", required: true },
+      { propertyName: "platform", label: "平台", required: true },
+    ],
+  },
+  {
+    eventName: "purchase_link_click",
+    label: "购买外链点击",
+    required: true,
+    properties: [
+      { propertyName: "source_id", label: "来源 ID", required: true },
+      { propertyName: "available", label: "是否有货", required: false },
+    ],
+  },
+  {
+    eventName: "platform_filter_change",
+    label: "平台筛选切换",
+    required: true,
+    properties: [
+      { propertyName: "platform", label: "平台", required: true },
+    ],
+  },
+  {
+    eventName: "scope_change",
+    label: "视图范围切换",
+    required: true,
+    properties: [
+      { propertyName: "scope", label: "范围", required: true },
+      { propertyName: "platform", label: "平台", required: false },
+    ],
+  },
+] as const;
 const PRIMARY_COLLECTOR_NODE_IDS = new Set([
   "huoshan2-nonshop",
   "aliyun6-hangzhou-priceai",
   "aliyun5-chengdu-priceai",
+  "aliyun8-new-8-147-priceai",
+  "aliyun7-new-47-121-priceai",
 ]);
 const PUBLIC_EXPLORER_SNAPSHOT_KEY = "default";
 const PUBLIC_OFFERS_SNAPSHOT_LIMIT = PUBLIC_OFFER_DEFAULT_LIMIT;
@@ -1349,6 +1400,7 @@ export function getEmptyAdminSummary(isAuthenticated = false): AdminSummary {
     crawlRuns: [],
     collectionJobs: [],
     collectorHealth: emptyCollectorHealthSummary(new Date().toISOString()),
+    collectionMonitoring: emptyCollectionMonitoringSummary(new Date().toISOString()),
     officialPrices: {
       configured: isSupabaseConfigured(),
       tableReady: false,
@@ -1684,6 +1736,7 @@ async function readAdminSummary(): Promise<AdminSummary> {
       crawlRuns: [],
       collectionJobs: [],
       collectorHealth: emptyCollectorHealthSummary(new Date().toISOString()),
+      collectionMonitoring: emptyCollectionMonitoringSummary(new Date().toISOString()),
       officialPrices,
       apiModels,
       apiTransit,
@@ -1805,6 +1858,24 @@ async function readAdminSummary(): Promise<AdminSummary> {
     crawlRuns,
     heartbeats: collectorHeartbeats,
   });
+  const collectionMonitoring = buildCollectionMonitoringSummary({
+    generatedAt,
+    sources,
+    collectionJobs,
+    crawlRuns,
+    behavior: await adminLoad(
+      "umami-monitoring",
+      "Umami 行为监测",
+      readCollectionMonitoringBehaviorSummary({ generatedAt, sources }),
+      emptyCollectionMonitoringBehaviorSummary({
+        generatedAt,
+        ...collectionBehaviorWindow(generatedAt),
+        status: "error",
+        message: "读取 Umami 行为数据失败。",
+      }),
+      loadErrors,
+    ),
+  });
   const baseDashboard: DashboardData = {
     generatedAt,
     configured: isSupabaseConfigured(),
@@ -1824,6 +1895,7 @@ async function readAdminSummary(): Promise<AdminSummary> {
       crawlRuns: [],
       collectionJobs,
       collectorHealth,
+      collectionMonitoring,
       officialPrices,
       apiModels,
       apiTransit,
@@ -1850,6 +1922,7 @@ async function readAdminSummary(): Promise<AdminSummary> {
     crawlRuns,
     collectionJobs,
     collectorHealth,
+    collectionMonitoring,
     officialPrices,
     apiModels,
     apiTransit,
@@ -2417,7 +2490,7 @@ async function listCollectionJobs(): Promise<CollectionJob[]> {
     .from("collection_jobs")
     .select("*")
     .order("created_at", { ascending: false })
-    .limit(30);
+    .limit(300);
 
   if (error) throw error;
   return (data || []).map(mapCollectionJob);
@@ -2546,6 +2619,761 @@ function emptyCollectorHealthSummary(generatedAt: string): CollectorHealthSummar
     recentRuns: [],
     heartbeats: [],
   };
+}
+
+type CollectionMonitoringBehaviorSummary = AdminSummary["collectionMonitoring"]["behavior"];
+type CollectionMonitoringBehaviorEvent = CollectionMonitoringBehaviorSummary["events"][number];
+type CollectionMonitoringBehaviorProperty = CollectionMonitoringBehaviorEvent["properties"][number];
+type CollectionMonitoringSourceHeat = CollectionMonitoringBehaviorSummary["sourceHeat"][number];
+
+type UmamiMonitoringConfig = {
+  baseUrl: string | null;
+  websiteId: string | null;
+  token: string | null;
+  apiKey: string | null;
+  username: string | null;
+  password: string | null;
+};
+
+type UmamiPropertyKey = `${string}:${string}`;
+
+function collectionBehaviorWindow(generatedAt: string): {
+  startAt: string;
+  endAt: string;
+  startMs: number;
+  endMs: number;
+} {
+  const endMs = timestampMs(generatedAt) || Date.now();
+  const startMs = endMs - UMAMI_MONITORING_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  return {
+    startAt: new Date(startMs).toISOString(),
+    endAt: new Date(endMs).toISOString(),
+    startMs,
+    endMs,
+  };
+}
+
+function emptyCollectionMonitoringBehaviorSummary(input: {
+  generatedAt: string;
+  startAt: string;
+  endAt: string;
+  status?: CollectionMonitoringBehaviorSummary["status"];
+  message?: string | null;
+}): CollectionMonitoringBehaviorSummary {
+  const config = resolveUmamiMonitoringConfig();
+  return {
+    provider: "umami",
+    status: input.status || "unconfigured",
+    configured: false,
+    baseUrl: config.baseUrl,
+    websiteId: config.websiteId,
+    windowDays: UMAMI_MONITORING_WINDOW_DAYS,
+    startAt: input.startAt,
+    endAt: input.endAt,
+    message: input.message || null,
+    events: UMAMI_EVENT_DEFINITIONS.map((definition) => ({
+      eventName: definition.eventName,
+      label: definition.label,
+      required: definition.required,
+      status: "unknown",
+      total: 0,
+      properties: definition.properties.map((property) => ({
+        propertyName: property.propertyName,
+        label: property.label,
+        required: property.required,
+        observedValueCount: 0,
+        topValues: [],
+      })),
+    })),
+    totals: {
+      trackedEventCount: 0,
+      missingEventCount: UMAMI_EVENT_DEFINITIONS.filter((definition) => definition.required).length,
+      productDetailOpens: 0,
+      platformProductDetailOpens: 0,
+      purchaseLinkClicks: 0,
+      platformFilterChanges: 0,
+      scopeChanges: 0,
+    },
+    sourceHeat: [],
+    hotStaleSources: [],
+    hotFailedSources: [],
+  };
+}
+
+async function readCollectionMonitoringBehaviorSummary(input: {
+  generatedAt: string;
+  sources: Source[];
+}): Promise<CollectionMonitoringBehaviorSummary> {
+  const window = collectionBehaviorWindow(input.generatedAt);
+  const config = resolveUmamiMonitoringConfig();
+  const fallback = emptyCollectionMonitoringBehaviorSummary({
+    generatedAt: input.generatedAt,
+    startAt: window.startAt,
+    endAt: window.endAt,
+    status: "unconfigured",
+    message: "Umami 后台 API 未配置。",
+  });
+
+  if (!config.baseUrl || !config.websiteId) {
+    return {
+      ...fallback,
+      message: "缺少 UMAMI_API_BASE_URL / NEXT_PUBLIC_UMAMI_SCRIPT_URL 或 UMAMI_WEBSITE_ID / NEXT_PUBLIC_UMAMI_WEBSITE_ID。",
+    };
+  }
+
+  if (!config.token && !config.apiKey && (!config.username || !config.password)) {
+    return {
+      ...fallback,
+      baseUrl: config.baseUrl,
+      websiteId: config.websiteId,
+      message: "缺少 UMAMI_API_TOKEN，或 UMAMI_API_USERNAME / UMAMI_API_PASSWORD。",
+    };
+  }
+
+  try {
+    const authHeaders = await getUmamiAuthHeaders(config);
+    const eventTotals = await readUmamiEventTotals(config, authHeaders, window);
+    const propertyValues = await readUmamiPropertyValues(config, authHeaders, window);
+    const events = buildUmamiBehaviorEvents(eventTotals, propertyValues);
+    const sourceHeat = buildUmamiSourceHeatRows({
+      sources: input.sources,
+      sourceIdValues: propertyValues.get("purchase_link_click:source_id") || [],
+      generatedMs: window.endMs,
+    });
+    const trackedEventCount = events.filter((event) => event.status === "tracked").length;
+    const missingEventCount = events.filter((event) => event.required && event.status === "missing").length;
+
+    return {
+      provider: "umami",
+      status: "ok",
+      configured: true,
+      baseUrl: config.baseUrl,
+      websiteId: config.websiteId,
+      windowDays: UMAMI_MONITORING_WINDOW_DAYS,
+      startAt: window.startAt,
+      endAt: window.endAt,
+      message: null,
+      events,
+      totals: {
+        trackedEventCount,
+        missingEventCount,
+        productDetailOpens: eventTotalFor(events, "product_detail_open"),
+        platformProductDetailOpens: eventTotalFor(events, "platform_product_detail_open"),
+        purchaseLinkClicks: eventTotalFor(events, "purchase_link_click"),
+        platformFilterChanges: eventTotalFor(events, "platform_filter_change"),
+        scopeChanges: eventTotalFor(events, "scope_change"),
+      },
+      sourceHeat,
+      hotStaleSources: sourceHeat
+        .filter((source) => source.purchaseClicks > 0 && source.freshnessBand !== "fresh_30")
+        .slice(0, 12),
+      hotFailedSources: sourceHeat
+        .filter((source) =>
+          source.purchaseClicks > 0 &&
+          (source.healthStatus === "failing" ||
+            source.healthStatus === "retrying" ||
+            Number(source.consecutiveFailures || 0) > 0 ||
+            Boolean(source.lastError))
+        )
+        .slice(0, 12),
+    };
+  } catch (error) {
+    return {
+      ...fallback,
+      status: "error",
+      configured: true,
+      baseUrl: config.baseUrl,
+      websiteId: config.websiteId,
+      message: errorMessage(error),
+    };
+  }
+}
+
+function resolveUmamiMonitoringConfig(): UmamiMonitoringConfig {
+  return {
+    baseUrl: normalizeUmamiBaseUrl(
+      getRuntimeEnv("UMAMI_API_BASE_URL") ||
+        getRuntimeEnv("UMAMI_BASE_URL") ||
+        deriveUmamiBaseUrlFromScript(getRuntimeEnv("NEXT_PUBLIC_UMAMI_SCRIPT_URL")),
+    ),
+    websiteId:
+      cleanRuntimeEnv("UMAMI_WEBSITE_ID") ||
+      cleanRuntimeEnv("UMAMI_API_WEBSITE_ID") ||
+      cleanRuntimeEnv("NEXT_PUBLIC_UMAMI_WEBSITE_ID") ||
+      null,
+    token:
+      cleanRuntimeEnv("UMAMI_API_TOKEN") ||
+      cleanRuntimeEnv("UMAMI_TOKEN") ||
+      cleanRuntimeEnv("UMAMI_API_BEARER_TOKEN") ||
+      null,
+    apiKey: cleanRuntimeEnv("UMAMI_API_KEY") || null,
+    username: cleanRuntimeEnv("UMAMI_API_USERNAME") || cleanRuntimeEnv("UMAMI_USERNAME") || null,
+    password: cleanRuntimeEnv("UMAMI_API_PASSWORD") || cleanRuntimeEnv("UMAMI_PASSWORD") || null,
+  };
+}
+
+function cleanRuntimeEnv(name: string): string | null {
+  const value = getRuntimeEnv(name)?.trim();
+  return value || null;
+}
+
+function deriveUmamiBaseUrlFromScript(scriptUrl: string | undefined): string | null {
+  if (!scriptUrl) return null;
+  try {
+    return new URL(scriptUrl).origin;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeUmamiBaseUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return value.replace(/\/+$/, "") || null;
+  }
+}
+
+async function getUmamiAuthHeaders(config: UmamiMonitoringConfig): Promise<Record<string, string>> {
+  if (config.apiKey) {
+    return {
+      "x-umami-api-key": config.apiKey,
+    };
+  }
+  if (config.token) {
+    return {
+      Authorization: `Bearer ${config.token}`,
+    };
+  }
+  if (!config.username || !config.password) {
+    throw new Error("Umami API 凭据未配置。");
+  }
+
+  const payload = await fetchUmamiJson(config, {}, "/api/auth/login", {}, {
+    method: "POST",
+    body: JSON.stringify({
+      username: config.username,
+      password: config.password,
+    }),
+  });
+  const token = readUmamiToken(payload);
+  if (!token) throw new Error("Umami 登录成功但未返回 token。");
+  return {
+    Authorization: `Bearer ${token}`,
+  };
+}
+
+function readUmamiToken(payload: unknown): string | null {
+  const record = asRecord(payload);
+  const data = asRecord(record?.data);
+  const candidates = [
+    record?.token,
+    record?.accessToken,
+    record?.access_token,
+    data?.token,
+    data?.accessToken,
+    data?.access_token,
+  ];
+  const token = candidates.find((value) => typeof value === "string" && value.trim());
+  return typeof token === "string" ? token : null;
+}
+
+async function readUmamiEventTotals(
+  config: UmamiMonitoringConfig,
+  authHeaders: Record<string, string>,
+  window: ReturnType<typeof collectionBehaviorWindow>,
+): Promise<Map<string, number>> {
+  const payload = await fetchUmamiJson(config, authHeaders, `/api/websites/${config.websiteId}/event-data/events`, {
+    startAt: String(window.startMs),
+    endAt: String(window.endMs),
+  });
+  const totals = new Map<string, number>();
+  for (const row of normalizeUmamiRows(payload)) {
+    const eventName = readUmamiText(row, ["eventName", "event_name", "event", "name", "x"]);
+    if (!eventName) continue;
+    totals.set(eventName, Math.max(totals.get(eventName) || 0, readUmamiCount(row)));
+  }
+  return totals;
+}
+
+async function readUmamiPropertyValues(
+  config: UmamiMonitoringConfig,
+  authHeaders: Record<string, string>,
+  window: ReturnType<typeof collectionBehaviorWindow>,
+): Promise<Map<UmamiPropertyKey, Array<{ value: string; count: number }>>> {
+  const entries = await Promise.all(
+    UMAMI_EVENT_DEFINITIONS.flatMap((definition) =>
+      definition.properties.map(async (property): Promise<[UmamiPropertyKey, Array<{ value: string; count: number }>]> => {
+        const key: UmamiPropertyKey = `${definition.eventName}:${property.propertyName}`;
+        try {
+          const payload = await fetchUmamiJson(config, authHeaders, `/api/websites/${config.websiteId}/event-data/values`, {
+            startAt: String(window.startMs),
+            endAt: String(window.endMs),
+            eventName: definition.eventName,
+            propertyName: property.propertyName,
+          });
+          return [key, normalizeUmamiValueRows(payload).slice(0, 20)];
+        } catch {
+          return [key, []];
+        }
+      }),
+    ),
+  );
+  return new Map(entries);
+}
+
+async function fetchUmamiJson(
+  config: UmamiMonitoringConfig,
+  authHeaders: Record<string, string>,
+  path: string,
+  query: Record<string, string>,
+  init: RequestInit = {},
+): Promise<unknown> {
+  if (!config.baseUrl) throw new Error("Umami API Base URL 未配置。");
+  const url = new URL(path, config.baseUrl);
+  Object.entries(query).forEach(([key, value]) => url.searchParams.set(key, value));
+  const response = await fetch(url, {
+    ...init,
+    cache: "no-store",
+    signal: AbortSignal.timeout(UMAMI_MONITORING_TIMEOUT_MS),
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders,
+      ...(init.headers || {}),
+    },
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Umami API ${response.status}: ${text.slice(0, 160) || response.statusText}`);
+  }
+  return response.json();
+}
+
+function buildUmamiBehaviorEvents(
+  eventTotals: Map<string, number>,
+  propertyValues: Map<UmamiPropertyKey, Array<{ value: string; count: number }>>,
+): CollectionMonitoringBehaviorEvent[] {
+  return UMAMI_EVENT_DEFINITIONS.map((definition) => {
+    const properties: CollectionMonitoringBehaviorProperty[] = definition.properties.map((property) => {
+      const values = propertyValues.get(`${definition.eventName}:${property.propertyName}`) || [];
+      return {
+        propertyName: property.propertyName,
+        label: property.label,
+        required: property.required,
+        observedValueCount: values.length,
+        topValues: values.slice(0, 5),
+      };
+    });
+    const propertyTotal = Math.max(0, ...properties.flatMap((property) => property.topValues.map((item) => item.count)));
+    const total = Math.max(eventTotals.get(definition.eventName) || 0, propertyTotal);
+    const hasRequiredProperties = properties
+      .filter((property) => property.required)
+      .every((property) => property.observedValueCount > 0);
+    const hasAnyProperty = properties.some((property) => property.observedValueCount > 0);
+    const status =
+      total > 0 || hasAnyProperty
+        ? hasRequiredProperties || !definition.required
+          ? "tracked"
+          : "unknown"
+        : definition.required
+          ? "missing"
+          : "unknown";
+
+    return {
+      eventName: definition.eventName,
+      label: definition.label,
+      required: definition.required,
+      status,
+      total,
+      properties,
+    };
+  });
+}
+
+function buildUmamiSourceHeatRows(input: {
+  sources: Source[];
+  sourceIdValues: Array<{ value: string; count: number }>;
+  generatedMs: number;
+}): CollectionMonitoringSourceHeat[] {
+  const sourceMap = new Map(input.sources.map((source) => [source.id, source]));
+  return input.sourceIdValues
+    .filter((item) => item.value && item.value !== "unknown" && item.count > 0)
+    .map((item) => {
+      const source = sourceMap.get(item.value);
+      const successAgeMinutes = source?.lastSuccessAt ? minutesSince(source.lastSuccessAt, input.generatedMs) : null;
+      return {
+        sourceId: item.value,
+        sourceName: source?.name || item.value,
+        host: source ? sourceHost(source) : "",
+        purchaseClicks: item.count,
+        freshnessBand: collectionFreshnessBand(successAgeMinutes),
+        lastSuccessAt: source?.lastSuccessAt || null,
+        successAgeMinutes,
+        healthStatus: source?.healthStatus || "unknown",
+        consecutiveFailures: Number(source?.consecutiveFailures || 0),
+        lastError: source?.lastError || null,
+      };
+    })
+    .sort((left, right) => right.purchaseClicks - left.purchaseClicks || left.sourceName.localeCompare(right.sourceName, "zh-CN"))
+    .slice(0, 30);
+}
+
+function eventTotalFor(events: CollectionMonitoringBehaviorEvent[], eventName: string): number {
+  return events.find((event) => event.eventName === eventName)?.total || 0;
+}
+
+function normalizeUmamiRows(payload: unknown): Record<string, unknown>[] {
+  if (Array.isArray(payload)) return payload.filter(isRecord);
+  const record = asRecord(payload);
+  if (!record) return [];
+  const candidates = [record.data, record.events, record.result, record.results, record.items];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate.filter(isRecord);
+    const nested = asRecord(candidate);
+    if (Array.isArray(nested?.events)) return nested.events.filter(isRecord);
+    if (Array.isArray(nested?.data)) return nested.data.filter(isRecord);
+  }
+  return [];
+}
+
+function normalizeUmamiValueRows(payload: unknown): Array<{ value: string; count: number }> {
+  return normalizeUmamiRows(payload)
+    .map((row) => ({
+      value: readUmamiText(row, ["value", "propertyValue", "property_value", "name", "x"]) || "",
+      count: readUmamiCount(row),
+    }))
+    .filter((row) => row.value)
+    .sort((left, right) => right.count - left.count || left.value.localeCompare(right.value, "zh-CN"));
+}
+
+function readUmamiText(row: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return null;
+}
+
+function readUmamiCount(row: Record<string, unknown>): number {
+  const direct = ["total", "count", "events", "visitors", "pageviews", "sessions", "y"]
+    .map((key) => row[key])
+    .find((value) => typeof value === "number" || typeof value === "string");
+  const count = Number(direct || 0);
+  return Number.isFinite(count) ? count : 0;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(asRecord(value));
+}
+
+function emptyCollectionMonitoringSummary(generatedAt: string): AdminSummary["collectionMonitoring"] {
+  const behaviorWindow = collectionBehaviorWindow(generatedAt);
+  return {
+    generatedAt,
+    scopeLabel: "链动小铺 / shopApi",
+    collectorKind: "shopApi",
+    sourceCount: 0,
+    enabledSourceCount: 0,
+    freshness: {
+      targetMinutes: 30,
+      within30: 0,
+      within60: 0,
+      within120: 0,
+      within360: 0,
+      staleOver360: 0,
+      never: 0,
+      coverage30Percent: 0,
+      coverage60Percent: 0,
+      coverage120Percent: 0,
+    },
+    health: {
+      healthy: 0,
+      retrying: 0,
+      failing: 0,
+      partial: 0,
+      unknown: 0,
+    },
+    recentJobs: {
+      windowHours: 6,
+      total: 0,
+      pending: 0,
+      running: 0,
+      success: 0,
+      failed: 0,
+      cancelled: 0,
+      staleLocked: 0,
+      lockExpiredFailures: 0,
+    },
+    behavior: emptyCollectionMonitoringBehaviorSummary({
+      generatedAt,
+      startAt: behaviorWindow.startAt,
+      endAt: behaviorWindow.endAt,
+      status: "unconfigured",
+      message: "Umami 后台 API 未配置。",
+    }),
+    recentRuns: {
+      windowHours: 2,
+      total: 0,
+      success: 0,
+      partial: 0,
+      failed: 0,
+      skipped: 0,
+      successRatePercent: 0,
+    },
+    failureReasons: [],
+    problemSources: [],
+  };
+}
+
+function buildCollectionMonitoringSummary(input: {
+  generatedAt: string;
+  sources: Source[];
+  collectionJobs: CollectionJob[];
+  crawlRuns: CrawlRun[];
+  behavior: AdminSummary["collectionMonitoring"]["behavior"];
+}): AdminSummary["collectionMonitoring"] {
+  const generatedMs = new Date(input.generatedAt).getTime();
+  const jobWindowHours = 6;
+  const runWindowHours = 2;
+  const jobWindowMs = jobWindowHours * 60 * 60 * 1000;
+  const runWindowMs = runWindowHours * 60 * 60 * 1000;
+  const shopApiSources = input.sources.filter((source) => source.collectorKind === "shopApi");
+  const enabledSources = shopApiSources.filter((source) => source.enabled);
+  const sourceIds = new Set(shopApiSources.map((source) => source.id));
+  const sourceIdsForJobs = new Set(enabledSources.map((source) => source.id));
+  const latestJobBySource = latestCollectionJobBySource(input.collectionJobs, sourceIds);
+  const monitoredSources = enabledSources.map((source) =>
+    collectionMonitoringSourceFor(source, generatedMs, latestJobBySource.get(source.id)),
+  );
+
+  const within30 = monitoredSources.filter((source) => source.successAgeMinutes !== null && source.successAgeMinutes <= 30).length;
+  const within60 = monitoredSources.filter((source) => source.successAgeMinutes !== null && source.successAgeMinutes <= 60).length;
+  const within120 = monitoredSources.filter((source) => source.successAgeMinutes !== null && source.successAgeMinutes <= 120).length;
+  const within360 = monitoredSources.filter((source) => source.successAgeMinutes !== null && source.successAgeMinutes <= 360).length;
+  const never = monitoredSources.filter((source) => source.successAgeMinutes === null).length;
+  const staleOver360 = monitoredSources.filter(
+    (source) => source.successAgeMinutes !== null && source.successAgeMinutes > 360,
+  ).length;
+
+  const recentJobs = input.collectionJobs.filter((job) => {
+    if (job.jobType !== "source") return false;
+    if (!job.sourceId || !sourceIdsForJobs.has(job.sourceId)) return false;
+    return generatedMs - new Date(job.createdAt).getTime() <= jobWindowMs;
+  });
+  const recentRuns = input.crawlRuns.filter((run) => {
+    if (!run.sourceId || !sourceIds.has(run.sourceId)) return false;
+    const observedAt = new Date(run.finishedAt || run.startedAt).getTime();
+    return generatedMs - observedAt <= runWindowMs;
+  });
+  const recentRunSuccessLike = recentRuns.filter((run) => run.status === "success" || run.status === "partial").length;
+  const failureReasonMap = buildCollectionFailureReasonMap(monitoredSources, recentJobs);
+  const problemSources = monitoredSources
+    .filter((source) =>
+      source.freshnessBand !== "fresh_30" || Number(source.consecutiveFailures || 0) > 0 || Boolean(source.lastError),
+    )
+    .sort(compareCollectionProblemSources)
+    .slice(0, 30);
+
+  return {
+    generatedAt: input.generatedAt,
+    scopeLabel: "链动小铺 / shopApi",
+    collectorKind: "shopApi",
+    sourceCount: shopApiSources.length,
+    enabledSourceCount: enabledSources.length,
+    freshness: {
+      targetMinutes: 30,
+      within30,
+      within60,
+      within120,
+      within360,
+      staleOver360,
+      never,
+      coverage30Percent: percentOf(within30, enabledSources.length),
+      coverage60Percent: percentOf(within60, enabledSources.length),
+      coverage120Percent: percentOf(within120, enabledSources.length),
+    },
+    health: {
+      healthy: monitoredSources.filter((source) => source.healthStatus === "healthy").length,
+      retrying: monitoredSources.filter((source) => source.healthStatus === "retrying").length,
+      failing: monitoredSources.filter((source) => source.healthStatus === "failing").length,
+      partial: monitoredSources.filter((source) => source.healthStatus === "partial").length,
+      unknown: monitoredSources.filter((source) => !source.healthStatus || source.healthStatus === "unknown").length,
+    },
+    recentJobs: {
+      windowHours: jobWindowHours,
+      total: recentJobs.length,
+      pending: recentJobs.filter((job) => job.status === "pending").length,
+      running: recentJobs.filter((job) => job.status === "running").length,
+      success: recentJobs.filter((job) => job.status === "success").length,
+      failed: recentJobs.filter((job) => job.status === "failed").length,
+      cancelled: recentJobs.filter((job) => job.status === "cancelled").length,
+      staleLocked: recentJobs.filter((job) => collectionJobLockExpired(job, generatedMs)).length,
+      lockExpiredFailures: recentJobs.filter((job) => isLockExpiredCollectionJobFailure(job)).length,
+    },
+    behavior: input.behavior,
+    recentRuns: {
+      windowHours: runWindowHours,
+      total: recentRuns.length,
+      success: recentRuns.filter((run) => run.status === "success").length,
+      partial: recentRuns.filter((run) => run.status === "partial").length,
+      failed: recentRuns.filter((run) => run.status === "failed").length,
+      skipped: recentRuns.filter((run) => run.status === "skipped").length,
+      successRatePercent: percentOf(recentRunSuccessLike, recentRuns.length),
+    },
+    failureReasons: Array.from(failureReasonMap.values())
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "zh-CN"))
+      .slice(0, 8),
+    problemSources,
+  };
+}
+
+function collectionMonitoringSourceFor(
+  source: Source,
+  generatedMs: number,
+  latestJob?: CollectionJob,
+): AdminSummary["collectionMonitoring"]["problemSources"][number] {
+  const successAgeMinutes = source.lastSuccessAt ? minutesSince(source.lastSuccessAt, generatedMs) : null;
+  const checkedAgeMinutes = source.lastCheckedAt ? minutesSince(source.lastCheckedAt, generatedMs) : null;
+  return {
+    id: source.id,
+    name: source.name,
+    host: sourceHost(source),
+    collectorKind: source.collectorKind || source.collectionMethod || "unknown",
+    enabled: source.enabled,
+    healthStatus: source.healthStatus || "unknown",
+    freshnessBand: collectionFreshnessBand(successAgeMinutes),
+    lastSuccessAt: source.lastSuccessAt || null,
+    lastCheckedAt: source.lastCheckedAt || null,
+    successAgeMinutes,
+    checkedAgeMinutes,
+    consecutiveFailures: Number(source.consecutiveFailures || 0),
+    lastError: source.lastError || null,
+    latestJobStatus: latestJob?.status || null,
+    latestJobAt: latestJob?.finishedAt || latestJob?.startedAt || latestJob?.createdAt || null,
+    latestJobError: latestJob?.lastError || null,
+  };
+}
+
+function collectionFreshnessBand(ageMinutes: number | null): AdminSummary["collectionMonitoring"]["problemSources"][number]["freshnessBand"] {
+  if (ageMinutes === null) return "never";
+  if (ageMinutes <= 30) return "fresh_30";
+  if (ageMinutes <= 60) return "fresh_60";
+  if (ageMinutes <= 120) return "fresh_120";
+  if (ageMinutes <= 360) return "stale_360";
+  return "stale_over_360";
+}
+
+function latestCollectionJobBySource(
+  jobs: CollectionJob[],
+  sourceIds: Set<string>,
+): Map<string, CollectionJob> {
+  const latest = new Map<string, CollectionJob>();
+  for (const job of jobs) {
+    if (job.jobType !== "source" || !job.sourceId || !sourceIds.has(job.sourceId)) continue;
+    const current = latest.get(job.sourceId);
+    if (!current || job.createdAt > current.createdAt) latest.set(job.sourceId, job);
+  }
+  return latest;
+}
+
+function compareCollectionProblemSources(
+  left: AdminSummary["collectionMonitoring"]["problemSources"][number],
+  right: AdminSummary["collectionMonitoring"]["problemSources"][number],
+): number {
+  const freshnessRisk: Record<AdminSummary["collectionMonitoring"]["problemSources"][number]["freshnessBand"], number> = {
+    never: 5,
+    stale_over_360: 4,
+    stale_360: 3,
+    fresh_120: 2,
+    fresh_60: 1,
+    fresh_30: 0,
+  };
+  const healthRisk = (source: AdminSummary["collectionMonitoring"]["problemSources"][number]) =>
+    (source.healthStatus === "failing" ? 3 : source.healthStatus === "retrying" ? 2 : source.healthStatus === "partial" ? 1 : 0) +
+    Math.min(Number(source.consecutiveFailures || 0), 5);
+  const riskDiff =
+    freshnessRisk[right.freshnessBand] - freshnessRisk[left.freshnessBand] ||
+    healthRisk(right) - healthRisk(left);
+  if (riskDiff) return riskDiff;
+  return (right.successAgeMinutes ?? 999999) - (left.successAgeMinutes ?? 999999);
+}
+
+function buildCollectionFailureReasonMap(
+  sources: AdminSummary["collectionMonitoring"]["problemSources"],
+  jobs: CollectionJob[],
+): Map<AdminSummary["collectionMonitoring"]["failureReasons"][number]["key"], AdminSummary["collectionMonitoring"]["failureReasons"][number]> {
+  const map = new Map<
+    AdminSummary["collectionMonitoring"]["failureReasons"][number]["key"],
+    AdminSummary["collectionMonitoring"]["failureReasons"][number]
+  >();
+  const add = (message: string | null | undefined) => {
+    if (!message) return;
+    const key = collectionFailureReasonKey(message);
+    const existing = map.get(key) || {
+      key,
+      label: collectionFailureReasonLabel(key),
+      count: 0,
+      latestMessage: null,
+    };
+    existing.count += 1;
+    if (!existing.latestMessage) existing.latestMessage = message;
+    map.set(key, existing);
+  };
+  sources.forEach((source) => add(source.lastError));
+  jobs.forEach((job) => add(job.lastError));
+  return map;
+}
+
+function collectionFailureReasonKey(message: string): AdminSummary["collectionMonitoring"]["failureReasons"][number]["key"] {
+  const text = message.toLowerCase();
+  if (/verification|challenge|验证码|风控|waf|http 403/.test(text)) return "challenge";
+  if (/http 500|status 500/.test(text)) return "http_500";
+  if (/timeout|timed out|fetch failed|cancelled|canceled|request was cancelled/.test(text)) return "timeout";
+  if (/no offers|无商品|found no offers/.test(text)) return "no_offers";
+  if (/锁已过期|lock.*expired|expired.*lock/.test(text)) return "lock_expired";
+  return "other";
+}
+
+function collectionFailureReasonLabel(
+  key: AdminSummary["collectionMonitoring"]["failureReasons"][number]["key"],
+): string {
+  switch (key) {
+    case "challenge":
+      return "验证页 / 风控";
+    case "http_500":
+      return "源站 HTTP 500";
+    case "timeout":
+      return "超时 / 请求取消";
+    case "no_offers":
+      return "无商品 / 空结果";
+    case "lock_expired":
+      return "任务锁过期";
+    default:
+      return "其他失败";
+  }
+}
+
+function collectionJobLockExpired(job: CollectionJob, nowMs: number): boolean {
+  if (job.status !== "running" || !job.lockedUntil) return false;
+  const lockedUntilMs = new Date(job.lockedUntil).getTime();
+  return Number.isFinite(lockedUntilMs) && lockedUntilMs < nowMs;
+}
+
+function isLockExpiredCollectionJobFailure(job: CollectionJob): boolean {
+  return job.status === "failed" && Boolean(job.lastError && collectionFailureReasonKey(job.lastError) === "lock_expired");
+}
+
+function percentOf(part: number, total: number): number {
+  if (!total) return 0;
+  return Math.round((part / total) * 1000) / 10;
 }
 
 function sourceHealthFor(source: Source, nowMs: number): CollectorHealthSource {
