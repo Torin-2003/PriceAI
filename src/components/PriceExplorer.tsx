@@ -828,6 +828,7 @@ export function PriceExplorer({
 
           <GuidePromptStrip
             className="hidden md:block"
+            promptId="channels-buying-guides"
             links={[
               { label: "卡网渠道靠谱吗？", href: "/guides/are-ai-subscription-card-shops-reliable" },
               { label: "价格为什么差很多？", href: "/guides/why-ai-subscription-prices-differ" },

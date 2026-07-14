@@ -131,6 +131,7 @@ export default async function ApiTransitPage() {
 
         <GuidePromptStrip
           className="mb-5 hidden md:block"
+          promptId="api-transit-usage-guides"
           label="使用前先看"
           links={[
             { label: "充值系数和综合倍率", href: "/guides/api-transit" },
