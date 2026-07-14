@@ -670,7 +670,7 @@ function parseAiTransitSnapshotPayload(source, payload, collectedAt) {
     rechargeRatioFromAiTransitBilling(payload?.billing) ||
     source.rechargeRatio ||
     DEFAULT_RECHARGE_RATIO;
-  const availabilityByKey = aiTransitAvailabilityByKey(payload, generatedAt, source);
+  const availabilityIndex = aiTransitAvailabilityByKey(payload, generatedAt, source);
   const offers = [];
   let usedConfiguredGroupModels = false;
   let modelCount = 0;
@@ -701,15 +701,11 @@ function parseAiTransitSnapshotPayload(source, payload, collectedAt) {
         collectedAt,
         rawGroupName,
         groupName,
-        availability:
-          availabilityByKey.get(aiTransitAvailabilityKey(groupName, standard)) ||
-          availabilityByKey.get(aiTransitAvailabilityKey(rawGroupName, standard)) ||
-          (
-            source.disableGlobalModelAvailabilityFallback
-              ? null
-              : availabilityByKey.get(aiTransitAvailabilityKey(null, standard))
-          ) ||
-          null,
+        availability: selectAiTransitAvailabilityForOffer(availabilityIndex, source, {
+          groupName,
+          rawGroupName,
+          standard,
+        }),
       });
       if (offer) offers.push(offer);
     }
@@ -735,7 +731,7 @@ function parseAiTransitSnapshotPayload(source, payload, collectedAt) {
       meta: { generated_at: generatedAt },
       collectionError,
       minimumTopUp: numberValue(payload?.billing?.minimum_top_up),
-      availability: summarizeAiTransitSnapshotAvailability(availabilityByKey, availabilitySamples, generatedAt, source, payload),
+      availability: summarizeAiTransitSnapshotAvailability(availabilityIndex, availabilitySamples, generatedAt, source, payload),
     }),
     offers: deduped,
     availabilitySamples,
@@ -1008,33 +1004,141 @@ function normalizedCacheHitRate(value) {
 }
 
 function aiTransitAvailabilityByKey(payload, generatedAt, source) {
-  const byKey = new Map();
+  const index = {
+    exact: new Map(),
+    group: new Map(),
+    model: new Map(),
+    family: new Map(),
+  };
   for (const item of Array.isArray(payload?.monitoring) ? payload.monitoring : []) {
     const standard = standardizeModelName([item?.primary_model, item?.name].filter(Boolean).join(" "));
     const rawGroupName = stringOrNull(item?.name);
     const groupName = rawGroupName ? normalizeSourceGroupName(source, rawGroupName) : null;
     if (standard) {
-      byKey.set(
-        aiTransitAvailabilityKey(groupName, standard),
-        aiTransitAvailabilityFromMonitoringItem(item, standard, generatedAt, source),
-      );
-      if (rawGroupName && rawGroupName !== groupName) {
-        byKey.set(
-          aiTransitAvailabilityKey(rawGroupName, standard),
-          aiTransitAvailabilityFromMonitoringItem(item, standard, generatedAt, source),
-        );
-      }
+      addAiTransitAvailabilityCandidate(index, {
+        rawGroupName,
+        groupName,
+        standard,
+        availability: aiTransitAvailabilityFromMonitoringItem(item, standard, generatedAt, source),
+      });
     }
 
     for (const model of Array.isArray(item?.models) ? item.models : []) {
       const modelStandard = standardizeModelName(model?.model || "");
       if (!modelStandard) continue;
       const availability = aiTransitAvailabilityFromMonitoringItem({ ...item, ...model }, modelStandard, generatedAt, source);
-      byKey.set(aiTransitAvailabilityKey(groupName, modelStandard), availability);
-      byKey.set(aiTransitAvailabilityKey(null, modelStandard), availability);
+      addAiTransitAvailabilityCandidate(index, {
+        rawGroupName,
+        groupName,
+        standard: modelStandard,
+        availability,
+      });
     }
   }
-  return byKey;
+  return index;
+}
+
+function addAiTransitAvailabilityCandidate(index, { rawGroupName, groupName, standard, availability }) {
+  if (!availability || !standard) return;
+  const family = familyForStandardModel(standard);
+  const candidate = {
+    id: [
+      stringOrNull(groupName) || "*",
+      stringOrNull(rawGroupName) || "*",
+      standard,
+      availability.lastCheckedAt || "",
+      availability.rate ?? "",
+      availability.samples ?? "",
+    ].join("|"),
+    groupName: stringOrNull(groupName),
+    rawGroupName: stringOrNull(rawGroupName),
+    standard,
+    family,
+    availability,
+  };
+  appendAiTransitAvailabilityCandidate(index.exact, aiTransitAvailabilityKey(groupName, standard), candidate);
+  if (rawGroupName && rawGroupName !== groupName) {
+    appendAiTransitAvailabilityCandidate(index.exact, aiTransitAvailabilityKey(rawGroupName, standard), candidate);
+  }
+  if (groupName) appendAiTransitAvailabilityCandidate(index.group, groupName, candidate);
+  if (rawGroupName && rawGroupName !== groupName) appendAiTransitAvailabilityCandidate(index.group, rawGroupName, candidate);
+  appendAiTransitAvailabilityCandidate(index.model, standard, candidate);
+  appendAiTransitAvailabilityCandidate(index.family, family, candidate);
+}
+
+function appendAiTransitAvailabilityCandidate(map, key, candidate) {
+  const normalizedKey = stringOrNull(key);
+  if (!normalizedKey) return;
+  const candidates = map.get(normalizedKey) || [];
+  if (candidates.some((item) => item.id === candidate.id)) return;
+  map.set(normalizedKey, [...candidates, candidate]);
+}
+
+function selectAiTransitAvailabilityForOffer(index, source, { groupName, rawGroupName, standard }) {
+  const exact =
+    getAiTransitAvailability(index.exact, aiTransitAvailabilityKey(groupName, standard), "exact", standard) ||
+    getAiTransitAvailability(index.exact, aiTransitAvailabilityKey(rawGroupName, standard), "exact", standard);
+  if (exact) return exact;
+
+  const group =
+    getAiTransitAvailability(index.group, groupName, "group", standard) ||
+    getAiTransitAvailability(index.group, rawGroupName, "group", standard);
+  if (group) return group;
+
+  if (!source.disableGlobalModelAvailabilityFallback) {
+    const model = getAiTransitAvailability(index.model, standard, "model", standard);
+    if (model) return model;
+
+    const family = getAiTransitAvailability(index.family, familyForStandardModel(standard), "family", standard);
+    if (family) return family;
+  }
+
+  return null;
+}
+
+function getAiTransitAvailability(map, key, matchLevel, standard) {
+  const candidates = map.get(stringOrNull(key) || "");
+  if (!candidates?.length) return null;
+  return summarizeMatchedAiTransitAvailability(candidates, matchLevel, standard);
+}
+
+function summarizeMatchedAiTransitAvailability(candidates, matchLevel, standard) {
+  const values = candidates.map((candidate) => candidate.availability).filter(Boolean);
+  if (!values.length) return null;
+  const rate = weightedAvailabilityValueRate(values);
+  const samples = values.reduce((total, value) => total + Math.max(0, integerValue(value.samples) || 0), 0);
+  const firstCheckedAt = values.map((item) => item.firstCheckedAt).filter(Boolean).sort().at(0) || null;
+  const lastCheckedAt = values.map((item) => item.lastCheckedAt).filter(Boolean).sort().at(-1) || null;
+  const latest = [...values]
+    .filter((item) => item.latestLatencyMs !== null && item.latestLatencyMs !== undefined && item.lastCheckedAt)
+    .sort((left, right) => new Date(right.lastCheckedAt).getTime() - new Date(left.lastCheckedAt).getTime())[0];
+  const latestLatencyMs = latest?.latestLatencyMs ?? null;
+  const avgLatency7dMs = averageValue(values.map((item) => item.avgLatency7dMs));
+  const primary = values[0];
+  return {
+    rate,
+    samples,
+    firstCheckedAt,
+    lastCheckedAt,
+    latestLatencyMs,
+    avgLatency7dMs,
+    note: aiTransitAvailabilityMatchNote(candidates, matchLevel, standard, rate, samples),
+    availability_source_type: primary.availability_source_type || "public_status",
+    availability_source_label: primary.availability_source_label || "公开监测页",
+    availability_source_url: primary.availability_source_url || null,
+  };
+}
+
+function aiTransitAvailabilityMatchNote(candidates, matchLevel, standard, rate, samples) {
+  const sourceName = candidates[0]?.availability?.availability_source_label || "公开监测页";
+  const groups = Array.from(new Set(candidates.map((candidate) => candidate.groupName || candidate.rawGroupName).filter(Boolean)));
+  const models = Array.from(new Set(candidates.map((candidate) => candidate.standard).filter(Boolean)));
+  const basis =
+    matchLevel === "exact" ? "模型与分组精确监测" :
+      matchLevel === "group" ? `同分组监测${groups.length ? `（${groups.join(" / ")}）` : ""}` :
+        matchLevel === "model" ? `同模型监测${models.length ? `（${models.join(" / ")}）` : ""}` :
+          `同模型族参考${models.length ? `（${models.slice(0, 3).join(" / ")}${models.length > 3 ? " 等" : ""}）` : ""}`;
+  return `${sourceName} ${basis}：${standard || "模型"} 7 日可用率 ${formatPercentValue(rate)}，样本 ${samples}；非 PriceAI API Key 实测。`;
 }
 
 function aiTransitAvailabilityFromMonitoringItem(item, standard, generatedAt, source) {
@@ -1125,8 +1229,8 @@ function applyAiTransitTimelineAvailability(offers, availabilitySamples) {
   }
 }
 
-function summarizeAiTransitSnapshotAvailability(availabilityByKey, availabilitySamples, generatedAt, source, payload = null) {
-  const availabilityValues = Array.from(availabilityByKey.values()).filter((item) => item.rate !== null);
+function summarizeAiTransitSnapshotAvailability(availabilityIndex, availabilitySamples, generatedAt, source, payload = null) {
+  const availabilityValues = uniqueAiTransitAvailabilityValues(availabilityIndex).filter((item) => item.rate !== null);
   const stationSamples = (availabilitySamples || []).filter((sample) => sample.scope !== "offer");
   const summarySamples = stationSamples.length ? stationSamples : (availabilitySamples || []);
   const sampleTimes = summarySamples.map((sample) => stringOrNull(sample.checked_at)).filter(Boolean).sort();
@@ -1160,6 +1264,21 @@ function summarizeAiTransitSnapshotAvailability(availabilityByKey, availabilityS
     note: "ai-transit 公开快照监测汇总；该口径来自站点公开监测，不等同 PriceAI API Key 实测。",
     ...availabilitySourceFields(source, AVAILABILITY_SOURCES.publicStatus),
   };
+}
+
+function uniqueAiTransitAvailabilityValues(availabilityIndex) {
+  const values = [];
+  const seen = new Set();
+  for (const candidates of availabilityIndex?.exact?.values?.() || []) {
+    for (const candidate of candidates) {
+      const value = candidate.availability;
+      const key = candidate.id;
+      if (!value || seen.has(key)) continue;
+      seen.add(key);
+      values.push(value);
+    }
+  }
+  return values;
 }
 
 function weightedAvailabilityValueRate(availabilityValues) {

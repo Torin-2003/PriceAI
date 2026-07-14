@@ -906,7 +906,7 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
 
     const availabilityWindows = buildAvailabilityWindows(dbRows(samplesResult.data), station.id);
     const recentSamplesByKey = buildRecentAvailabilitySamplesByKey(recentSampleRows);
-    const stationWindow = availabilityWindows.get(`${station.id}|station||`);
+    const stationWindow = availabilityWindows.get(availabilityWindowKey(station.id, "station", "", ""));
     const preferPublicStatusSamples = shouldPreferPublicStatusAvailability(station.availability);
 
     return {
@@ -939,18 +939,20 @@ async function enrichStationWithDetailData(station: TransitStation): Promise<Tra
             availabilityWindows.get(availabilityWindowKey(station.id, "offer", price.standardModel, price.groupName))?.last ||
             null,
           recentSamples:
-            getRecentAvailabilitySamplesForScope(
-              recentSamplesByKey,
-              station.id,
-              "offer",
-              price.standardModel,
-              price.groupName,
-              price.availability.sourceType,
-              {
-                preferPublicStatusSamples:
-                  preferPublicStatusSamples || shouldPreferPublicStatusAvailability(price.availability),
-              }
-            ) || price.availability.recentSamples,
+            price.availability.sevenDaySamples > 0 && price.availability.sevenDayRate !== null
+              ? getRecentAvailabilitySamplesForScope(
+                recentSamplesByKey,
+                station.id,
+                "offer",
+                price.standardModel,
+                price.groupName,
+                price.availability.sourceType,
+                {
+                  preferPublicStatusSamples:
+                    preferPublicStatusSamples || shouldPreferPublicStatusAvailability(price.availability),
+                }
+              ) || price.availability.recentSamples
+              : undefined,
         },
         history: historyByOffer.get(historyKey({
           station_id: station.id,
@@ -1058,10 +1060,12 @@ function buildRecentAvailabilitySamplesByKey(rows: DbRow[]): RecentAvailabilityS
       ok: booleanValue(row.ok),
       checkedAt,
     };
-    for (const lookupScope of getTransitRecentAvailabilitySampleLookupScopes(standardModel, groupName)) {
+    for (const lookupScope of getTransitRecentAvailabilitySampleLookupScopes(standardModel, groupName, {
+      includeStationFallback: scope === "station",
+    })) {
       appendRecentAvailabilitySample(
         samplesByKey,
-        availabilityWindowKey(stationId, scope, lookupScope.standardModel, lookupScope.groupName),
+        availabilityWindowKey(stationId, scope, lookupScope.standardModel, lookupScope.groupName, lookupScope.family),
         sourceType,
         sample
       );
@@ -1119,8 +1123,11 @@ function recentAvailabilitySampleBaseKeys(
   standardModel: string,
   groupName: string
 ): string[] {
-  return getTransitRecentAvailabilitySampleLookupScopes(standardModel, groupName)
-    .map((lookupScope) => availabilityWindowKey(stationId, scope, lookupScope.standardModel, lookupScope.groupName));
+  return getTransitRecentAvailabilitySampleLookupScopes(standardModel, groupName, {
+    includeStationFallback: scope === "station",
+  }).map((lookupScope) =>
+    availabilityWindowKey(stationId, scope, lookupScope.standardModel, lookupScope.groupName, lookupScope.family)
+  );
 }
 
 function getRecentAvailabilitySamplesBySource(
@@ -1169,9 +1176,10 @@ function availabilityWindowKey(
   stationId: string,
   scope: "station" | "offer",
   standardModel: string,
-  groupName: string
+  groupName: string,
+  family: TransitModelFamily | null = null
 ): string {
-  return [stationId, scope, standardModel || "", groupName || ""].join("|");
+  return [stationId, scope, standardModel || "", groupName || "", family || ""].join("|");
 }
 
 type DbRow = Record<string, unknown>;
@@ -1281,15 +1289,19 @@ function mapOfferRow(
   const groupName = stringValue(row.group_name) || "默认分组";
   const source = availabilitySourceFromRow(row, nullableString(row.source_url));
   const stationId = stringValue(row.station_id);
-  const recentSamples = getRecentAvailabilitySamplesForScope(
-    recentSamplesByKey,
-    stationId,
-    "offer",
-    standardModel,
-    groupName,
-    source.type,
-    options
-  );
+  const sevenDayRate = numberValue(row.availability_seven_day_rate);
+  const sevenDaySamples = integerValue(row.availability_seven_day_samples) || 0;
+  const recentSamples = sevenDaySamples > 0 && sevenDayRate !== null
+    ? getRecentAvailabilitySamplesForScope(
+        recentSamplesByKey,
+        stationId,
+        "offer",
+        standardModel,
+        groupName,
+        source.type,
+        options
+      )
+    : undefined;
 
   return {
     family,
@@ -1309,8 +1321,8 @@ function mapOfferRow(
     priceSource: stringValue(row.price_source) || "公开价格页",
     lastVerifiedAt: timestampValue(row.last_verified_at),
     availability: {
-      sevenDayRate: numberValue(row.availability_seven_day_rate),
-      sevenDaySamples: integerValue(row.availability_seven_day_samples) || 0,
+      sevenDayRate,
+      sevenDaySamples,
       firstCheckedAt: nullableTimestamp(row.availability_first_checked_at),
       lastCheckedAt: nullableTimestamp(row.availability_last_checked_at),
       recentSamples,

@@ -131,6 +131,10 @@
     "stationSystem": "sub_to_api",
     "rechargeRatio": "1:1",
     "autoPublish": true,
+    "groupAliases": {
+      "GPT&Image": "GPT",
+      "Gemini&Banana": "Gemini"
+    },
     "channelTypes": ["official_api", "cloud", "first_party_pool", "reverse_engineered", "mixed", "undisclosed"],
     "accountPools": ["official_api", "kiro", "mixed", "undisclosed"],
     "supportChannels": ["VX：lyw2465885900"],
@@ -169,6 +173,7 @@
     "autoPublish": true,
     "disableGlobalModelAvailabilityFallback": true,
     "groupAliases": {
+      "cc-kiro-power": "claude-krio-power",
       "cc-max分组": "claude-max-号池-不限制客户端",
       "gpt-plus分组": "gpt-plus",
       "gpt-pro分组": "gpt-pro"

@@ -21,6 +21,7 @@ import {
   TRANSIT_STANDARD_MODEL_FAMILY,
   TRANSIT_COMMERCIAL_LABELS,
   TRANSIT_DEFAULT_COMMERCIAL_OFFER_DISCLOSURE,
+  isTransitStandardModel,
   transitModelPriceMatchesFamily,
   transitStandardModelMatchesFamily,
 } from "@/data/api-transit/types";
@@ -722,27 +723,41 @@ export function getRecentTransitAvailabilitySamples(
 export type TransitRecentAvailabilitySampleLookupScope = {
   standardModel: string;
   groupName: string;
+  family: TransitModelFamily | null;
+  level: "exact" | "group" | "model" | "family" | "station";
 };
 
 export function getTransitRecentAvailabilitySampleLookupScopes(
   standardModel: string,
-  groupName: string
+  groupName: string,
+  options: { includeStationFallback?: boolean } = {}
 ): TransitRecentAvailabilitySampleLookupScope[] {
   const scopes: TransitRecentAvailabilitySampleLookupScope[] = [];
   const seen = new Set<string>();
   const normalizedStandardModel = standardModel || "";
   const normalizedGroupName = groupName || "";
-  const pushScope = (nextStandardModel: string, nextGroupName: string) => {
-    const key = `${nextStandardModel}|${nextGroupName}`;
+  const family = isTransitStandardModel(normalizedStandardModel)
+    ? TRANSIT_STANDARD_MODEL_FAMILY[normalizedStandardModel]
+    : null;
+  const pushScope = (
+    nextStandardModel: string,
+    nextGroupName: string,
+    nextFamily: TransitModelFamily | null,
+    level: TransitRecentAvailabilitySampleLookupScope["level"]
+  ) => {
+    const key = `${nextStandardModel}|${nextGroupName}|${nextFamily || ""}|${level}`;
     if (seen.has(key)) return;
     seen.add(key);
-    scopes.push({ standardModel: nextStandardModel, groupName: nextGroupName });
+    scopes.push({ standardModel: nextStandardModel, groupName: nextGroupName, family: nextFamily, level });
   };
 
-  pushScope(normalizedStandardModel, normalizedGroupName);
-  if (normalizedGroupName) pushScope("", normalizedGroupName);
-  if (normalizedStandardModel && normalizedGroupName) pushScope(normalizedStandardModel, "");
-  if (normalizedStandardModel || normalizedGroupName) pushScope("", "");
+  if (normalizedStandardModel && normalizedGroupName) {
+    pushScope(normalizedStandardModel, normalizedGroupName, null, "exact");
+  }
+  if (normalizedGroupName) pushScope("", normalizedGroupName, null, "group");
+  if (normalizedStandardModel) pushScope(normalizedStandardModel, "", null, "model");
+  if (family) pushScope("", "", family, "family");
+  if (options.includeStationFallback) pushScope("", "", null, "station");
 
   return scopes;
 }
@@ -2140,16 +2155,9 @@ export function formatAvailability(
     Partial<Pick<TransitAvailability, "recentSamples">>
 ): string {
   if (availability.sevenDaySamples <= 0 || availability.sevenDayRate === null) {
-    return formatRecentAvailability(availability.recentSamples) || "样本不足";
+    return "样本不足";
   }
   return `${formatPercent(availability.sevenDayRate)} · 样本 ${availability.sevenDaySamples}`;
-}
-
-function formatRecentAvailability(recentSamples: TransitAvailability["recentSamples"]): string | null {
-  const samples = normalizeRecentAvailabilitySamples(recentSamples || []) || [];
-  if (!samples.length) return null;
-  const okCount = samples.filter((sample) => sample.ok).length;
-  return `最近 ${formatPercent(okCount / samples.length)} · ${samples.length} 次`;
 }
 
 export type AvailabilitySourceTone = "success" | "info" | "warning" | "muted";

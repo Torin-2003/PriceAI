@@ -118,7 +118,7 @@ assertEqual(
       { ok: true, checkedAt: "2026-07-14T10:02:00.000Z" },
     ],
   }),
-  "最近 66.7% · 3 次",
+  "样本不足",
 );
 assertEqual(formatAvailability({ sevenDayRate: null, sevenDaySamples: 0 }), "样本不足");
 
@@ -534,24 +534,33 @@ assertEqual(getTransitPriceAvailabilitySourceMeta(duplicateAvailabilityStation, 
 assertDeepEqual(
   getTransitRecentAvailabilitySampleLookupScopes("GPT 5.5", "gpt-plus"),
   [
-    { standardModel: "GPT 5.5", groupName: "gpt-plus" },
-    { standardModel: "", groupName: "gpt-plus" },
-    { standardModel: "GPT 5.5", groupName: "" },
-    { standardModel: "", groupName: "" },
+    { standardModel: "GPT 5.5", groupName: "gpt-plus", family: null, level: "exact" },
+    { standardModel: "", groupName: "gpt-plus", family: null, level: "group" },
+    { standardModel: "GPT 5.5", groupName: "", family: null, level: "model" },
+    { standardModel: "", groupName: "", family: "gpt", level: "family" },
   ],
 );
 assertDeepEqual(
   getTransitRecentAvailabilitySampleLookupScopes("GPT 5.5", ""),
   [
-    { standardModel: "GPT 5.5", groupName: "" },
-    { standardModel: "", groupName: "" },
+    { standardModel: "GPT 5.5", groupName: "", family: null, level: "model" },
+    { standardModel: "", groupName: "", family: "gpt", level: "family" },
   ],
 );
 assertDeepEqual(
   getTransitRecentAvailabilitySampleLookupScopes("", "gpt-plus"),
   [
-    { standardModel: "", groupName: "gpt-plus" },
-    { standardModel: "", groupName: "" },
+    { standardModel: "", groupName: "gpt-plus", family: null, level: "group" },
+  ],
+);
+assertDeepEqual(
+  getTransitRecentAvailabilitySampleLookupScopes("GPT 5.5", "gpt-plus", { includeStationFallback: true }),
+  [
+    { standardModel: "GPT 5.5", groupName: "gpt-plus", family: null, level: "exact" },
+    { standardModel: "", groupName: "gpt-plus", family: null, level: "group" },
+    { standardModel: "GPT 5.5", groupName: "", family: null, level: "model" },
+    { standardModel: "", groupName: "", family: "gpt", level: "family" },
+    { standardModel: "", groupName: "", family: null, level: "station" },
   ],
 );
 

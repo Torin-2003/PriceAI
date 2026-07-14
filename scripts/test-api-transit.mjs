@@ -68,6 +68,7 @@ assert.equal(configuredWawazzSource.rechargeRatio, "1:1");
 assert.equal(configuredWawazzSource.autoPublish, true);
 assert.equal(configuredWawazzSource.disableGlobalModelAvailabilityFallback, true);
 assert.deepEqual(configuredWawazzSource.groupAliases, {
+  "cc-kiro-power": "claude-krio-power",
   "cc-max分组": "claude-max-号池-不限制客户端",
   "gpt-plus分组": "gpt-plus",
   "gpt-pro分组": "gpt-pro",
@@ -1842,6 +1843,15 @@ assert.equal(wawazzPlusGpt54.model_multiplier, 0.07);
 assert.equal(wawazzPlusGpt54.account_pool, "plus");
 assert.equal(wawazzPlusGpt54.channel_type, "mixed");
 assert.equal(wawazzPlusGpt54.cache_hit_rate, 0.900715);
+assert.equal(wawazzPlusGpt54.availability_seven_day_rate, 0.880862);
+assert.equal(wawazzPlusGpt54.availability_seven_day_samples, 1);
+assert.match(wawazzPlusGpt54.availability_note, /同分组监测/);
+const wawazzClaudeMaxOpus = wawazzAiTransitSnapshot.offers.find(
+  (offer) => offer.standard_model === "Claude Opus 4.8" && offer.group_name === "claude-max-号池-不限制客户端"
+);
+assert.equal(wawazzClaudeMaxOpus.availability_seven_day_rate, 0.981636);
+assert.equal(wawazzClaudeMaxOpus.availability_seven_day_samples, 1);
+assert.match(wawazzClaudeMaxOpus.availability_note, /同分组监测/);
 const wawazzProGpt55 = wawazzAiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.5" && offer.group_name === "gpt-pro");
 assert.equal(wawazzProGpt55, undefined);
 const wawazzProGpt54Mini = wawazzAiTransitSnapshot.offers.find((offer) => offer.standard_model === "GPT 5.4 Mini" && offer.group_name === "gpt-pro");
