@@ -590,6 +590,7 @@ export const canonicalCatalog: CanonicalProduct[] = [
 ];
 
 const catalogById = new Map(canonicalCatalog.map((item) => [item.id, item]));
+const catalogBySlug = new Map(canonicalCatalog.map((item) => [item.slug, item]));
 const legacyCanonicalIdMap: Record<string, string> = {
   "chatgpt-plus-month": "chatgpt-plus",
   "chatgpt-plus-account": "chatgpt-plus",
@@ -618,6 +619,30 @@ const priceFloorByProductId = new Map<string, number>([
 
 export function getCanonicalProduct(id: string): CanonicalProduct {
   return catalogById.get(legacyCanonicalIdMap[id] || id) ?? catalogById.get("other-product")!;
+}
+
+export function findCanonicalCatalogProduct(key: string | null | undefined): CanonicalProduct | null {
+  const value = String(key || "").trim();
+  if (!value) return null;
+  const id = legacyCanonicalIdMap[value] || value;
+  return catalogById.get(id) || catalogBySlug.get(value) || null;
+}
+
+export function withCanonicalCatalogProduct<T extends CanonicalProduct>(product: T): T {
+  const catalogProduct = findCanonicalCatalogProduct(product.id) || findCanonicalCatalogProduct(product.slug);
+  if (!catalogProduct) return product;
+
+  return {
+    ...product,
+    id: catalogProduct.id,
+    slug: catalogProduct.slug,
+    displayName: catalogProduct.displayName,
+    platform: catalogProduct.platform,
+    productType: catalogProduct.productType,
+    spec: catalogProduct.spec,
+    summary: catalogProduct.summary,
+    aliases: catalogProduct.aliases,
+  };
 }
 
 export function resolveOfferProduct(

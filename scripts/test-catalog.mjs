@@ -14,9 +14,11 @@ const {
   buildProductGroups,
   classifyOffer,
   compareProductDisplayOrder,
+  findCanonicalCatalogProduct,
   isDomesticMirrorSiteOffer,
   isSharedAccessOffer,
   isTelegramStarsOffer,
+  withCanonicalCatalogProduct,
 } = await loadCatalogModule();
 const {
   buildOfferFilterFacets,
@@ -347,6 +349,25 @@ assert.equal(plusGroup.inStockCount, 1, "Only one offer is publicly available.")
 assert.equal(plusGroup.outOfStockCount, 2, "Hidden offers are removed before stock counting.");
 assert.equal(plusGroup.offerCount, 3, "Hidden offers should not be counted.");
 assert.equal(plusGroup.lowestPriceLabel, "有货", "Available lowest offer should be labelled as in stock.");
+assert.equal(
+  withCanonicalCatalogProduct({
+    id: "chatgpt-plus",
+    slug: "chatgpt-plus",
+    displayName: "ChatGPT Plus",
+    platform: "ChatGPT",
+    productType: "订阅/会员",
+    spec: "Plus",
+    summary: "旧快照摘要",
+    aliases: [],
+  }).displayName,
+  "ChatGPT Plus 低价订阅 / 试用成品号",
+  "Public stale snapshots should be overwritten by the current catalog display name.",
+);
+assert.equal(
+  findCanonicalCatalogProduct("chatgpt-plus-month")?.id,
+  "chatgpt-plus",
+  "Legacy product ids should resolve to the current public catalog product.",
+);
 
 const warrantyGroups = buildProductGroups([
   makeOffer({ id: "cheap-no-warranty", title: "ChatGPT Plus 月卡 无质保", price: 45, status: "in_stock" }),

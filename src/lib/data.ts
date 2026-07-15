@@ -4,7 +4,20 @@ import { ADMIN_MANUAL_HIDE_REASON_PREFIX, listOfferFeedback, listSiteFeedback, l
 import { getAdminPasswordStatus } from "./admin-auth";
 import { notifyOperationalIssue } from "./alerts";
 import { getApiTransitAdminData, getEmptyApiTransitAdminData } from "./api-transit-admin";
-import { allPlatformOptions, buildProductGroups, canonicalCatalog, classifyOffer, comparePlatformOrder, isDomesticMirrorSiteOffer, isSharedAccessOffer, isTelegramStarsOffer, publicCatalogProducts, resolveOfferProduct } from "./catalog";
+import {
+  allPlatformOptions,
+  buildProductGroups,
+  canonicalCatalog,
+  classifyOffer,
+  comparePlatformOrder,
+  findCanonicalCatalogProduct,
+  isDomesticMirrorSiteOffer,
+  isSharedAccessOffer,
+  isTelegramStarsOffer,
+  publicCatalogProducts,
+  resolveOfferProduct,
+  withCanonicalCatalogProduct,
+} from "./catalog";
 import { isSupabaseConfigured } from "./env";
 import { getApiModelAdminData } from "./api-models-db";
 import { normalizeCollectorKind } from "./collector-registry";
@@ -2267,7 +2280,7 @@ function isPublicProductKeyVisible(id: string | null | undefined): boolean {
   const productKey = String(id || "").trim();
   if (!productKey) return true;
 
-  const catalogProduct = canonicalCatalog.find((product) => product.id === productKey || product.slug === productKey);
+  const catalogProduct = findCanonicalCatalogProduct(productKey);
   if (catalogProduct) return isPublicCatalogProduct(catalogProduct);
 
   return true;
@@ -2281,8 +2294,9 @@ function isPublicOfferPageRowProductVisible(row: PublicOfferPageRow): boolean {
 }
 
 function sanitizeExplorerDataForPublicCatalog(value: ExplorerData): ExplorerData {
-  const products = value.products.filter((product) => isPublicCatalogProduct(product));
-  if (products.length === value.products.length) return value;
+  const products = value.products
+    .map(withCanonicalCatalogProduct)
+    .filter((product) => isPublicCatalogProduct(product));
 
   return {
     ...value,
@@ -2292,14 +2306,16 @@ function sanitizeExplorerDataForPublicCatalog(value: ExplorerData): ExplorerData
 }
 
 function sanitizePublicOffersResultForPublicCatalog(value: PublicOffersResult): PublicOffersResult {
-  const rows = value.rows.filter((row) => isPublicCatalogProduct(row.product));
-  if (rows.length === value.rows.length) return value;
+  const normalizedRows = value.rows
+    .map((row) => ({ ...row, product: withCanonicalCatalogProduct(row.product) }))
+    .filter((row) => isPublicCatalogProduct(row.product));
+  const removedHiddenRows = normalizedRows.length !== value.rows.length;
 
   return {
     ...value,
-    rows,
-    total: rows.length,
-    limited: false,
+    rows: normalizedRows,
+    total: removedHiddenRows ? normalizedRows.length : value.total,
+    limited: removedHiddenRows ? false : value.limited,
   };
 }
 
@@ -4195,7 +4211,7 @@ async function getPublicProductOfferFilterFacetsFromDatabase(id: string, filterP
 }
 
 function resolvePublicProductFilterId(id: string): string {
-  return canonicalCatalog.find((product) => product.id === id || product.slug === id)?.id ?? id;
+  return findCanonicalCatalogProduct(id)?.id ?? id;
 }
 
 function sanitizePublicProductOffersResultForProduct(
@@ -5424,16 +5440,17 @@ function compactPublicMerchantsResult(value: PublicMerchantsResult): PublicMerch
 }
 
 function compactPublicProduct(product: ExplorerProductSummary): CanonicalProduct {
+  const catalogProduct = withCanonicalCatalogProduct(product);
   return {
-    id: product.id,
-    slug: product.slug,
-    displayName: product.displayName,
-    platform: product.platform,
-    productType: product.productType,
-    spec: product.spec,
-    summary: product.summary,
+    id: catalogProduct.id,
+    slug: catalogProduct.slug,
+    displayName: catalogProduct.displayName,
+    platform: catalogProduct.platform,
+    productType: catalogProduct.productType,
+    spec: catalogProduct.spec,
+    summary: catalogProduct.summary,
     aliases: [],
-    updatedAt: product.updatedAt,
+    updatedAt: catalogProduct.updatedAt,
   };
 }
 
@@ -5471,7 +5488,7 @@ function buildDashboard(
 }
 
 function toExplorerProductSummary(product: DashboardData["products"][number]): ExplorerProductSummary {
-  return {
+  return withCanonicalCatalogProduct({
     id: product.id,
     slug: product.slug,
     displayName: product.displayName,
@@ -5494,7 +5511,7 @@ function toExplorerProductSummary(product: DashboardData["products"][number]): E
     latestSeenAt: product.latestSeenAt,
     anomalyFlags: product.anomalyFlags,
     offerSearchText: buildOfferSearchText(product.offers),
-  };
+  });
 }
 
 function mapPublicProductSummaryRow(row: Record<string, unknown>): ExplorerProductSummary {
@@ -5508,7 +5525,7 @@ function mapPublicProductSummaryRow(row: Record<string, unknown>): ExplorerProdu
   const outOfStockCount = Number(row.out_of_stock_count || 0);
   const hasOutOfStock = Boolean(row.has_out_of_stock);
 
-  return {
+  return withCanonicalCatalogProduct({
     id: String(row.id),
     slug: String(row.slug || row.id),
     displayName: String(row.display_name || row.slug || row.id),
@@ -5537,7 +5554,7 @@ function mapPublicProductSummaryRow(row: Record<string, unknown>): ExplorerProdu
       ...(!inStockCount && outOfStockCount ? ["全部缺货"] : []),
     ],
     offerSearchText: toExplorerOfferSearchText(row.offer_search_text),
-  };
+  });
 }
 
 function buildOfferSearchText(offers: RawOffer[]): string {
