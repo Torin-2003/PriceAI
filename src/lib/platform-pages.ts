@@ -114,7 +114,7 @@ export const platformPageConfigs = {
     faqs: [
       [
         "ChatGPT Plus 和成品号要分开看吗？",
-        "PriceAI 当前把 Plus 直充、代充、卡密、成品号等都归到 ChatGPT Plus，因为用户购买前最关心的是 Plus 权益和当前可买价格。具体交付方式仍需要看原始商品名和原平台说明。",
+        "PriceAI 现在把低价订阅、试用成品号和 Pix/iDEAL/UPI 等低价渠道放在 ChatGPT Plus 低价订阅桶里；把官方路径、地区价、iOS 和卡充类放在 ChatGPT Plus 正价代充桶里。具体交付方式仍需要看原始商品名和原平台说明。",
       ],
       [
         "ChatGPT Plus CDK、卡密和账号购买有什么区别？",

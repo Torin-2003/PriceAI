@@ -1,5 +1,8 @@
 export const OFFER_FILTER_TAG_GROUPS = {
   access: "交付方式",
+  geminiRecharge: "Gemini 开通",
+  plusChannel: "Plus 渠道",
+  plusRecharge: "Plus 代充",
   team: "Team 类型",
   duration: "时长",
   gemini: "Gemini 条件",
@@ -17,6 +20,16 @@ export type OfferFilterTagId =
   | "domestic_mirror_site"
   | "delivery_recharge"
   | "delivery_account"
+  | "gemini_12_month_link"
+  | "gemini_12_month_card_binding"
+  | "gemini_18_month_link"
+  | "chatgpt_plus_brazil_pix"
+  | "chatgpt_plus_netherlands_ideal"
+  | "chatgpt_plus_india_upi"
+  | "chatgpt_plus_europe_channel"
+  | "chatgpt_plus_recharge_ph_card"
+  | "chatgpt_plus_recharge_us_ios"
+  | "chatgpt_plus_recharge_official_direct"
   | "team_k12"
   | "team_bug"
   | "team_official"
@@ -76,6 +89,66 @@ export const OFFER_FILTER_TAGS: OfferFilterTagDefinition[] = [
     label: "成品号",
     group: "access",
     description: "交付成品号、账号、账密、独享号、首登或接码状态明确的报价。",
+  },
+  {
+    id: "gemini_12_month_link",
+    label: "12个月提链",
+    group: "geminiRecharge",
+    description: "Gemini Pro 12 个月优惠链接、提取链接或自行操作类报价。",
+  },
+  {
+    id: "gemini_12_month_card_binding",
+    label: "12个月含绑卡",
+    group: "geminiRecharge",
+    description: "Gemini Pro / Pixel 12 个月含绑卡、包绑卡或代开通完成型报价。",
+  },
+  {
+    id: "gemini_18_month_link",
+    label: "18个月链接",
+    group: "geminiRecharge",
+    description: "Gemini Pro 18 个月、Jio、Google One 兑换链接或激活链接报价。",
+  },
+  {
+    id: "chatgpt_plus_brazil_pix",
+    label: "巴西 Pix",
+    group: "plusChannel",
+    description: "ChatGPT Plus 低价订阅里的巴西 Pix 渠道报价。",
+  },
+  {
+    id: "chatgpt_plus_netherlands_ideal",
+    label: "荷兰 iDEAL",
+    group: "plusChannel",
+    description: "ChatGPT Plus 低价订阅里的荷兰 iDEAL 渠道报价。",
+  },
+  {
+    id: "chatgpt_plus_india_upi",
+    label: "印度 UPI",
+    group: "plusChannel",
+    description: "ChatGPT Plus 低价订阅里的印度 UPI 渠道报价。",
+  },
+  {
+    id: "chatgpt_plus_europe_channel",
+    label: "欧洲渠道",
+    group: "plusChannel",
+    description: "ChatGPT Plus 低价订阅里的欧洲、欧区或 AT 未接码渠道报价。",
+  },
+  {
+    id: "chatgpt_plus_recharge_ph_card",
+    label: "菲区卡充",
+    group: "plusRecharge",
+    description: "ChatGPT Plus 正价代充里的菲律宾、菲区卡充或卡冲渠道报价。",
+  },
+  {
+    id: "chatgpt_plus_recharge_us_ios",
+    label: "美区 iOS",
+    group: "plusRecharge",
+    description: "ChatGPT Plus 正价代充里的美区 iOS、App Store 或内购渠道报价。",
+  },
+  {
+    id: "chatgpt_plus_recharge_official_direct",
+    label: "官方直充",
+    group: "plusRecharge",
+    description: "ChatGPT Plus 正价代充里的官方充值、正价代充或正规直充报价。",
   },
   {
     id: "team_k12",
@@ -250,6 +323,22 @@ const GEMINI_PRO_ACCOUNT_FILTER_TAG_IDS = new Set<OfferFilterTagId>([
   "gemini_phone_required",
   "gemini_appeal_required",
 ]);
+const GEMINI_PRO_RECHARGE_FILTER_TAG_IDS = new Set<OfferFilterTagId>([
+  "gemini_12_month_link",
+  "gemini_12_month_card_binding",
+  "gemini_18_month_link",
+]);
+const CHATGPT_PLUS_CHANNEL_FILTER_TAG_IDS = new Set<OfferFilterTagId>([
+  "chatgpt_plus_brazil_pix",
+  "chatgpt_plus_netherlands_ideal",
+  "chatgpt_plus_india_upi",
+  "chatgpt_plus_europe_channel",
+]);
+const CHATGPT_PLUS_RECHARGE_FILTER_TAG_IDS = new Set<OfferFilterTagId>([
+  "chatgpt_plus_recharge_ph_card",
+  "chatgpt_plus_recharge_us_ios",
+  "chatgpt_plus_recharge_official_direct",
+]);
 const CHATGPT_TEAM_FILTER_TAG_IDS = new Set<OfferFilterTagId>([
   "team_k12",
   "team_bug",
@@ -338,6 +427,9 @@ export function offerFilterTagAppliesToProduct(productId: string, tagId: OfferFi
   if (TELEGRAM_ACCOUNT_FILTER_TAG_IDS.has(tagId)) return productId === "telegram-account";
   if (TELEGRAM_PREMIUM_FILTER_TAG_IDS.has(tagId)) return productId === "telegram-premium";
   if (GEMINI_PRO_ACCOUNT_FILTER_TAG_IDS.has(tagId)) return productId === "gemini-pro-year";
+  if (GEMINI_PRO_RECHARGE_FILTER_TAG_IDS.has(tagId)) return productId === "gemini-pro-recharge";
+  if (CHATGPT_PLUS_CHANNEL_FILTER_TAG_IDS.has(tagId)) return productId === "chatgpt-plus";
+  if (CHATGPT_PLUS_RECHARGE_FILTER_TAG_IDS.has(tagId)) return productId === "chatgpt-plus-recharge";
   if (CHATGPT_TEAM_FILTER_TAG_IDS.has(tagId)) return productId === "chatgpt-team-business";
   return true;
 }
@@ -374,6 +466,9 @@ export function deriveOfferFilterTags(input: {
     output.add("delivery_account");
   }
 
+  addGeminiProRechargeSubtypeFilterTag(output, text);
+  addChatGptPlusChannelFilterTag(output, text);
+  addChatGptPlusRechargeSubtypeFilterTag(output, text);
   addChatGptTeamSubtypeFilterTag(output, titleText, sourceTagsText);
 
   if (hasDurationYearSignal(text)) {
@@ -529,6 +624,146 @@ function hasChatGptTeamBugSignal(text: string): boolean {
 
 function hasChatGptTeamOfficialSignal(text: string): boolean {
   return /正价|正规官方|官方.{0,12}(team|business|团队|席位)|business\(team\)|gptbusiness|48个月|48月|四十八个月|4年|四年|全程质保订阅|无限续费|可无限续费|可用pro模型额度比plus高|首次激活码|续费码/.test(text);
+}
+
+function addGeminiProRechargeSubtypeFilterTag(output: Set<OfferFilterTagId>, text: string): void {
+  if (hasGemini18MonthLinkSignal(text)) {
+    output.add("gemini_18_month_link");
+    return;
+  }
+  if (hasGemini12MonthCardBindingSignal(text)) {
+    output.add("gemini_12_month_card_binding");
+    return;
+  }
+  if (hasGemini12MonthLinkSignal(text)) {
+    output.add("gemini_12_month_link");
+  }
+}
+
+function hasGemini12MonthSignal(text: string): boolean {
+  return /12个月|十二个月|一年|1年|365天|三百六十五天|年卡|年度|全年/.test(text);
+}
+
+function hasGemini18MonthSignal(text: string): boolean {
+  return /18个月|十八个月|1\.5年|一年半/.test(text);
+}
+
+function hasGeminiLinkSignal(text: string): boolean {
+  return /提链|提取链接|提取优惠链接|优惠链接|活动链接|领取链接|兑换链接|激活链接|链接|jio|googleone|google one/.test(text);
+}
+
+function hasGeminiCardBindingSignal(text: string): boolean {
+  return /含绑卡|包绑卡|包含绑卡|带绑卡|代绑卡|绑卡完成|绑定卡|自动订阅|自动开通|包开通|代开通|全包/.test(text);
+}
+
+function hasGeminiCardBindingNegativeSignal(text: string): boolean {
+  return /不含绑卡|无绑卡|无需绑卡|免绑卡|不包绑卡|自行绑卡|自己绑卡/.test(text);
+}
+
+function hasGemini12MonthLinkSignal(text: string): boolean {
+  return hasGemini12MonthSignal(text) &&
+    !hasGemini18MonthSignal(text) &&
+    hasGeminiLinkSignal(text) &&
+    !(hasGeminiCardBindingSignal(text) && !hasGeminiCardBindingNegativeSignal(text));
+}
+
+function hasGemini12MonthCardBindingSignal(text: string): boolean {
+  return hasGemini12MonthSignal(text) &&
+    !hasGemini18MonthSignal(text) &&
+    !hasGeminiCardBindingNegativeSignal(text) &&
+    hasGeminiCardBindingSignal(text);
+}
+
+function hasGemini18MonthLinkSignal(text: string): boolean {
+  return hasGemini18MonthSignal(text) && hasGeminiLinkSignal(text);
+}
+
+function addChatGptPlusChannelFilterTag(output: Set<OfferFilterTagId>, text: string): void {
+  if (hasChatGptPlusBrazilPixSignal(text)) {
+    output.add("chatgpt_plus_brazil_pix");
+    return;
+  }
+  if (hasChatGptPlusNetherlandsIdealSignal(text)) {
+    output.add("chatgpt_plus_netherlands_ideal");
+    return;
+  }
+  if (hasChatGptPlusIndiaUpiSignal(text)) {
+    output.add("chatgpt_plus_india_upi");
+    return;
+  }
+  if (hasChatGptPlusEuropeChannelSignal(text)) {
+    output.add("chatgpt_plus_europe_channel");
+  }
+}
+
+function hasPixPaymentSignal(text: string): boolean {
+  return /(^|[^a-z])pix([^a-z]|$)|pix渠道|pix充值|巴西pix/.test(text);
+}
+
+function hasIdealPaymentSignal(text: string): boolean {
+  return /ideal|i-deal|i\/deal/.test(text);
+}
+
+function hasUpiPaymentSignal(text: string): boolean {
+  return /(^|[^a-z])upi([^a-z]|$)|upi渠道|upi扫码|印度upi/.test(text);
+}
+
+function hasChatGptPlusBrazilPixSignal(text: string): boolean {
+  return /(巴西|brazil|巴西区)/.test(text) && hasPixPaymentSignal(text);
+}
+
+function hasChatGptPlusNetherlandsIdealSignal(text: string): boolean {
+  return /(荷兰|netherlands|holland|nl区|荷区)/.test(text) && hasIdealPaymentSignal(text);
+}
+
+function hasChatGptPlusIndiaUpiSignal(text: string): boolean {
+  return /(印度|india|印度区)/.test(text) && hasUpiPaymentSignal(text);
+}
+
+function hasChatGptPlusEuropeChannelSignal(text: string): boolean {
+  return /欧洲渠道|欧洲|欧区|欧盟|奥地利|austria|at未接码|at渠道|at号/.test(text);
+}
+
+function addChatGptPlusRechargeSubtypeFilterTag(output: Set<OfferFilterTagId>, text: string): void {
+  if (hasChatGptPlusRechargePhilippinesCardSignal(text)) {
+    output.add("chatgpt_plus_recharge_ph_card");
+    return;
+  }
+  if (hasChatGptPlusRechargeUsIosSignal(text)) {
+    output.add("chatgpt_plus_recharge_us_ios");
+    return;
+  }
+  if (hasChatGptPlusRechargeOfficialDirectSignal(text)) {
+    output.add("chatgpt_plus_recharge_official_direct");
+  }
+}
+
+function hasPhilippinesRegionSignal(text: string): boolean {
+  return /菲区|菲律宾|菲律宾区|philippines|ph区/.test(text);
+}
+
+function hasUsRegionSignal(text: string): boolean {
+  return /美区|美国|美国区|us区|usa|u\.s\./.test(text);
+}
+
+function hasIosPaymentSignal(text: string): boolean {
+  return /ios|appstore|app-store|app store|内购|苹果内购/.test(text);
+}
+
+function hasCardRechargeSignal(text: string): boolean {
+  return /卡充|卡冲|卡付|卡密|cdk|官方充值|充值|代充|直充/.test(text);
+}
+
+function hasChatGptPlusRechargePhilippinesCardSignal(text: string): boolean {
+  return hasPhilippinesRegionSignal(text) && hasCardRechargeSignal(text);
+}
+
+function hasChatGptPlusRechargeUsIosSignal(text: string): boolean {
+  return hasUsRegionSignal(text) && hasIosPaymentSignal(text);
+}
+
+function hasChatGptPlusRechargeOfficialDirectSignal(text: string): boolean {
+  return /官方直充|官方充值|官方代充|官方订阅|正价代充|正规充值|正规官方|官网直充|官网代充|人工直充|自动直充|带账单|质保订阅/.test(text);
 }
 
 function addChatGptTeamSubtypeFilterTag(

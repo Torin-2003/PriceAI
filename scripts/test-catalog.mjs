@@ -423,11 +423,21 @@ const tagCases = [
   ["Gemini 3.1pro 12个月pixel成品号需要绑定手机", ["gemini_phone_required"]],
   ["Gemini pro 一年 pixel成品号（随机地区/美区人机号，22-24年账号）", ["gemini_phone_required"]],
   ["【首登需要申诉】Pixel - Gemini Pro一年成品号", ["gemini_appeal_required"]],
+  ["Gemini Pro 12个月优惠链接 提链 不含绑卡", ["gemini_12_month_link"]],
+  ["Pixel Gemini Pro 12个月含绑卡 自动开通", ["gemini_12_month_card_binding"]],
+  ["Gemini Pro 18个月 Jio兑换链接", ["gemini_18_month_link"]],
   ["【质保一个月】ChatGPT Plus网页镜像", ["domestic_mirror_site"]],
   ["【质保一个月】Super Grok网页镜像", ["domestic_mirror_site"]],
   ["ChatGPT Plus 直充 卡密自助", ["delivery_recharge"]],
   ["GPT Plus 一个月会员 -卡密自助 Pix渠道", ["delivery_recharge"]],
   ["【推荐】GPT Plus充值CDK - pix 自动充值渠道非成品需自备账号", ["delivery_recharge"]],
+  ["GPT Plus 一个月会员 -卡密自助 Pix渠道【巴西渠道】", ["chatgpt_plus_brazil_pix"]],
+  ["ChatGPT Plus 荷兰 iDEAL 自助渠道", ["chatgpt_plus_netherlands_ideal"]],
+  ["印度 UPI渠道-PLUS成品号30天", ["chatgpt_plus_india_upi"]],
+  ["GPT Plus 成品号 未接码（欧洲渠道）", ["chatgpt_plus_europe_channel"]],
+  ["【质保-菲区卡冲】GPT Plus官方直充月卡", ["chatgpt_plus_recharge_ph_card"]],
+  ["ChatGPT Plus 美区 iOS App Store 内购", ["chatgpt_plus_recharge_us_ios"]],
+  ["ChatGPT Plus 官方直充 正价代充", ["chatgpt_plus_recharge_official_direct"]],
   ["ChatGPT Plus 成品号 独享账号", ["delivery_account"]],
   ["PLUS-成品-已接码rt-微软邮箱-支持登录网页端", ["delivery_account"]],
   ["GPT Team K12 成品 JSON 反代 发cpa", ["delivery_account", "team_k12"]],
@@ -441,6 +451,37 @@ for (const [title, expectedTags] of tagCases) {
   for (const tag of expectedTags) {
     assert.ok(tags.includes(tag), `${title} should include ${tag}. actual=${tags.join(",")}`);
   }
+}
+
+const productSpecificTagScopeCases = [
+  [
+    "gemini-pro-recharge",
+    ["gemini_12_month_link", "gemini_12_month_card_binding", "gemini_18_month_link", "warranty_long"],
+    ["gemini_12_month_link", "gemini_12_month_card_binding", "gemini_18_month_link", "warranty_long"],
+  ],
+  [
+    "gemini-pro-year",
+    ["gemini_12_month_link", "gemini_antigravity_gcp", "gemini_phone_required"],
+    ["gemini_antigravity_gcp", "gemini_phone_required"],
+  ],
+  [
+    "chatgpt-plus",
+    ["chatgpt_plus_brazil_pix", "chatgpt_plus_europe_channel", "chatgpt_plus_recharge_ph_card", "delivery_account"],
+    ["delivery_account", "chatgpt_plus_brazil_pix", "chatgpt_plus_europe_channel"],
+  ],
+  [
+    "chatgpt-plus-recharge",
+    ["chatgpt_plus_brazil_pix", "chatgpt_plus_recharge_ph_card", "chatgpt_plus_recharge_us_ios", "delivery_recharge"],
+    ["chatgpt_plus_recharge_ph_card", "chatgpt_plus_recharge_us_ios"],
+  ],
+];
+
+for (const [productId, inputTags, expectedTags] of productSpecificTagScopeCases) {
+  assert.deepEqual(
+    parseOfferFilterTagsForProduct(productId, inputTags),
+    expectedTags,
+    `${productId} should only keep its applicable product-specific tags.`,
+  );
 }
 
 const chatGptTeamSubtypeCases = [

@@ -154,7 +154,7 @@ const PUBLIC_PRODUCT_OFFERS_SNAPSHOT_OFFSET = 0;
 const PUBLIC_PRODUCT_OFFERS_SNAPSHOT_TAGS = OFFER_FILTER_TAGS.map((tag) => tag.id);
 const PUBLIC_OFFERS_SNAPSHOT_KEY = `default:limit:${PUBLIC_OFFERS_SNAPSHOT_LIMIT}`;
 const PUBLIC_MERCHANTS_SNAPSHOT_KEY = "default:v6:compact";
-const PUBLIC_PRODUCT_OFFERS_SNAPSHOT_VERSION = "v3-live-filter-tags";
+const PUBLIC_PRODUCT_OFFERS_SNAPSHOT_VERSION = "v4-ai-subscription-tags";
 const PUBLIC_LIST_SNAPSHOT_STOCKS = ["available"] as const;
 const PUBLIC_LIST_SNAPSHOT_SORTS = ["updated"] as const;
 const PUBLIC_MERCHANT_SNAPSHOT_SIGNALS = ["lowest", "warranty", "platform_aftersales", "risk_clear"] as const;
@@ -3936,7 +3936,7 @@ export async function listPublicProductOffers(id: string, filters: ProductOfferL
   const collector = parseMerchantCollectorFilter(filters.collector);
   const minPrice = normalizeProductOfferPriceFilter(filters.minPrice);
   const maxPrice = normalizeProductOfferPriceFilter(filters.maxPrice);
-  const cacheKey = `${id}:${limit}:${offset}:${filterTags.join(",") || "all"}:${query || "none"}:${excludeQuery || "none"}:${collector}:${minPrice ?? "none"}:${maxPrice ?? "none"}:offer-filter-v8-purchase-terms`;
+  const cacheKey = `${id}:${limit}:${offset}:${filterTags.join(",") || "all"}:${query || "none"}:${excludeQuery || "none"}:${collector}:${minPrice ?? "none"}:${maxPrice ?? "none"}:offer-filter-v9-ai-subscription-tags`;
   const now = Date.now();
   const cached = productOffersCache.get(cacheKey);
 

@@ -381,6 +381,55 @@ begin
     output := array_append(output, 'delivery_account');
   end if;
 
+  if text_value ~ '(18个月|十八个月|1\.5年|一年半)'
+    and text_value ~ '(提链|提取链接|提取优惠链接|优惠链接|活动链接|领取链接|兑换链接|激活链接|链接|jio|googleone)'
+  then
+    output := array_append(output, 'gemini_18_month_link');
+  elsif text_value ~ '(12个月|十二个月|一年|1年|365天|三百六十五天|年卡|年度|全年)'
+    and text_value !~ '(18个月|十八个月|1\.5年|一年半)'
+    and text_value !~ '(不含绑卡|无绑卡|无需绑卡|免绑卡|不包绑卡|自行绑卡|自己绑卡)'
+    and text_value ~ '(含绑卡|包绑卡|包含绑卡|带绑卡|代绑卡|绑卡完成|绑定卡|自动订阅|自动开通|包开通|代开通|全包)'
+  then
+    output := array_append(output, 'gemini_12_month_card_binding');
+  elsif text_value ~ '(12个月|十二个月|一年|1年|365天|三百六十五天|年卡|年度|全年)'
+    and text_value !~ '(18个月|十八个月|1\.5年|一年半)'
+    and text_value ~ '(提链|提取链接|提取优惠链接|优惠链接|活动链接|领取链接|兑换链接|激活链接|链接|jio|googleone)'
+    and (
+      text_value !~ '(含绑卡|包绑卡|包含绑卡|带绑卡|代绑卡|绑卡完成|绑定卡|自动订阅|自动开通|包开通|代开通|全包)'
+      or text_value ~ '(不含绑卡|无绑卡|无需绑卡|免绑卡|不包绑卡|自行绑卡|自己绑卡)'
+    )
+  then
+    output := array_append(output, 'gemini_12_month_link');
+  end if;
+
+  if text_value ~ '(巴西|brazil|巴西区)'
+    and text_value ~ '((^|[^a-z])pix([^a-z]|$)|pix渠道|pix充值|巴西pix)'
+  then
+    output := array_append(output, 'chatgpt_plus_brazil_pix');
+  elsif text_value ~ '(荷兰|netherlands|holland|nl区|荷区)'
+    and text_value ~ '(ideal|i-deal|i/deal)'
+  then
+    output := array_append(output, 'chatgpt_plus_netherlands_ideal');
+  elsif text_value ~ '(印度|india|印度区)'
+    and text_value ~ '((^|[^a-z])upi([^a-z]|$)|upi渠道|upi扫码|印度upi)'
+  then
+    output := array_append(output, 'chatgpt_plus_india_upi');
+  elsif text_value ~ '(欧洲渠道|欧洲|欧区|欧盟|奥地利|austria|at未接码|at渠道|at号)' then
+    output := array_append(output, 'chatgpt_plus_europe_channel');
+  end if;
+
+  if text_value ~ '(菲区|菲律宾|菲律宾区|philippines|ph区)'
+    and text_value ~ '(卡充|卡冲|卡付|卡密|cdk|官方充值|充值|代充|直充)'
+  then
+    output := array_append(output, 'chatgpt_plus_recharge_ph_card');
+  elsif text_value ~ '(美区|美国|美国区|us区|usa|u\.s\.)'
+    and text_value ~ '(ios|appstore|app-store|内购|苹果内购)'
+  then
+    output := array_append(output, 'chatgpt_plus_recharge_us_ios');
+  elsif text_value ~ '(官方直充|官方充值|官方代充|官方订阅|正价代充|正规充值|正规官方|官网直充|官网代充|人工直充|自动直充|带账单|质保订阅)' then
+    output := array_append(output, 'chatgpt_plus_recharge_official_direct');
+  end if;
+
   if title_text ~ '(正价|正规官方|官方.{0,12}(team|business|团队|席位)|business\(team\)|gptbusiness|48个月|48月|四十八个月|4年|四年|全程质保订阅|无限续费|可无限续费|可用pro模型额度比plus高|首次激活码|续费码)' then
     output := array_append(output, 'team_official');
   elsif title_text ~ 'k12' then
@@ -1124,6 +1173,16 @@ as $$
       'domestic_mirror_site',
       'delivery_recharge',
       'delivery_account',
+      'gemini_12_month_link',
+      'gemini_12_month_card_binding',
+      'gemini_18_month_link',
+      'chatgpt_plus_brazil_pix',
+      'chatgpt_plus_netherlands_ideal',
+      'chatgpt_plus_india_upi',
+      'chatgpt_plus_europe_channel',
+      'chatgpt_plus_recharge_ph_card',
+      'chatgpt_plus_recharge_us_ios',
+      'chatgpt_plus_recharge_official_direct',
       'team_k12',
       'team_bug',
       'team_official',

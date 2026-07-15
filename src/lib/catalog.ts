@@ -89,11 +89,11 @@ export const canonicalCatalog: CanonicalProduct[] = [
   {
     id: "chatgpt-plus",
     slug: "chatgpt-plus",
-    displayName: "ChatGPT Plus",
+    displayName: "ChatGPT Plus 低价订阅 / 试用成品号",
     platform: "ChatGPT",
     productType: "订阅/会员",
     spec: "Plus",
-    summary: "ChatGPT Plus 月卡、成品号、自助充值、普通直充、卡密/CDK、荷兰 iDEAL、欧洲、印度 UPI 或 Pix 渠道报价。",
+    summary: "ChatGPT Plus 低价订阅、试用成品号、短期号、荷兰 iDEAL、欧洲、印度 UPI 或巴西 Pix 渠道报价。",
     aliases: [
       "gpt plus",
       "chatgpt plus",
@@ -112,11 +112,11 @@ export const canonicalCatalog: CanonicalProduct[] = [
   {
     id: "chatgpt-plus-recharge",
     slug: "chatgpt-plus-recharge",
-    displayName: "ChatGPT Plus 充值代充",
+    displayName: "ChatGPT Plus 正价代充",
     platform: "ChatGPT",
     productType: "订阅/会员",
     spec: "Plus / 地区充值代充",
-    summary: "ChatGPT Plus 官方地区价相关的 App Store 内购、卡冲、直充、代充、续费或月卡批发渠道。",
+    summary: "ChatGPT Plus 正价代充、官方地区价、App Store 内购、菲区卡充、美区 iOS、直充、代充或续费渠道。",
     aliases: [
       "ios土区",
       "土区 ios",
