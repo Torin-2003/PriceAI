@@ -111,8 +111,8 @@ export default function SupportPage() {
       <main>
         <section className="border-b border-[var(--color-border)]">
           <div className="mx-auto max-w-[1500px] border-x border-[var(--color-border-soft)] px-5 py-10 sm:px-8 md:py-14">
-            <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[minmax(0,1.08fr)_minmax(320px,0.92fr)] lg:items-center">
-              <div>
+            <div className="mx-auto max-w-6xl">
+              <div className="max-w-4xl">
                 <div className="inline-flex items-center gap-2 rounded-full bg-[var(--color-success-bg)] px-3 py-1 text-xs font-semibold text-[var(--color-success-text)] ring-1 ring-[var(--color-border-soft)]">
                   <Sparkles size={14} />
                   减少信息差的 AI 价格工具
@@ -145,22 +145,20 @@ export default function SupportPage() {
                 </div>
               </div>
 
-              <div className="rounded-lg bg-[var(--color-panel)] p-4 ring-1 ring-[var(--color-border-soft)]">
-                <h2 className="px-1 text-base font-semibold text-[var(--color-text-primary)]">PriceAI 持续替你做的事</h2>
-                <div className="mt-3 divide-y divide-[var(--color-border-subtle)]">
+              <div className="mt-9">
+                <h2 className="text-base font-semibold text-[var(--color-text-primary)]">PriceAI 持续替你做的事</h2>
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {valueItems.map((item) => {
                     const Icon = item.icon;
 
                     return (
-                      <div key={item.title} className="flex gap-3 py-4">
-                        <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface)] text-[var(--color-success-text)] ring-1 ring-[var(--color-border-soft)]">
+                      <article key={item.title} className="rounded-lg bg-[var(--color-panel)] p-5 ring-1 ring-[var(--color-border-soft)]">
+                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-surface)] text-[var(--color-success-text)] ring-1 ring-[var(--color-border-soft)]">
                           <Icon size={18} />
                         </span>
-                        <div>
-                          <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">{item.title}</h3>
-                          <p className="mt-1 text-sm leading-6 text-[var(--color-text-muted)]">{item.body}</p>
-                        </div>
-                      </div>
+                        <h3 className="mt-4 text-sm font-semibold text-[var(--color-text-primary)]">{item.title}</h3>
+                        <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">{item.body}</p>
+                      </article>
                     );
                   })}
                 </div>
@@ -172,16 +170,14 @@ export default function SupportPage() {
         <section id="ways" className="border-b border-[var(--color-border)] bg-[var(--color-panel)]">
           <div className="mx-auto max-w-[1500px] border-x border-[var(--color-border-soft)] px-5 py-10 sm:px-8 md:py-12">
             <div className="mx-auto max-w-6xl">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <h2 className="max-w-3xl text-balance text-2xl font-semibold tracking-normal text-[var(--color-text-primary)] sm:text-3xl">
-                    选一个顺手的方式。
-                  </h2>
-                  <p className="mt-2 max-w-[68ch] text-sm leading-7 text-[var(--color-text-muted)]">
-                    金钱支持不是必须。一次 Star、一次分享、一次有效反馈，也是在帮这个工具变得更有用。
-                  </p>
-                </div>
-                <p className="max-w-md rounded-lg bg-[var(--color-surface)] px-4 py-3 text-sm leading-6 text-[var(--color-text-muted)] ring-1 ring-[var(--color-border-soft)]">
+              <div className="max-w-4xl">
+                <h2 className="max-w-3xl text-balance text-2xl font-semibold tracking-normal text-[var(--color-text-primary)] sm:text-3xl">
+                  选一个顺手的方式。
+                </h2>
+                <p className="mt-2 max-w-[68ch] text-sm leading-7 text-[var(--color-text-muted)]">
+                  金钱支持不是必须。一次 Star、一次分享、一次有效反馈，也是在帮这个工具变得更有用。
+                </p>
+                <p className="mt-4 max-w-[68ch] rounded-lg bg-[var(--color-surface)] px-4 py-3 text-sm leading-6 text-[var(--color-text-muted)] ring-1 ring-[var(--color-border-soft)]">
                   支持作者不会购买排名、推荐位或风险豁免；商业合作会单独标注。
                 </p>
               </div>
@@ -239,8 +235,8 @@ export default function SupportPage() {
 
         <section className="border-b border-[var(--color-border)]">
           <div className="mx-auto max-w-[1500px] border-x border-[var(--color-border-soft)] px-5 py-10 sm:px-8 md:py-12">
-            <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[0.85fr_1.15fr]">
-              <div>
+            <div className="mx-auto max-w-6xl">
+              <div className="max-w-4xl">
                 <h2 className="text-balance text-2xl font-semibold tracking-normal text-[var(--color-text-primary)] sm:text-3xl">
                   支持会用在哪里。
                 </h2>
@@ -248,7 +244,7 @@ export default function SupportPage() {
                   PriceAI 的价值来自持续整理和校验，而不是一次性页面。支持会优先投入到能继续减少信息差的地方。
                 </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="mt-8 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {supportUseItems.map((item) => {
                   const Icon = item.icon;
 
