@@ -14,24 +14,23 @@ assertRequiredEnv(CLOUDFLARE_REQUIRED_ENV, "Cloudflare version upload env");
 
 const deploymentId = normalizeTag(process.env.NEXT_DEPLOYMENT_ID || gitSha());
 const previewAlias = normalizeAlias(process.env.CLOUDFLARE_PREVIEW_ALIAS || "candidate");
-const cacheChunkSize = normalizeCacheChunkSize(process.env.CLOUDFLARE_CACHE_CHUNK_SIZE || "5");
 const outputPath = process.env.WRANGLER_OUTPUT_FILE_PATH || join(tmpdir(), `priceai-wrangler-upload-${process.pid}.jsonl`);
 const shouldRemoveOutput = !process.env.WRANGLER_OUTPUT_FILE_PATH;
-const cli = join(
+const wrangler = join(
   process.cwd(),
   "node_modules",
   ".bin",
-  process.platform === "win32" ? "opennextjs-cloudflare.cmd" : "opennextjs-cloudflare",
+  process.platform === "win32" ? "wrangler.cmd" : "wrangler",
 );
 
 try {
+  // OpenNext's remote cache helper requires OAuth state that API-token CI does not have.
+  // Upload the validated bundle directly; preview and production smoke cover cold-cache behavior.
   const result = spawnSync(
-    cli,
+    wrangler,
     [
+      "versions",
       "upload",
-      "--cacheChunkSize",
-      String(cacheChunkSize),
-      "--",
       "--keep-vars",
       "--preview-alias",
       previewAlias,
@@ -42,7 +41,7 @@ try {
     ],
     {
       cwd: process.cwd(),
-      env: { ...process.env, WRANGLER_OUTPUT_FILE_PATH: outputPath },
+      env: { ...process.env, OPEN_NEXT_DEPLOY: "true", WRANGLER_OUTPUT_FILE_PATH: outputPath },
       stdio: "inherit",
       shell: process.platform === "win32",
     },
@@ -105,12 +104,4 @@ function normalizeAlias(value) {
     throw new Error("CLOUDFLARE_PREVIEW_ALIAS must be a valid DNS label.");
   }
   return normalized;
-}
-
-function normalizeCacheChunkSize(value) {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
-    throw new Error("CLOUDFLARE_CACHE_CHUNK_SIZE must be an integer between 1 and 100.");
-  }
-  return parsed;
 }
