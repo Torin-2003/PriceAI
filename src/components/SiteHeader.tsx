@@ -258,7 +258,7 @@ function MobileModuleDrawer({
             >
               <span className="inline-flex items-center gap-3">
                 <HeartHandshake size={17} />
-                支持维护
+                支持作者
               </span>
               {supportActive ? <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-brand)]" aria-hidden="true" /> : null}
             </IntentPrefetchLink>

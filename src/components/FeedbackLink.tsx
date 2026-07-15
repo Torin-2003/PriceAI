@@ -120,10 +120,10 @@ export function SupportLink({
       className={`inline-flex shrink-0 items-center justify-center rounded-full bg-white text-sm font-semibold text-[#2d3435] shadow-[0_10px_30px_rgba(45,52,53,0.06)] ring-1 ring-[#adb3b4]/25 transition hover:-translate-y-0.5 hover:bg-[#f5f7f7] hover:text-[#202829] ${
         compact ? getCompactButtonClassName(labelFrom, "sm:px-3", "2xl:px-3") : "h-10 gap-2 px-3.5"
       }`}
-      aria-label="支持 PriceAI 继续维护"
+      aria-label="支持 PriceAI 作者"
     >
       <HeartHandshake size={16} />
-      <span className={getLabelClassName(compact, labelFrom)}>支持维护</span>
+      <span className={getLabelClassName(compact, labelFrom)}>支持作者</span>
     </a>
   );
 }

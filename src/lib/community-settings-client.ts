@@ -17,11 +17,6 @@ let inFlightSettings: Promise<CommunitySettingsSummary | null> | null = null;
 
 export function useCommunitySettings(): CommunitySettingsSummary {
   const [settings, setSettings] = useState<CommunitySettingsSummary>(() => {
-    const cached = readCachedCommunitySettings();
-    if (cached) {
-      memorySettings = cached.settings;
-      return cached.settings;
-    }
     return memorySettings || DEFAULT_COMMUNITY_SETTINGS;
   });
 

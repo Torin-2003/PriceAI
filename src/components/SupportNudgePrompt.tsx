@@ -195,10 +195,10 @@ export function SupportNudgePrompt() {
               <HeartHandshake size={19} aria-hidden="true" />
             </div>
             <h2 id={titleId} className="mt-4 text-lg font-semibold leading-7 text-[var(--color-text-primary)]">
-              PriceAI 帮到你了吗？
+              PriceAI 帮你省过时间吗？
             </h2>
             <p id={descriptionId} className="mt-2 max-w-[46ch] text-sm leading-7 text-[var(--color-text-muted)]">
-              给项目点个 GitHub Star，让更多人看见；或者<span className="whitespace-nowrap">给作者买杯咖啡</span>，支持持续维护。
+              如果它帮你少找几个渠道、少花一点冤枉钱，可以点个 GitHub Star，或<span className="whitespace-nowrap">给作者买杯咖啡</span>。
             </p>
           </div>
           <button
