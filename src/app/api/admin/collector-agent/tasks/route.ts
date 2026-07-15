@@ -36,6 +36,7 @@ const querySchema = z.object({
   worker: z.string().trim().min(1).max(160).optional(),
   lockSeconds: z.coerce.number().int().min(60).max(7200).optional().default(1800),
   includeQueued: z.string().optional().default("1"),
+  capabilities: z.string().optional().default(""),
 });
 
 export async function GET(request: Request) {
@@ -80,6 +81,7 @@ export async function GET(request: Request) {
           excludedSourceIds,
           worker: query.worker || `collector-agent:${query.kind}:${query.shardIndex}/${query.shardCount}`,
           lockSeconds: query.lockSeconds,
+          supportsSubmissionProbe: hasCapability(query.capabilities, "submissionProbe"),
         })
       : [];
     if (queuedTasks.length) {
@@ -182,10 +184,13 @@ async function claimQueuedSourceTasks(input: {
   excludedSourceIds: Set<string>;
   worker: string;
   lockSeconds: number;
+  supportsSubmissionProbe: boolean;
 }): Promise<Array<ReturnType<typeof sourceTaskFromRow> & {
   collectionJobId: string;
   collectionJobRequestedBy: string | null;
   collectionJobCreatedAt: string | null;
+  taskMode?: string;
+  submissionId?: string;
 }>> {
   const supabase = getSupabaseServerClient();
   if (!supabase) return [];
@@ -194,17 +199,24 @@ async function claimQueuedSourceTasks(input: {
 
   const { data: jobs, error: jobsError } = await supabase
     .from("collection_jobs")
-    .select("id,source_id,source_name,status,requested_by,created_at,priority,attempts,max_attempts,locked_until")
+    .select("id,source_id,source_name,status,requested_by,created_at,priority,attempts,max_attempts,locked_until,result")
     .eq("job_type", "source")
     .in("status", ["pending", "running"])
-    .not("source_id", "is", null)
     .order("priority", { ascending: false })
     .order("created_at", { ascending: true })
     .limit(Math.min(Math.max(input.limit * 20, 20), 100));
   if (jobsError) throw jobsError;
 
-  const sourceIds = Array.from(new Set((jobs || []).map((job) => String(job.source_id || "")).filter(Boolean)));
-  if (!sourceIds.length) return [];
+  const submissionProbeTasks = input.supportsSubmissionProbe
+    ? await claimSubmissionProbeTasks({ ...input, jobs: jobs || [] })
+    : [];
+  if (submissionProbeTasks.length >= input.limit) return submissionProbeTasks.slice(0, input.limit);
+
+  const sourceIds = Array.from(new Set((jobs || [])
+    .filter((job) => String(job.requested_by || "") !== "submission_probe")
+    .map((job) => String(job.source_id || ""))
+    .filter(Boolean)));
+  if (!sourceIds.length) return submissionProbeTasks;
 
   const { data: sources, error: sourcesError } = await supabase
     .from("sources")
@@ -223,7 +235,8 @@ async function claimQueuedSourceTasks(input: {
   const nowMs = Date.now();
 
   for (const job of jobs || []) {
-    if (tasks.length >= input.limit) break;
+    if (submissionProbeTasks.length + tasks.length >= input.limit) break;
+    if (String(job.requested_by || "") === "submission_probe") continue;
     if (!claimableJobCandidate(job, nowMs)) continue;
     const sourceId = String(job.source_id || "");
     if (!sourceId || input.excludedSourceIds.has(sourceId) || selectedSourceIds.has(sourceId)) continue;
@@ -263,6 +276,75 @@ async function claimQueuedSourceTasks(input: {
   }
 
   await markSourcesDispatched(tasks.map((task) => task.sourceId), new Date().toISOString());
+  return [...submissionProbeTasks, ...tasks];
+}
+
+async function claimSubmissionProbeTasks(input: {
+  jobs: Array<Record<string, unknown>>;
+  kind: string;
+  family: string;
+  hostCandidates: string[] | null;
+  limit: number;
+  shardCount: number;
+  shardIndex: number;
+  excludedSourceIds: Set<string>;
+  worker: string;
+  lockSeconds: number;
+}): Promise<Array<NonNullable<ReturnType<typeof sourceTaskFromProbeJob>> & {
+  collectionJobId: string;
+  collectionJobRequestedBy: string | null;
+  collectionJobCreatedAt: string | null;
+  taskMode: "submission_probe";
+  submissionId: string;
+}>> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return [];
+
+  const tasks: Array<NonNullable<ReturnType<typeof sourceTaskFromProbeJob>> & {
+    collectionJobId: string;
+    collectionJobRequestedBy: string | null;
+    collectionJobCreatedAt: string | null;
+    taskMode: "submission_probe";
+    submissionId: string;
+  }> = [];
+  const nowMs = Date.now();
+
+  for (const job of input.jobs) {
+    if (tasks.length >= input.limit) break;
+    if (String(job.requested_by || "") !== "submission_probe") continue;
+    if (job.source_id) continue;
+    if (!claimableJobCandidate(job, nowMs)) continue;
+
+    const task = sourceTaskFromProbeJob(job);
+    if (!task) continue;
+    if (task.collectorKind !== input.kind) continue;
+    if (input.excludedSourceIds.has(task.sourceId)) continue;
+    if (!sourceMatchesShard(task.sourceId, input.shardCount, input.shardIndex)) continue;
+    if (input.hostCandidates) {
+      const host = normalizeHostname(task.baseUrl || task.sourceUrl);
+      if (!input.hostCandidates.includes(host)) continue;
+    }
+
+    const { data: claimed, error: claimError } = await supabase.rpc("claim_collection_job_by_id", {
+      p_job_id: String(job.id),
+      p_worker: input.worker,
+      p_lock_seconds: input.lockSeconds,
+    });
+    if (claimError) {
+      if (isMissingClaimByIdRpcError(claimError)) return tasks;
+      throw claimError;
+    }
+    const claimedJob = Array.isArray(claimed) ? claimed[0] : claimed;
+    if (!claimedJob) continue;
+
+    tasks.push({
+      ...task,
+      collectionJobId: String(job.id),
+      collectionJobRequestedBy: job.requested_by ? String(job.requested_by) : null,
+      collectionJobCreatedAt: job.created_at ? String(job.created_at) : null,
+    });
+  }
+
   return tasks;
 }
 
@@ -343,6 +425,32 @@ function sourceTaskFromRow(source: {
     lastCheckedAt: source.last_checked_at ? String(source.last_checked_at) : null,
     lastSuccessAt: source.last_success_at ? String(source.last_success_at) : null,
     rawOfferUrls,
+  };
+}
+
+function sourceTaskFromProbeJob(job: Record<string, unknown>) {
+  const result = job.result && typeof job.result === "object" && !Array.isArray(job.result)
+    ? job.result as Record<string, unknown>
+    : {};
+  if (result.intent !== "submission_probe") return null;
+
+  const submissionId = String(result.submissionId || "");
+  const sourceUrl = String(result.sourceUrl || "");
+  const baseUrl = String(result.baseUrl || deriveBaseUrl(sourceUrl) || "");
+  const sourceId = String(result.sourceId || `submission:${submissionId}`);
+  if (!submissionId || !sourceUrl || !sourceId) return null;
+
+  return {
+    sourceId,
+    sourceName: String(result.sourceName || job.source_name || sourceId),
+    sourceUrl,
+    baseUrl,
+    collectorKind: String(result.collectorKind || "shopApi"),
+    lastCheckedAt: null,
+    lastSuccessAt: null,
+    rawOfferUrls: [sourceUrl],
+    taskMode: "submission_probe" as const,
+    submissionId,
   };
 }
 
@@ -514,6 +622,13 @@ function normalizeHostname(value: string): string {
 function truthyQueryFlag(value: string | undefined): boolean {
   if (value === undefined) return true;
   return /^(1|true|yes|on)$/i.test(value.trim());
+}
+
+function hasCapability(value: string | undefined, capability: string): boolean {
+  return (value || "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .includes(capability.toLowerCase());
 }
 
 function isMissingSourceShardAssignmentsError(error: unknown): boolean {

@@ -210,21 +210,30 @@ async function runCycle(startedAt = new Date().toISOString()) {
         else consecutiveWindControl = 0;
 
         console.error(`Failed: ${failureMessage}`);
-        await postCrawlRun(target, "failed", failureMessage, [], {
-          collectionStartedAt,
-          collectedAt: new Date().toISOString(),
-          durationMs: Date.now() - startedAt,
-          windControl,
-          failurePhase: "collect",
-        }).catch((postError) => {
-          if (Array.isArray(postError?.payloads) && postError.payloads.length) {
-            spoolCrawlRunPayloads(postError.payloads, {
-              reason: "failure-log-upload-failed",
-              error: errorMessage(postError),
-            });
-          }
-          console.error(`Failed to upload failure log: ${errorMessage(postError)}`);
-        });
+        if (isSubmissionProbeTask(target)) {
+          await postSubmissionProbeResult(
+            target,
+            submissionProbeResult(target, "failed", failureMessage, [], startedAt, { windControl }),
+          ).catch((postError) => {
+            console.error(`Failed to upload submission probe failure: ${errorMessage(postError)}`);
+          });
+        } else {
+          await postCrawlRun(target, "failed", failureMessage, [], {
+            collectionStartedAt,
+            collectedAt: new Date().toISOString(),
+            durationMs: Date.now() - startedAt,
+            windControl,
+            failurePhase: "collect",
+          }).catch((postError) => {
+            if (Array.isArray(postError?.payloads) && postError.payloads.length) {
+              spoolCrawlRunPayloads(postError.payloads, {
+                reason: "failure-log-upload-failed",
+                error: errorMessage(postError),
+              });
+            }
+            console.error(`Failed to upload failure log: ${errorMessage(postError)}`);
+          });
+        }
 
         if (consecutiveWindControl >= config.windControlThreshold) {
           console.log(
@@ -238,23 +247,46 @@ async function runCycle(startedAt = new Date().toISOString()) {
 
       try {
         const collectedAt = new Date().toISOString();
-        const payloads = crawlRunPayloads(target, status, message, collectedOffers, {
-          collectionStartedAt,
-          collectedAt,
-          durationMs: Date.now() - startedAt,
-          fullSnapshot: status === "success" && collection.fullSnapshot,
-          seenOfferIds: collection.fullSnapshot ? collection.seenOfferIds : null,
-          rawSeenOfferCount: collection.rawSeenOfferCount,
-          fetchedItemCount: collection.fetchedItemCount,
-          publishedItemCount: collection.publishedItemCount,
-          reportedGoodsCount: collection.reportedGoodsCount,
-          partialReason: collection.partialReason || null,
-          failurePhase: status === "success" ? null : "collect",
-          collectionJobId: target.collectionJobId || null,
-          collectionJobRequestedBy: target.collectionJobRequestedBy || null,
-          collectionJobCreatedAt: target.collectionJobCreatedAt || null,
-        });
-        await postCrawlRunPayloads(payloads);
+        if (isSubmissionProbeTask(target)) {
+          await postSubmissionProbeResult(
+            target,
+            submissionProbeResult(
+              target,
+              collectedOffers.length ? "success" : "empty",
+              collectedOffers.length
+                ? `低频节点试采集成功，识别到 ${collectedOffers.length} 条报价。`
+                : "低频节点已完成试采集，但没有识别到可比价商品。",
+              collectedOffers,
+              startedAt,
+              {
+                collectedAt,
+                rawSeenOfferCount: collection.rawSeenOfferCount,
+                fetchedItemCount: collection.fetchedItemCount,
+                publishedItemCount: collection.publishedItemCount,
+                reportedGoodsCount: collection.reportedGoodsCount,
+                partialReason: collection.partialReason || null,
+              },
+            ),
+          );
+        } else {
+          const payloads = crawlRunPayloads(target, status, message, collectedOffers, {
+            collectionStartedAt,
+            collectedAt,
+            durationMs: Date.now() - startedAt,
+            fullSnapshot: status === "success" && collection.fullSnapshot,
+            seenOfferIds: collection.fullSnapshot ? collection.seenOfferIds : null,
+            rawSeenOfferCount: collection.rawSeenOfferCount,
+            fetchedItemCount: collection.fetchedItemCount,
+            publishedItemCount: collection.publishedItemCount,
+            reportedGoodsCount: collection.reportedGoodsCount,
+            partialReason: collection.partialReason || null,
+            failurePhase: status === "success" ? null : "collect",
+            collectionJobId: target.collectionJobId || null,
+            collectionJobRequestedBy: target.collectionJobRequestedBy || null,
+            collectionJobCreatedAt: target.collectionJobCreatedAt || null,
+          });
+          await postCrawlRunPayloads(payloads);
+        }
       } catch (error) {
         failed += 1;
         uploadFailed += 1;
@@ -311,6 +343,7 @@ async function fetchTasks(options = {}) {
   }
   searchParams.set("worker", collectorNodeDetails().id);
   searchParams.set("includeQueued", "1");
+  searchParams.set("capabilities", "submissionProbe");
 
   const { body } = await fetchControlJson(`/api/admin/collector-agent/tasks?${searchParams.toString()}`, {
     headers: authHeaders(),
@@ -318,6 +351,61 @@ async function fetchTasks(options = {}) {
 
   if (!body.ok) throw new Error(body.message || "Task request failed.");
   return Array.isArray(body.tasks) ? body.tasks : [];
+}
+
+function isSubmissionProbeTask(target) {
+  return target.taskMode === "submission_probe" && Boolean(target.submissionId);
+}
+
+function submissionProbeResult(target, status, message, offers, startedAt, extraDetails = {}) {
+  return {
+    sourceId: target.sourceId,
+    sourceName: target.sourceName,
+    sourceUrl: target.sourceUrl,
+    baseUrl: target.baseUrl,
+    kind: target.kind,
+    status,
+    offerCount: offers.length,
+    offers: offers.slice(0, 12),
+    ms: Date.now() - startedAt,
+    finishedAt: extraDetails.collectedAt || new Date().toISOString(),
+    message,
+    details: compactObject({
+      collectionJobId: target.collectionJobId || null,
+      collectionJobRequestedBy: target.collectionJobRequestedBy || null,
+      collectionJobCreatedAt: target.collectionJobCreatedAt || null,
+      collectorNode: collectorNodeDetails(),
+      edgeRunner: {
+        version: VERSION,
+        family: config.family,
+        shardCount: config.shardCount,
+        shardIndex: config.shardIndex,
+      },
+      ...extraDetails,
+    }),
+  };
+}
+
+async function postSubmissionProbeResult(target, result) {
+  if (config.dryRun) {
+    console.log(`[dry-run] would upload submission probe: ${target.submissionId}, status=${result.status}, offers=${result.offerCount}`);
+    return;
+  }
+
+  const { body } = await fetchControlJson("/api/admin/collector-agent/submission-probe-result", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({
+      submissionId: target.submissionId,
+      collectionJobId: target.collectionJobId || null,
+      result,
+    }),
+  }, "submission probe upload", config.uploadTimeoutMs);
+  if (!body.ok) throw new Error(body.message || "Submission probe upload failed.");
+  return body;
 }
 
 async function collectShopApi(target) {
@@ -860,6 +948,8 @@ function normalizeTask(task) {
     collectionJobId: task.collectionJobId ? String(task.collectionJobId) : null,
     collectionJobRequestedBy: task.collectionJobRequestedBy ? String(task.collectionJobRequestedBy) : null,
     collectionJobCreatedAt: task.collectionJobCreatedAt ? String(task.collectionJobCreatedAt) : null,
+    taskMode: task.taskMode ? String(task.taskMode) : null,
+    submissionId: task.submissionId ? String(task.submissionId) : null,
   };
 }
 

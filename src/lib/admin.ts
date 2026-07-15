@@ -124,6 +124,14 @@ type SubmissionProbeResult = {
   finishedAt?: string;
 };
 
+type SubmissionProbeQueueInput = {
+  sourceId?: string | null;
+  sourceName?: string | null;
+  sourceUrl: string;
+  baseUrl?: string | null;
+  collectorKind?: CollectorKind | string | null;
+};
+
 type ShopGoodsLookupResult = {
   checkedAt: string;
   goodsKey: string;
@@ -3565,6 +3573,110 @@ export async function recordSubmissionProbeResult(
   if (!updated) throw new Error("提交记录不存在或已被处理。");
 
   return mapSubmissionRow(updated);
+}
+
+export async function queueSubmissionProbeJob(
+  id: string,
+  input: SubmissionProbeQueueInput,
+): Promise<{ submission: ChannelSubmission; result: SubmissionProbeResult; jobId: string }> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) throw new Error("Supabase 尚未配置。");
+
+  const { data: row, error } = await supabase
+    .from("channel_submissions")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!row) throw new Error("提交记录不存在。");
+  if (row.status !== "pending") throw new Error("该提交已被处理。");
+
+  const submission = mapSubmissionRow(row);
+  const queuedAt = new Date().toISOString();
+  const collectorKind = normalizeCollectorKind(input.collectorKind) ||
+    normalizeCollectorKind(submission.parsedMeta.suggested_collector_kind) ||
+    "shopApi";
+  const sourceUrl = input.sourceUrl;
+  const parsedSourceUrl = safeUrl(sourceUrl);
+  const sourceHost = parsedSourceUrl ? normalizeHostname(parsedSourceUrl.hostname) : "";
+  const shopToken = parsedSourceUrl ? getShopToken(parsedSourceUrl.pathname) : null;
+  const sourceName =
+    input.sourceName ||
+    getSuggestedSourceName(submission.parsedMeta) ||
+    submission.name ||
+    (sourceHost ? inferSubmittedSourceName(sourceHost, submission.parsedTitle, shopToken) : null) ||
+    submission.parsedTitle ||
+    sourceUrl;
+  const sourceId = input.sourceId ||
+    getSuggestedSourceId(submission.parsedMeta) ||
+    (sourceHost ? inferSubmittedSourceId(sourceHost, sourceName, shopToken) : stableId("submission-probe-source", sourceName, sourceUrl));
+  const baseUrl = input.baseUrl || deriveBaseUrl(sourceUrl);
+  const jobId = stableId("submission-probe", id, sourceId, queuedAt);
+  const result: SubmissionProbeResult = {
+    sourceId,
+    sourceName,
+    sourceUrl,
+    baseUrl: baseUrl || undefined,
+    kind: collectorKind,
+    status: "queued",
+    offerCount: 0,
+    offers: [],
+    finishedAt: queuedAt,
+    message: "已加入低频试采集队列，等待支持 submissionProbe 的轻量采集节点领取。",
+  };
+
+  const { error: jobError } = await supabase.from("collection_jobs").insert({
+    id: jobId,
+    job_type: "source",
+    source_id: null,
+    source_name: sourceName,
+    status: "pending",
+    priority: 35,
+    attempts: 0,
+    max_attempts: 2,
+    requested_by: "submission_probe",
+    result: {
+      intent: "submission_probe",
+      submissionId: id,
+      sourceId,
+      sourceName,
+      sourceUrl,
+      baseUrl,
+      collectorKind,
+      queuedAt,
+      noWriteBack: true,
+    },
+    created_at: queuedAt,
+    updated_at: queuedAt,
+  });
+  if (jobError) throw jobError;
+
+  const nextMeta = await enrichSubmissionReviewMeta({
+    ...submission.parsedMeta,
+    probe_result: result,
+    probe_checked_at: queuedAt,
+    probe_job_id: jobId,
+    suggested_source_id: sourceId,
+    suggested_source_name: sourceName,
+    suggested_collection_method: "http",
+    suggested_collector_kind: collectorKind,
+    canonical_source_url: sourceUrl,
+    review_stage: "probe_queued",
+    support_status: "probe_queued",
+    support_reason: result.message,
+  });
+
+  const { data: updated, error: updateError } = await supabase
+    .from("channel_submissions")
+    .update({ parsed_meta: nextMeta })
+    .eq("id", id)
+    .eq("status", "pending")
+    .select("*")
+    .maybeSingle();
+  if (updateError) throw updateError;
+  if (!updated) throw new Error("提交记录不存在或已被处理。");
+
+  return { submission: mapSubmissionRow(updated), result, jobId };
 }
 
 export async function markSubmissionCollectorTodo(id: string, note?: string | null): Promise<ChannelSubmission> {

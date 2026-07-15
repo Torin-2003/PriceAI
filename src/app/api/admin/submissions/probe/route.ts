@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { probeSource } from "../../../../../../scripts/collect-prices.mjs";
-import { recordSubmissionProbeResult } from "@/lib/admin";
+import { queueSubmissionProbeJob, recordSubmissionProbeResult } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { requireAdminRequest } from "@/lib/env";
 import { getSupabaseServerClient } from "@/lib/supabase";
@@ -35,16 +35,32 @@ export async function POST(request: Request) {
     const sourceUrl = isMisleadingSharedShopApiPlatformUrl(canonicalSourceUrl, submission.url, meta)
       ? submission.url
       : canonicalSourceUrl || submission.url;
+    const collectorKind = stringMeta(meta, "suggested_collector_kind");
+    const sourceName =
+      submission.name ||
+      stringMeta(meta, "suggested_source_name") ||
+      submission.parsed_title ||
+      undefined;
+    const sourceId = stringMeta(meta, "suggested_source_id") || undefined;
+    const baseUrl = stringMeta(meta, "base_url") || deriveBaseUrl(sourceUrl) || undefined;
+
+    if (shouldQueueShopApiProbe({ sourceUrl, submittedUrl: submission.url, collectorKind })) {
+      const queued = await queueSubmissionProbeJob(payload.id, {
+        sourceId,
+        sourceName,
+        sourceUrl,
+        baseUrl,
+        collectorKind: "shopApi",
+      });
+      return Response.json({ ok: true, result: queued.result, submission: queued.submission, jobId: queued.jobId });
+    }
+
     const result = await probeSource({
-      sourceId: stringMeta(meta, "suggested_source_id") || undefined,
-      sourceName:
-        submission.name ||
-        stringMeta(meta, "suggested_source_name") ||
-        submission.parsed_title ||
-        undefined,
+      sourceId,
+      sourceName,
       sourceUrl,
-      baseUrl: stringMeta(meta, "base_url") || undefined,
-      collectorKind: stringMeta(meta, "suggested_collector_kind") || undefined,
+      baseUrl,
+      collectorKind: collectorKind || undefined,
       rawOffers: [{ url: submission.url }],
       limit: 12,
       fallbackDetect: true,
@@ -96,6 +112,25 @@ function safeUrl(value: string | null | undefined): URL | null {
   } catch {
     return null;
   }
+}
+
+function deriveBaseUrl(value: string | null | undefined): string | null {
+  const parsed = safeUrl(value);
+  return parsed ? `${parsed.protocol}//${parsed.host}` : null;
+}
+
+function shouldQueueShopApiProbe(input: {
+  sourceUrl: string;
+  submittedUrl: string;
+  collectorKind: string | null;
+}): boolean {
+  if (input.collectorKind?.trim().toLowerCase() === "shopapi") return true;
+
+  const source = safeUrl(input.sourceUrl);
+  if (source && isSharedShopApiPlatformHost(source.hostname)) return true;
+
+  const submitted = safeUrl(input.submittedUrl);
+  return Boolean(submitted && isSharedShopApiPlatformHost(submitted.hostname));
 }
 
 function errorStatus(message: string): number {

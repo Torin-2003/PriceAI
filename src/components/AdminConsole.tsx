@@ -155,6 +155,15 @@ type CollectorStatusState = Pick<
 
 const ADMIN_LIST_PREVIEW_ROWS = 8;
 const ADMIN_COLLECTOR_STATUS_REFRESH_MS = 60_000;
+const submissionQualityFilterOptions: Array<{ value: SubmissionQualityFilter; label: string }> = [
+  { value: "all", label: "全部" },
+  { value: "priority_approve", label: "优先通过" },
+  { value: "valuable_lead", label: "有价值线索" },
+  { value: "needs_review", label: "待复核" },
+  { value: "low_quality", label: "低质候选" },
+  { value: "duplicate", label: "重复/无优势" },
+  { value: "environment_issue", label: "采集环境问题" },
+];
 
 type ProbeOffer = {
   sourceStoreName?: string | null;
@@ -173,12 +182,30 @@ type ProbeResult = {
   sourceUrl?: string;
   baseUrl?: string;
   kind: string | null;
-  status: "success" | "empty" | "failed" | "unsupported";
+  status: "queued" | "running" | "success" | "empty" | "failed" | "unsupported";
   offerCount: number;
   offers: ProbeOffer[];
   ms?: number;
   message?: string;
   finishedAt?: string;
+};
+
+type SubmissionQualityKind =
+  | "priority_approve"
+  | "valuable_lead"
+  | "needs_review"
+  | "low_quality"
+  | "duplicate"
+  | "environment_issue";
+
+type SubmissionQualityFilter = "all" | SubmissionQualityKind;
+
+type SubmissionQualitySummary = {
+  kind: SubmissionQualityKind;
+  label: string;
+  tone: BadgeTone;
+  reasons: string[];
+  detail?: string;
 };
 
 type SubmissionProductPreview = {
@@ -490,6 +517,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     [data.apiTransit.submissions],
   );
   const [searchQuery, setSearchQuery] = useState("");
+  const [submissionQualityFilter, setSubmissionQualityFilter] = useState<SubmissionQualityFilter>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -716,7 +744,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     }),
     [data.officialPrices, officialAppPatches, officialPlanPatches, officialPricePatches, officialRegionPatches],
   );
-  const filteredReview = useMemo(() => {
+  const searchFilteredReview = useMemo(() => {
     if (!searchQuery.trim()) return reviewSubmissions;
     const q = searchQuery.toLowerCase();
     return reviewSubmissions.filter(
@@ -726,6 +754,38 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
         s.url.toLowerCase().includes(q),
     );
   }, [reviewSubmissions, searchQuery]);
+
+  const reviewQualityCounts = useMemo(() => {
+    const counts: Record<SubmissionQualityKind, number> = {
+      priority_approve: 0,
+      valuable_lead: 0,
+      needs_review: 0,
+      low_quality: 0,
+      duplicate: 0,
+      environment_issue: 0,
+    };
+    for (const submission of searchFilteredReview) {
+      const summary = buildSubmissionQualitySummary({
+        submission,
+        probeResult: probeResults[submission.id] || probeResultFromMeta(submission.parsedMeta || {}),
+        existingSource: existingSourceForSubmission(submission, sourceById),
+      });
+      counts[summary.kind] += 1;
+    }
+    return counts;
+  }, [probeResults, searchFilteredReview, sourceById]);
+
+  const filteredReview = useMemo(() => {
+    if (submissionQualityFilter === "all") return searchFilteredReview;
+    return searchFilteredReview.filter((submission) => {
+      const summary = buildSubmissionQualitySummary({
+        submission,
+        probeResult: probeResults[submission.id] || probeResultFromMeta(submission.parsedMeta || {}),
+        existingSource: existingSourceForSubmission(submission, sourceById),
+      });
+      return summary.kind === submissionQualityFilter;
+    });
+  }, [probeResults, searchFilteredReview, sourceById, submissionQualityFilter]);
 
   const filteredTodo = useMemo(() => {
     if (!searchQuery.trim()) return collectorTodoSubmissions;
@@ -2471,7 +2531,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
 
   async function probeSubmission(submission: ChannelSubmission) {
     setLoadingAction(`probe-${submission.id}`);
-    showRowFeedback(submission.id, "info", "正在试采集，通常需要 10-30 秒...");
+    showRowFeedback(submission.id, "info", "正在处理试采集；shopApi 会先入队等待低频节点。");
     const result = await request("/api/admin/submissions/probe", password, {
       id: submission.id,
     });
@@ -2484,7 +2544,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       }
       showRowFeedback(
         submission.id,
-        probeResult.status === "success" ? "success" : "error",
+        probeFeedbackType(probeResult.status),
         probeResult.message || "试采集完成。",
       );
     } else {
@@ -2749,7 +2809,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     let completedCount = 0;
 
     for (const item of items) {
-      showRowFeedback(item.id, "info", "正在试采集，通常需要 10-30 秒...");
+      showRowFeedback(item.id, "info", "正在处理试采集；shopApi 会先入队等待低频节点。");
       try {
         const result = await request("/api/admin/submissions/probe", password, { id: item.id });
         completedCount++;
@@ -2762,7 +2822,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
           if (probeResult.status === "success") successCount++;
           showRowFeedback(
             item.id,
-            probeResult.status === "success" ? "success" : "error",
+            probeFeedbackType(probeResult.status),
             probeResult.message || "试采集完成。",
           );
         } else {
@@ -2967,6 +3027,28 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                       aria-label="搜索渠道名或 URL"
                       className="h-9 w-full rounded-lg border border-[#adb3b4]/30 bg-white pl-9 pr-3 text-sm outline-none transition-colors focus:border-[#2d3435]"
                     />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {submissionQualityFilterOptions.map((option) => {
+                      const count = option.value === "all" ? searchFilteredReview.length : reviewQualityCounts[option.value];
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setSubmissionQualityFilter(option.value)}
+                          className={`inline-flex h-9 items-center gap-1 rounded-lg border px-3 text-xs font-medium transition-colors ${
+                            submissionQualityFilter === option.value
+                              ? "border-[#2d3435] bg-[#2d3435] text-white"
+                              : "border-[#adb3b4]/30 bg-white text-[#5a6061] hover:bg-[#f2f4f4]"
+                          }`}
+                        >
+                          {option.label}
+                          <span className={submissionQualityFilter === option.value ? "text-white/70" : "text-[#adb3b4]"}>
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                   {approvableSubmissionIds.size > 0 && (
                     <button
@@ -4034,11 +4116,12 @@ function SubmissionCard({
   const parseError = typeof meta.parse_error === "string" ? meta.parse_error : null;
   const productPreview = submissionProductPreviewFromMeta(meta);
   const currentProbe = probeResult || probeResultFromMeta(meta);
+  const probePending = currentProbe?.status === "queued" || currentProbe?.status === "running";
   const hasSuccessfulProbe = currentProbe?.status === "success" && currentProbe.offerCount > 0;
   const hasKnownCollector = isRunnableCollector(suggestedCollector);
   const hasValidSourceUrl = Boolean(canonicalSourceUrl || submittedUrlType !== "product");
   const sameChannelPending = Boolean(sameChannelPendingName || sameChannelPendingId);
-  const canApprove = hasValidSourceUrl && Boolean(existingSource || hasSuccessfulProbe || hasKnownCollector);
+  const canApprove = hasValidSourceUrl && !probePending && Boolean(existingSource || hasSuccessfulProbe || hasKnownCollector);
   const sourcePlatform = merchantSourcePlatform({
     collectorKind: suggestedCollector,
     sourceId: suggestedSourceId,
@@ -4046,6 +4129,11 @@ function SubmissionCard({
     url: submission.url,
     entryUrl: canonicalSourceUrl || submission.url,
     host: domain,
+  });
+  const qualitySummary = buildSubmissionQualitySummary({
+    submission,
+    probeResult: currentProbe,
+    existingSource,
   });
 
   const [mode, setMode] = useState<"idle" | "approve" | "todo" | "reject">("idle");
@@ -4073,12 +4161,18 @@ function SubmissionCard({
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
       currentProbe.status === "success"
         ? "bg-[#e8f3ec] text-[#2f7a4b]"
+        : currentProbe.status === "queued" || currentProbe.status === "running"
+          ? "bg-[#eef3f8] text-[#47657a]"
         : currentProbe.status === "failed"
           ? "bg-[#fbe9e7] text-[#9b3328]"
           : "bg-[#fff7e8] text-[#7a541b]"
     }`}>
       {currentProbe.status === "success"
         ? `可采集 ${currentProbe.offerCount} 条`
+        : currentProbe.status === "queued"
+          ? "已入队"
+          : currentProbe.status === "running"
+            ? "采集中"
         : currentProbe.status === "empty"
           ? "未采到报价"
           : currentProbe.status === "unsupported"
@@ -4135,6 +4229,7 @@ function SubmissionCard({
               <span className="text-xs text-[#adb3b4]">{formatRelativeTime(submission.createdAt)}</span>
             </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <Badge tone={qualitySummary.tone}>{qualitySummary.label}</Badge>
               {probeStatusBadge}
               {submittedUrlType === "product" && <Badge tone="info">商品链接</Badge>}
               {canonicalSourceStatus === "resolved" && <Badge tone="info">已反查渠道</Badge>}
@@ -4239,12 +4334,14 @@ function SubmissionCard({
 
           {productPreview && <SubmissionProductPreviewPanel preview={productPreview} productUrl={submittedUrlType === "product" ? submission.url : null} />}
 
+          <SubmissionQualityPanel summary={qualitySummary} />
+
           {submission.notes && <p className="mt-2 text-xs text-[#5a6061]">备注：{submission.notes}</p>}
 
           {currentProbe && <ProbePreview result={currentProbe} />}
 
           {/* Next-step recommendation for probe failures */}
-          {currentProbe && currentProbe.status !== "success" && mode === "idle" && (
+          {currentProbe && currentProbe.status !== "success" && !probePending && mode === "idle" && (
             <div className="mt-3 flex items-start gap-2 rounded-lg bg-[#fff7e8] px-3 py-2.5 text-xs text-[#7a541b]">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" />
               <span>
@@ -4496,6 +4593,25 @@ function SubmissionCard({
   );
 }
 
+function SubmissionQualityPanel({ summary }: { summary: SubmissionQualitySummary }) {
+  return (
+    <div className="mt-3 rounded-lg bg-[#f8f8f8] px-3 py-3 text-xs text-[#5a6061] ring-1 ring-[#adb3b4]/15">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium text-[#2d3435]">质量摘要</span>
+        <Badge tone={summary.tone}>{summary.label}</Badge>
+        {summary.detail && <span className="text-[#adb3b4]">{summary.detail}</span>}
+      </div>
+      <ul className="mt-2 flex flex-wrap gap-1.5">
+        {summary.reasons.map((reason) => (
+          <li key={reason} className="rounded bg-white px-2 py-1 text-[11px] leading-4 text-[#5a6061] ring-1 ring-[#adb3b4]/15">
+            {reason}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function SubmissionProductPreviewPanel({ preview, productUrl }: { preview: SubmissionProductPreview; productUrl?: string | null }) {
   const hasPrice = typeof preview.price === "number";
   const statusText = preview.statusText || preview.status || null;
@@ -4566,11 +4682,13 @@ function ProbePreview({ result }: { result: ProbeResult }) {
         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
           result.status === "success"
             ? "bg-[#e8f3ec] text-[#2f7a4b]"
+            : result.status === "queued" || result.status === "running"
+              ? "bg-[#eef3f8] text-[#47657a]"
             : result.status === "failed"
               ? "bg-[#fbe9e7] text-[#9b3328]"
               : "bg-[#fff7e8] text-[#7a541b]"
         }`}>
-          {result.status === "success" ? "可自动采集" : result.status === "empty" ? "未采到报价" : result.status === "unsupported" ? "暂不支持" : "采集失败"}
+          {probeStatusLabel(result.status)}
         </span>
         <span className="text-xs text-[#adb3b4]">采集器：{collectorKindLabel(result.kind || "auto")}</span>
         <span className="text-xs text-[#adb3b4]">报价：{result.offerCount} 条</span>
@@ -11113,7 +11231,14 @@ function probeResultFromMeta(meta: Record<string, unknown>): ProbeResult | null 
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   const status = stringMeta(record, "status");
-  if (status !== "success" && status !== "empty" && status !== "failed" && status !== "unsupported") return null;
+  if (
+    status !== "queued" &&
+    status !== "running" &&
+    status !== "success" &&
+    status !== "empty" &&
+    status !== "failed" &&
+    status !== "unsupported"
+  ) return null;
   return {
     sourceId: stringMeta(record, "sourceId") || undefined,
     sourceName: stringMeta(record, "sourceName") || undefined,
@@ -11129,6 +11254,196 @@ function probeResultFromMeta(meta: Record<string, unknown>): ProbeResult | null 
     message: stringMeta(record, "message") || undefined,
     finishedAt: stringMeta(record, "finishedAt") || undefined,
   };
+}
+
+function buildSubmissionQualitySummary(input: {
+  submission: ChannelSubmission;
+  probeResult?: ProbeResult | null;
+  existingSource?: Source | null;
+}): SubmissionQualitySummary {
+  const meta = input.submission.parsedMeta || {};
+  const probe = input.probeResult || probeResultFromMeta(meta);
+  const suggestedCollector = collectorKindMeta(meta, "suggested_collector_kind");
+  const sameChannelPending = isSameChannelPendingSubmission(input.submission);
+  const reasons: string[] = [];
+
+  if (input.existingSource || sameChannelPending) {
+    if (input.existingSource) reasons.push(`已有源：${input.existingSource.name}`);
+    if (sameChannelPending) reasons.push("同渠道还有提交，建议合并或忽略重复项");
+    return {
+      kind: "duplicate",
+      label: "重复/无优势",
+      tone: "warn",
+      reasons,
+      detail: "先合并或保留主记录",
+    };
+  }
+
+  if (probe?.status === "queued" || probe?.status === "running") {
+    return {
+      kind: "environment_issue",
+      label: probe.status === "queued" ? "已入队试采集" : "采集中",
+      tone: "info",
+      reasons: [
+        "shopApi 由低频采集节点执行",
+        "等待节点回流结果前不按低质处理",
+      ],
+      detail: stringMeta(meta, "probe_job_id") ? `任务 ${stringMeta(meta, "probe_job_id")}` : undefined,
+    };
+  }
+
+  if (probe && probe.status !== "success" && isProbeRuntimeIssue(probe)) {
+    return {
+      kind: "environment_issue",
+      label: "采集环境问题",
+      tone: "info",
+      reasons: [
+        probe.message || "试采集触发风控或验证",
+        "建议低频重试，不直接拒绝",
+      ],
+      detail: collectorKindLabel((probe.kind || suggestedCollector || "auto") as CollectorKind),
+    };
+  }
+
+  if (probe?.status === "success") {
+    const duplicateTitleCount = duplicateProbeTitleCount(probe.offers);
+    if (probe.offerCount >= 8 && duplicateTitleCount <= Math.max(2, Math.floor(probe.offerCount * 0.5))) {
+      reasons.push(`采到 ${probe.offerCount} 条报价`);
+      reasons.push("覆盖样本相对充足");
+      return {
+        kind: "priority_approve",
+        label: "优先通过",
+        tone: "success",
+        reasons,
+        detail: "后续再补价格排名",
+      };
+    }
+
+    if (probe.offerCount <= 2) {
+      reasons.push(`仅采到 ${probe.offerCount} 条报价`);
+      reasons.push("样本不足，先观察是否有独特低价");
+      return {
+        kind: "valuable_lead",
+        label: "有价值线索",
+        tone: "info",
+        reasons,
+      };
+    }
+
+    if (duplicateTitleCount > Math.max(2, Math.floor(probe.offerCount * 0.6))) {
+      reasons.push("商品标题重复度偏高");
+      reasons.push(`采到 ${probe.offerCount} 条报价`);
+      return {
+        kind: "needs_review",
+        label: "观察/待复核",
+        tone: "warn",
+        reasons,
+      };
+    }
+
+    reasons.push(`采到 ${probe.offerCount} 条报价`);
+    reasons.push("可入库，但仍需人工看价格优势");
+    return {
+      kind: "valuable_lead",
+      label: "有价值线索",
+      tone: "info",
+      reasons,
+    };
+  }
+
+  if (probe?.status === "empty") {
+    return {
+      kind: "low_quality",
+      label: "低质候选",
+      tone: "danger",
+      reasons: [
+        "试采集完成但无可比价商品",
+        "优先确认是否空店、非目标商品或解析不足",
+      ],
+    };
+  }
+
+  if (probe?.status === "unsupported") {
+    return {
+      kind: "needs_review",
+      label: "观察/待复核",
+      tone: "warn",
+      reasons: [
+        "暂未识别可用采集器",
+        "可转采集器待办或拒绝",
+      ],
+    };
+  }
+
+  if (probe?.status === "failed") {
+    return {
+      kind: "needs_review",
+      label: "观察/待复核",
+      tone: "warn",
+      reasons: [
+        probe.message || "试采集失败",
+        "失败原因不明确，先人工复核",
+      ],
+    };
+  }
+
+  if (suggestedCollector === "shopApi") {
+    return {
+      kind: "environment_issue",
+      label: "待低频试采集",
+      tone: "info",
+      reasons: [
+        "已识别 shopApi 类型",
+        "点击试采集后会入队给轻量节点",
+      ],
+    };
+  }
+
+  return {
+    kind: "needs_review",
+    label: "观察/待复核",
+    tone: "muted",
+    reasons: [
+      stringMeta(meta, "support_reason") || "已有基础解析，缺少试采集证据",
+    ],
+  };
+}
+
+function isProbeRuntimeIssue(probe: ProbeResult): boolean {
+  const text = `${probe.message || ""} ${probe.kind || ""}`.toLowerCase();
+  return /验证|风控|captcha|challenge|waf|安全|http 403|verification/.test(text);
+}
+
+function duplicateProbeTitleCount(offers: ProbeOffer[]): number {
+  const counts = new Map<string, number>();
+  for (const offer of offers) {
+    const key = normalizeProbeTitle(offer.sourceTitle);
+    if (!key) continue;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return Array.from(counts.values()).reduce((sum, count) => sum + Math.max(0, count - 1), 0);
+}
+
+function normalizeProbeTitle(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[【】\[\]（）()｜|_\-—~·.,，。:：\s]/g, "")
+    .slice(0, 40);
+}
+
+function probeStatusLabel(status: ProbeResult["status"]): string {
+  if (status === "success") return "可自动采集";
+  if (status === "queued") return "已入队试采集";
+  if (status === "running") return "采集中";
+  if (status === "empty") return "未采到报价";
+  if (status === "unsupported") return "暂不支持";
+  return "采集失败";
+}
+
+function probeFeedbackType(status: ProbeResult["status"]): RowFeedback["type"] {
+  if (status === "success") return "success";
+  if (status === "queued" || status === "running") return "info";
+  return "error";
 }
 
 function mapProbeOffer(value: unknown): ProbeOffer | null {
