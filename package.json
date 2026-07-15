@@ -48,7 +48,8 @@
     "setup:ga4": "node scripts/setup-ga4.mjs",
     "audit:catalog": "node scripts/audit-catalog.mjs",
     "test:catalog": "node scripts/test-catalog.mjs",
-    "filter:ldxp-sqlite": "node scripts/filter-ldxp-sqlite-candidates.mjs"
+    "filter:ldxp-sqlite": "node scripts/filter-ldxp-sqlite-candidates.mjs",
+    "update:star-history": "node scripts/update-star-history.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

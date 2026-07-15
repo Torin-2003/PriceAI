@@ -6,7 +6,7 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| `priceai-star-history.svg` | README 中展示的 GitHub Star 趋势静态图 |
+| `priceai-star-history.svg` | README 中展示的 GitHub Star 趋势图，由 GitHub Actions 定时刷新 |
 | `priceai-home-2026-07-01-v2.png` | README 和项目介绍中的当前首页产品截图 |
 | `priceai-home-2026-07-01.png` | 历史 README 产品截图 |
 | `priceai-home-2026-06-02.png` | 历史 README 产品截图 |
