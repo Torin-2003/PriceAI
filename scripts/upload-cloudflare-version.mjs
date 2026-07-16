@@ -21,24 +21,49 @@ const openNextCloudflare = join(
   ".bin",
   process.platform === "win32" ? "opennextjs-cloudflare.cmd" : "opennextjs-cloudflare",
 );
+const wrangler = join(
+  process.cwd(),
+  "node_modules",
+  ".bin",
+  process.platform === "win32" ? "wrangler.cmd" : "wrangler",
+);
 const canUseRcloneCacheUpload =
   hasEnv("R2_ACCESS_KEY_ID") &&
   hasEnv("R2_SECRET_ACCESS_KEY") &&
   (hasEnv("CF_ACCOUNT_ID") || hasEnv("CLOUDFLARE_ACCOUNT_ID"));
 
 try {
+  const command = canUseRcloneCacheUpload ? openNextCloudflare : wrangler;
+  const args = canUseRcloneCacheUpload
+    ? [
+        "upload",
+        "--rclone",
+        "--",
+        "--keep-vars",
+        "--tag",
+        deploymentId,
+        "--message",
+        `PriceAI ${deploymentId}`,
+      ]
+    : [
+        "versions",
+        "upload",
+        "--keep-vars",
+        "--tag",
+        deploymentId,
+        "--message",
+        `PriceAI ${deploymentId}`,
+      ];
+
+  if (!canUseRcloneCacheUpload) {
+    console.warn(
+      "R2 access-key env is missing; uploading the Worker version without pre-populating the remote R2 incremental cache.",
+    );
+  }
+
   const result = spawnSync(
-    openNextCloudflare,
-    [
-      "upload",
-      ...(canUseRcloneCacheUpload ? ["--rclone"] : []),
-      "--",
-      "--keep-vars",
-      "--tag",
-      deploymentId,
-      "--message",
-      `PriceAI ${deploymentId}`,
-    ],
+    command,
+    args,
     {
       cwd: process.cwd(),
       env: {
