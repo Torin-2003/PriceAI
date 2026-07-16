@@ -51,14 +51,18 @@ try {
   if (result.status !== 0) process.exit(result.status ?? 1);
 
   const upload = readUploadOutput(outputPath);
-  const previewUrl = upload.preview_alias_url || upload.preview_url;
-  if (!upload.version_id || !previewUrl) {
-    throw new Error("Cloudflare upload succeeded but Wrangler did not report a version ID and preview URL.");
+  const previewUrl = upload.preview_alias_url || upload.preview_url || "";
+  if (!upload.version_id) {
+    throw new Error("Cloudflare upload succeeded but Wrangler did not report a version ID.");
   }
 
   console.log(`Cloudflare candidate version: ${upload.version_id}`);
   console.log(`Cloudflare candidate tag: ${deploymentId}`);
-  console.log(`Cloudflare preview URL: ${previewUrl}`);
+  if (previewUrl) {
+    console.log(`Cloudflare preview URL: ${previewUrl}`);
+  } else {
+    console.warn("Cloudflare preview URL unavailable; skipping candidate preview smoke.");
+  }
 
   writeGithubOutput("version_id", upload.version_id);
   writeGithubOutput("version_tag", deploymentId);
