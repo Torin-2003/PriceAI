@@ -32,6 +32,11 @@ const DEFAULT_FLUSH_INTERVAL_MS = 120_000;
 const DEFAULT_SPOOL_REPLAY_LIMIT = 40;
 const DEFAULT_FULL_SNAPSHOT_OFFER_LIMIT = 200;
 const SHOP_API_FULL_SNAPSHOT_OFFER_LIMIT = 500;
+const SHOP_API_MAX_CATEGORY_PAGES = 10;
+const SHOP_API_LIST_PAGE_SIZE = 100;
+const SHOP_API_DEFAULT_PRICE_SAMPLE_SIZE = 5;
+const SHOP_API_FIXED_FEE_RATE = 0.03;
+const SHOP_API_CENT_TOLERANCE = 0.011;
 const DEFAULT_SHOP_API_PROXY_HOSTS = ["pay.ldxp.cn", "ldxp.cn"];
 const SHOP_API_PROXY_REQUEST_TIMEOUT_MS = 20_000;
 const DEFAULT_SHOP_API_PROXY_REUSE_LIMIT = 1;
@@ -748,6 +753,70 @@ async function collectShopApi(target, options = {}) {
       const storeName = cleanText(shopInfo.data.nickname || target.sourceStoreName || target.sourceName);
       const sourceUrl = shopInfo.data.link || `${base}/shop/${token}`;
       const shopCreatedAt = timestampFromShopApiValue(shopInfo.data.create_time);
+      const useAllGoodsList = shopApiAllGoodsListEnabled(options);
+      const pricingSummaries = [];
+
+      if (useAllGoodsList) {
+        const reportedGoods = shopApiReportedGoodsCount(shopInfo.data);
+        if (reportedGoods !== null) {
+          reportedGoodsCount += reportedGoods;
+          hasReportedGoodsCount = true;
+        }
+
+        const listResult = await fetchShopApiGoodsListPages({
+          base,
+          token,
+          sourceUrl,
+          categoryId: 0,
+          options,
+          requestOptions,
+        });
+        partialReasons.push(...listResult.partialReasons);
+        fetchedItemCount += listResult.items.length;
+
+        const priceResolver = await createShopApiSampledPriceResolver({
+          base,
+          token,
+          sourceUrl,
+          items: listResult.items,
+          options,
+          requestOptions,
+        });
+        pricingSummaries.push(priceResolver.summary);
+
+        for (const item of listResult.items) {
+          const offer = makeShopApiOfferFromItem({
+            target,
+            base,
+            item,
+            sourceUrl,
+            storeName,
+            shopCreatedAt,
+            shopAvailability,
+            priceResolver,
+          });
+          if (!offer) continue;
+
+          const rawSeenOfferId = stableShopApiOfferIdFromUrl(offer.url);
+          if (rawSeenOfferId) rawSeenOfferIds.add(rawSeenOfferId);
+          offers.push(offer);
+          publishedItemCount += 1;
+        }
+
+        if (reportedGoods !== null && listResult.items.length !== reportedGoods) {
+          partialReasons.push(
+            `All-goods list reported ${reportedGoods} goods but fetched ${listResult.items.length}.`,
+          );
+        }
+
+        offers.collectionDetails = {
+          ...(offers.collectionDetails || {}),
+          shopApiListMode: "all_goods",
+          shopApiPricing: pricingSummaries,
+        };
+        continue;
+      }
+
       const defaultChannelId = await getShopApiDefaultChannelId(base, token, sourceUrl, options, requestOptions);
       const categoriesPayload = await postJson(
         `${base}/shopApi/Shop/categoryList`,
@@ -774,7 +843,7 @@ async function collectShopApi(target, options = {}) {
           hasReportedGoodsCount = true;
         }
 
-        for (let page = 1; page <= 10; page += 1) {
+        for (let page = 1; page <= SHOP_API_MAX_CATEGORY_PAGES; page += 1) {
           await waitBetweenPages(options);
           const listPayload = await postJson(
             `${base}/shopApi/Shop/goodsList`,
@@ -784,7 +853,7 @@ async function collectShopApi(target, options = {}) {
               category_id: categoryId,
               goods_type: "card",
               current: page,
-              pageSize: 100,
+              pageSize: SHOP_API_LIST_PAGE_SIZE,
             },
             sourceUrl,
             requestOptions,
@@ -798,24 +867,19 @@ async function collectShopApi(target, options = {}) {
           if (!items.length) break;
           fetchedItemCount += items.length;
           categoryFetchedItemCount += items.length;
-          if (page === 10 && items.length >= 100) {
-            partialReasons.push(`Category ${categoryId} reached page cap 10.`);
+          if (page === SHOP_API_MAX_CATEGORY_PAGES && items.length >= SHOP_API_LIST_PAGE_SIZE) {
+            partialReasons.push(`Category ${categoryId} reached page cap ${SHOP_API_MAX_CATEGORY_PAGES}.`);
           }
 
           for (const item of items) {
-            const itemUrl = item.link || (item.goods_key ? `${base}/item/${item.goods_key}` : "");
-            const rawSeenOfferId = stableShopApiOfferIdFromUrl(itemUrl);
-            if (rawSeenOfferId) rawSeenOfferIds.add(rawSeenOfferId);
-
             const title = cleanText(item.name);
             const listedPrice = numberOrNull(item.price ?? item.real_price);
             if (!title || listedPrice === null || isNonComparableTitle(title)) continue;
 
-            const stockCount = numberOrNull(item.extend?.stock_count);
-            const minOrderQuantity = shopApiMinOrderQuantity(item.extend?.limit_count);
-            const bulkPricingTiers = shopApiBulkPricingTiers(item.multipleoffers);
-            const status = Number(item.status ?? 1) !== 1 ? "out_of_stock" : statusFromStock(stockCount);
-            const categoryName = cleanText(item.category?.name || "");
+            const itemUrl = item.link || (item.goods_key ? `${base}/item/${item.goods_key}` : "");
+            const rawSeenOfferId = stableShopApiOfferIdFromUrl(itemUrl);
+            if (rawSeenOfferId) rawSeenOfferIds.add(rawSeenOfferId);
+
             const effectivePrice = await resolveShopApiEffectivePrice({
               base,
               goodsKey: item.goods_key,
@@ -826,36 +890,21 @@ async function collectShopApi(target, options = {}) {
               requestOptions,
             });
 
-            offers.push(
-              makeOffer(
-                {
-                  ...target,
-                  sourceUrl,
-                  sourceEntryUrl: sourceUrl,
-                  sourceStoreName: storeName,
-                  sourceShopCreatedAt: shopCreatedAt,
-                },
-                {
-                  title,
-                  price: effectivePrice.price,
-                  listedPrice: effectivePrice.listedPrice,
-                  feeAmount: effectivePrice.feeAmount,
-                  priceBasis: effectivePrice.priceBasis,
-                  status,
-                  effectiveStatus: shopAvailability.closed ? "unavailable" : "available",
-                  failureReason: shopAvailability.closed ? shopAvailability.reason : null,
-                  stockCount,
-                  minOrderQuantity,
-                  bulkPricingTiers,
-                  url: itemUrl,
-                  tags: compact([
-                    categoryName,
-                    item.goods_type === "card" ? "卡密" : null,
-                    item.extend?.send_order === 0 ? "自动发货" : null,
-                  ]),
-                },
-              ),
-            );
+            const offer = makeShopApiOfferFromItem({
+              target,
+              base,
+              item,
+              sourceUrl,
+              storeName,
+              shopCreatedAt,
+              shopAvailability,
+              priceResolver: {
+                priceFor: () => effectivePrice,
+              },
+            });
+            if (!offer) continue;
+
+            offers.push(offer);
             publishedItemCount += 1;
           }
 
@@ -878,6 +927,8 @@ async function collectShopApi(target, options = {}) {
       publishedItemCount,
       reportedGoodsCount: hasReportedGoodsCount ? reportedGoodsCount : null,
       partialReason: partialReasons.join(" "),
+      shopApiListMode: shopApiAllGoodsListEnabled(options) ? "all_goods" : "category",
+      shopApiPricing: offers.collectionDetails?.shopApiPricing,
     };
 
     return offers;
@@ -897,6 +948,249 @@ function reportedGoodsCountForCategory(categories, selectedCategories, categoryI
   return Math.trunc(value);
 }
 
+function makeShopApiOfferFromItem({
+  target,
+  base,
+  item,
+  sourceUrl,
+  storeName,
+  shopCreatedAt,
+  shopAvailability,
+  priceResolver,
+}) {
+  const title = cleanText(item.name);
+  const listedPrice = numberOrNull(item.price ?? item.real_price);
+  if (!title || listedPrice === null || isNonComparableTitle(title)) return null;
+
+  const itemUrl = item.link || (item.goods_key ? `${base}/item/${item.goods_key}` : "");
+  const stockCount = numberOrNull(item.extend?.stock_count);
+  const minOrderQuantity = shopApiMinOrderQuantity(item.extend?.limit_count);
+  const bulkPricingTiers = shopApiBulkPricingTiers(item.multipleoffers);
+  const status = Number(item.status ?? 1) !== 1 ? "out_of_stock" : statusFromStock(stockCount);
+  const categoryName = cleanText(item.category?.name || "");
+  const effectivePrice = priceResolver.priceFor(item, listedPrice, itemUrl || sourceUrl);
+
+  return makeOffer(
+    {
+      ...target,
+      sourceUrl,
+      sourceEntryUrl: sourceUrl,
+      sourceStoreName: storeName,
+      sourceShopCreatedAt: shopCreatedAt,
+    },
+    {
+      title,
+      price: effectivePrice.price,
+      listedPrice: effectivePrice.listedPrice,
+      feeAmount: effectivePrice.feeAmount,
+      priceBasis: effectivePrice.priceBasis,
+      status,
+      effectiveStatus: shopAvailability.closed ? "unavailable" : "available",
+      failureReason: shopAvailability.closed ? shopAvailability.reason : null,
+      stockCount,
+      minOrderQuantity,
+      bulkPricingTiers,
+      url: itemUrl,
+      tags: compact([
+        categoryName,
+        item.goods_type === "card" ? "卡密" : null,
+        item.extend?.send_order === 0 ? "自动发货" : null,
+      ]),
+    },
+  );
+}
+
+async function fetchShopApiGoodsListPages({ base, token, sourceUrl, categoryId, options = {}, requestOptions = null }) {
+  const items = [];
+  const partialReasons = [];
+
+  for (let page = 1; page <= SHOP_API_MAX_CATEGORY_PAGES; page += 1) {
+    await waitBetweenPages(options);
+    const listPayload = await postJson(
+      `${base}/shopApi/Shop/goodsList`,
+      {
+        token,
+        keywords: "",
+        category_id: categoryId,
+        goods_type: "card",
+        current: page,
+        pageSize: SHOP_API_LIST_PAGE_SIZE,
+      },
+      sourceUrl,
+      requestOptions,
+    );
+    if (listPayload.code !== 1 || !Array.isArray(listPayload.data?.list)) {
+      partialReasons.push(`Goods list unavailable for category ${categoryId} page ${page}.`);
+      break;
+    }
+
+    const pageItems = listPayload.data.list;
+    if (!pageItems.length) break;
+    items.push(...pageItems);
+    if (page === SHOP_API_MAX_CATEGORY_PAGES && pageItems.length >= SHOP_API_LIST_PAGE_SIZE) {
+      partialReasons.push(`Category ${categoryId} reached page cap ${SHOP_API_MAX_CATEGORY_PAGES}.`);
+    }
+    if (pageItems.length < SHOP_API_LIST_PAGE_SIZE) break;
+  }
+
+  return { items, partialReasons };
+}
+
+async function createShopApiSampledPriceResolver({ base, token, sourceUrl, items, options = {}, requestOptions = null }) {
+  const forcedModel = shopApiForcedFeeModel(options);
+  if (forcedModel) {
+    return {
+      summary: {
+        sampleSize: 0,
+        resolvedSampleSize: 0,
+        strategy: `${forcedModel.kind}_forced`,
+        rate: forcedModel.rate,
+      },
+      priceFor(_item, listedPrice) {
+        return applyShopApiFeeModel(listedPrice, forcedModel);
+      },
+    };
+  }
+
+  const sampleSize = shopApiPriceSampleSizeFor(options);
+  const sampleItems = selectShopApiPriceSampleItems(items, sampleSize);
+  const sampledPrices = new Map();
+  const sampleResults = [];
+  let channelId = 0;
+
+  if (sampleItems.length) {
+    channelId = await getShopApiDefaultChannelId(base, token, sourceUrl, options, requestOptions);
+  }
+
+  for (const item of sampleItems) {
+    const listedPrice = numberOrNull(item.price ?? item.real_price);
+    if (listedPrice === null) continue;
+    const effectivePrice = await resolveShopApiEffectivePrice({
+      base,
+      goodsKey: item.goods_key,
+      listedPrice,
+      channelId,
+      referer: item.link || sourceUrl,
+      options,
+      requestOptions,
+      normalizePriceWithFee: true,
+    });
+    if (item.goods_key) sampledPrices.set(String(item.goods_key), effectivePrice);
+    sampleResults.push({ item, listedPrice, effectivePrice });
+  }
+
+  const model = inferShopApiFeeModel(sampleResults);
+  const summary = {
+    sampleSize: sampleItems.length,
+    resolvedSampleSize: sampleResults.length,
+    strategy: model ? model.kind : "listed_fallback",
+    rate: model?.rate ?? null,
+  };
+
+  return {
+    summary,
+    priceFor(item, listedPrice) {
+      const sampled = item.goods_key ? sampledPrices.get(String(item.goods_key)) : null;
+      if (sampled) return sampled;
+      if (model) return applyShopApiFeeModel(listedPrice, model);
+      return {
+        price: listedPrice,
+        listedPrice,
+        feeAmount: null,
+        priceBasis: "listed_fallback",
+      };
+    },
+  };
+}
+
+function selectShopApiPriceSampleItems(items, sampleSize) {
+  if (!sampleSize) return [];
+  const candidates = items
+    .filter((item) => item?.goods_key)
+    .map((item) => ({ item, listedPrice: numberOrNull(item.price ?? item.real_price), stockCount: numberOrNull(item.extend?.stock_count) }))
+    .filter((entry) => entry.listedPrice !== null && entry.listedPrice > 0)
+    .sort((left, right) => {
+      const leftInStock = Number(left.stockCount ?? 1) > 0 ? 1 : 0;
+      const rightInStock = Number(right.stockCount ?? 1) > 0 ? 1 : 0;
+      if (leftInStock !== rightInStock) return rightInStock - leftInStock;
+      return left.listedPrice - right.listedPrice;
+    });
+  if (candidates.length <= sampleSize) return candidates.map((entry) => entry.item);
+
+  const selected = new Map();
+  const add = (entry) => {
+    if (!entry?.item?.goods_key) return;
+    selected.set(String(entry.item.goods_key), entry.item);
+  };
+  add(candidates[0]);
+  add(candidates[Math.floor(candidates.length / 2)]);
+  add(candidates[candidates.length - 1]);
+
+  for (const entry of candidates) {
+    if (selected.size >= sampleSize) break;
+    add(entry);
+  }
+
+  return Array.from(selected.values()).slice(0, sampleSize);
+}
+
+function inferShopApiFeeModel(sampleResults) {
+  const valid = sampleResults.filter((result) =>
+    result.listedPrice > 0 &&
+    result.effectivePrice?.priceBasis === "settled" &&
+    result.effectivePrice?.feeAmount !== null &&
+    result.effectivePrice?.feeAmount !== undefined
+  );
+  if (!valid.length) return null;
+
+  const fixed3 = valid.every((result) =>
+    feeMatchesRate(result.effectivePrice.feeAmount, result.effectivePrice.listedPrice || result.listedPrice, SHOP_API_FIXED_FEE_RATE)
+  );
+  if (fixed3) return { kind: "fixed_3pct", rate: SHOP_API_FIXED_FEE_RATE };
+
+  const noFee = valid.every((result) => closeCurrency(result.effectivePrice.feeAmount, 0));
+  if (noFee) return { kind: "no_fee", rate: 0 };
+
+  return null;
+}
+
+function applyShopApiFeeModel(listedPrice, model) {
+  const feeAmount = roundCurrency(listedPrice * model.rate);
+  return {
+    price: roundCurrency(listedPrice + feeAmount),
+    listedPrice,
+    feeAmount,
+    priceBasis: "settled",
+  };
+}
+
+function feeMatchesRate(feeAmount, listedPrice, rate) {
+  const expected = listedPrice * rate;
+  return [roundCurrency(expected), ceilCurrency(expected), floorCurrency(expected)].some((value) =>
+    closeCurrency(feeAmount, value)
+  );
+}
+
+function shopApiReportedGoodsCount(data) {
+  const value = numberOrNull(data?.card_count ?? data?.goods_count);
+  if (value === null || value < 0) return null;
+  return Math.trunc(value);
+}
+
+function shopApiForcedFeeModel(options = {}) {
+  const value =
+    optionValue(options, "shopApiFeeModel", "shop-api-fee-model") ||
+    runtimeEnvValue("PRICEAI_SHOPAPI_FEE_MODEL");
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["fixed_3pct", "fixed-3pct", "3pct", "3%", "fixed_rate"].includes(normalized)) {
+    return { kind: "fixed_3pct", rate: SHOP_API_FIXED_FEE_RATE };
+  }
+  if (["no_fee", "no-fee", "none", "0"].includes(normalized)) {
+    return { kind: "no_fee", rate: 0 };
+  }
+  return null;
+}
+
 async function getShopApiDefaultChannelId(base, token, referer, options = {}, requestOptions = null) {
   await waitBetweenPages(options);
   const payload = await postJson(
@@ -914,7 +1208,16 @@ async function getShopApiDefaultChannelId(base, token, referer, options = {}, re
   return channelId === null ? 0 : channelId;
 }
 
-async function resolveShopApiEffectivePrice({ base, goodsKey, listedPrice, channelId, referer, options = {}, requestOptions = null }) {
+async function resolveShopApiEffectivePrice({
+  base,
+  goodsKey,
+  listedPrice,
+  channelId,
+  referer,
+  options = {},
+  requestOptions = null,
+  normalizePriceWithFee = false,
+}) {
   if (!goodsKey) {
     return {
       price: listedPrice,
@@ -940,10 +1243,15 @@ async function resolveShopApiEffectivePrice({ base, goodsKey, listedPrice, chann
   const totalAmount = numberOrNull(payload?.data?.total_amount);
   if (payload?.code === 1 && totalAmount !== null) {
     const originalAmount = numberOrNull(payload.data.original_amount) ?? listedPrice;
+    const feeAmount = numberOrNull(payload.data.fee);
+    const normalizedPrice =
+      normalizePriceWithFee && feeAmount !== null
+        ? roundCurrency(originalAmount + feeAmount)
+        : totalAmount;
     return {
-      price: totalAmount,
+      price: normalizedPrice,
       listedPrice: originalAmount,
-      feeAmount: numberOrNull(payload.data.fee),
+      feeAmount,
       priceBasis: "settled",
     };
   }
@@ -3712,6 +4020,44 @@ function optionValue(options, camelKey, kebabKey) {
   const kebab = options?.[kebabKey];
   if (kebab !== undefined && kebab !== null && String(kebab).trim()) return String(kebab).trim();
   return "";
+}
+
+function shopApiAllGoodsListEnabled(options = {}) {
+  const value =
+    optionValue(options, "shopApiListMode", "shop-api-list-mode") ||
+    optionValue(options, "shopApiGoodsListMode", "shop-api-goods-list-mode") ||
+    optionValue(options, "shopApiAllGoodsList", "shop-api-all-goods-list") ||
+    runtimeEnvValue("PRICEAI_SHOPAPI_LIST_MODE") ||
+    runtimeEnvValue("PRICEAI_SHOPAPI_GOODS_LIST_MODE") ||
+    runtimeEnvValue("PRICEAI_SHOPAPI_ALL_GOODS_LIST");
+
+  return ["all", "all_goods", "all-goods", "category_0", "category-0", "true", "1", "yes"].includes(
+    String(value || "").trim().toLowerCase(),
+  );
+}
+
+function shopApiPriceSampleSizeFor(options = {}) {
+  const raw =
+    optionValue(options, "shopApiPriceSampleSize", "shop-api-price-sample-size") ||
+    runtimeEnvValue("PRICEAI_SHOPAPI_PRICE_SAMPLE_SIZE") ||
+    SHOP_API_DEFAULT_PRICE_SAMPLE_SIZE;
+  return integerInRange(raw, 0, 50, SHOP_API_DEFAULT_PRICE_SAMPLE_SIZE);
+}
+
+function roundCurrency(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+function ceilCurrency(value) {
+  return Math.ceil((Number(value) - 1e-10) * 100) / 100;
+}
+
+function floorCurrency(value) {
+  return Math.floor((Number(value) + 1e-10) * 100) / 100;
+}
+
+function closeCurrency(left, right, tolerance = SHOP_API_CENT_TOLERANCE) {
+  return Math.abs(Number(left) - Number(right)) <= tolerance;
 }
 
 function statusFromStock(stockCount) {
