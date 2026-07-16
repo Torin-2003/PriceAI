@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { MdxGuidePage } from "@/components/MdxGuidePage";
 import { buildMdxGuideMetadata } from "@/lib/mdx-guides";
 
-export const revalidate = 86400;
+export const dynamic = "force-static";
+export const revalidate = false;
 
 const slug = "chatgpt-subscription-options";
 

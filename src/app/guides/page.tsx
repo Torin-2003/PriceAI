@@ -6,7 +6,8 @@ import { GuideDocsLayout } from "@/components/GuideDocsLayout";
 import { JsonLd } from "@/components/JsonLd";
 import { getGuideCategory, guideEntries } from "@/lib/guides";
 
-export const revalidate = 86400;
+export const dynamic = "force-static";
+export const revalidate = false;
 
 const pageUrl = "https://priceai.cc/guides";
 
