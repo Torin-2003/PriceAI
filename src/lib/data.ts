@@ -84,6 +84,7 @@ import type {
   RawOffer,
   Source,
   SourceOfferStats,
+  SourceQualityPriceStats,
   SourceQualityQueueKind,
   SourceQualitySource,
 } from "./types";
@@ -1820,6 +1821,7 @@ async function readAdminSummary(): Promise<AdminSummary> {
     pendingOfferFeedback,
     pendingSiteFeedback,
     sourceOfferStats,
+    sourceQualityPriceStats,
     hiddenOfferData,
     hiddenOfferDiagnostics,
     officialPrices,
@@ -1844,6 +1846,7 @@ async function readAdminSummary(): Promise<AdminSummary> {
     adminLoad("offer-feedback", "报价反馈", listOfferFeedback("pending"), [], loadErrors),
     adminLoad("site-feedback", "站点反馈", listSiteFeedback("pending"), [], loadErrors),
     adminLoad("source-offer-stats", "渠道报价统计", listSourceOfferStats(), [], loadErrors),
+    adminLoad("source-quality-price-benchmarks", "渠道价格基准", listSourceQualityPriceStats(), [], loadErrors),
     adminLoad("hidden-offers", "手动下架报价", listAdminHiddenRawOffers(), { rows: [], total: 0 }, loadErrors),
     adminLoad("hidden-offer-diagnostics", "隐藏报价诊断", getHiddenOfferDiagnostics(), emptyHiddenOfferDiagnostics(), loadErrors),
     adminLoad("official-prices", "官方地区价", getOfficialSubscriptionAdminData(), {
@@ -1935,6 +1938,7 @@ async function readAdminSummary(): Promise<AdminSummary> {
     generatedAt,
     sources,
     sourceOfferStats,
+    sourceQualityPriceStats,
     visibleOffers: visibleOfferData.rows,
     collectionJobs,
     crawlRuns,
@@ -3224,7 +3228,7 @@ const SOURCE_QUALITY_SEGMENT_META: Record<
 > = {
   priority_keep: {
     label: "优先保留",
-    description: "有点击、样本前列报价或足够可见报价，适合保留并优先维护。",
+    description: "有最低价、前五价、点击或样本前列报价，适合保留并优先维护。",
     tone: "success",
     nextAction: "保留并优先保证采集稳定",
   },
@@ -3254,13 +3258,13 @@ const SOURCE_QUALITY_SEGMENT_META: Record<
   },
   low_quality_candidate: {
     label: "低质候选",
-    description: "长期少量或无有效报价，也缺少点击和前列样本证据。",
+    description: "长期少量或无有效报价，也缺少点击、前列样本和价格优势证据。",
     tone: "danger",
     nextAction: "人工确认后清理",
   },
   duplicate_or_no_advantage: {
     label: "重复/无优势",
-    description: "手动下架或隐藏占比较高，疑似重复、同质或价格无优势。",
+    description: "手动下架、隐藏占比较高，或同商品/标签下价格长期无优势。",
     tone: "warn",
     nextAction: "合并主源或保留下架",
   },
@@ -3295,6 +3299,7 @@ function buildSourceQualitySummary(input: {
   generatedAt: string;
   sources: Source[];
   sourceOfferStats: SourceOfferStats[];
+  sourceQualityPriceStats: SourceQualityPriceStats[];
   visibleOffers: RawOffer[];
   collectionJobs: CollectionJob[];
   crawlRuns: CrawlRun[];
@@ -3302,6 +3307,7 @@ function buildSourceQualitySummary(input: {
 }): AdminSummary["sourceQuality"] {
   const generatedMs = timestampMs(input.generatedAt) || Date.now();
   const statsById = new Map(input.sourceOfferStats.map((stats) => [stats.sourceId, stats]));
+  const priceStatsById = new Map(input.sourceQualityPriceStats.map((stats) => [stats.sourceId, stats]));
   const heatById = new Map(input.collectionMonitoring.behavior.sourceHeat.map((row) => [row.sourceId, row]));
   const visibleSampleCountBySource = countVisibleOfferSamplesBySource(input.visibleOffers);
   const sampleFrontRankOfferCountBySource = buildSampleFrontRankOfferCounts(input.visibleOffers);
@@ -3314,6 +3320,7 @@ function buildSourceQualitySummary(input: {
       classifySourceQuality({
         source,
         stats: statsById.get(source.id),
+        priceStats: priceStatsById.get(source.id),
         visibleSampleCount: visibleSampleCountBySource.get(source.id) || 0,
         sampleFrontRankOfferCount: sampleFrontRankOfferCountBySource.get(source.id) || 0,
         heat: heatById.get(source.id),
@@ -3356,6 +3363,7 @@ function buildSourceQualitySummary(input: {
 function classifySourceQuality(input: {
   source: Source;
   stats?: SourceOfferStats;
+  priceStats?: SourceQualityPriceStats;
   visibleSampleCount: number;
   sampleFrontRankOfferCount: number;
   heat?: CollectionMonitoringSourceHeat;
@@ -3383,7 +3391,31 @@ function classifySourceQuality(input: {
   const hasRecentSuccess = successAgeMinutes !== null && successAgeMinutes <= 24 * 60;
   const hasFrontRankEvidence = input.sampleFrontRankOfferCount >= 2;
   const hasStrongClickEvidence = purchaseClicks >= 3 && visibleCount >= 3;
-  const hasAnyValueSignal = purchaseClicks > 0 || input.sampleFrontRankOfferCount > 0 || hasRecentSuccess;
+  const priceEvidence = input.priceStats ? sourceQualityPriceEvidenceFromStats(input.priceStats) : emptySourceQualityPriceEvidence();
+  const hasStrongPriceEvidence =
+    priceEvidence.lowestHitCount >= 1 ||
+    priceEvidence.top5HitCount >= 2 ||
+    priceEvidence.within10PctCount >= 3;
+  const hasModeratePriceEvidence =
+    priceEvidence.top5HitCount >= 1 ||
+    priceEvidence.within20PctCount >= 2 ||
+    (priceEvidence.within20PctCount >= 1 && priceEvidence.benchmarkOfferCount <= 3);
+  const hasEnoughPriceBenchmarks = priceEvidence.benchmarkOfferCount >= 5 || priceEvidence.pricedOfferCount >= 5;
+  const hasPriceNoAdvantage =
+    hasEnoughPriceBenchmarks &&
+    !hasStrongPriceEvidence &&
+    priceEvidence.lowestHitCount === 0 &&
+    (
+      (priceEvidence.highGapShare !== null && priceEvidence.highGapShare >= 0.6) ||
+      (priceEvidence.medianGapToMin !== null && priceEvidence.medianGapToMin >= 0.5) ||
+      (priceEvidence.medianGapToTop5 !== null && priceEvidence.medianGapToTop5 >= 0.25)
+    );
+  const hasAnyValueSignal =
+    purchaseClicks > 0 ||
+    input.sampleFrontRankOfferCount > 0 ||
+    hasRecentSuccess ||
+    hasStrongPriceEvidence ||
+    hasModeratePriceEvidence;
 
   const evidence: SourceQualitySource["evidence"] = {
     visibleCount,
@@ -3405,6 +3437,7 @@ function classifySourceQuality(input: {
     latestRunStatus: input.latestRun?.status || null,
     latestRunAt,
     latestError,
+    price: priceEvidence,
   };
 
   let kind: SourceQualityQueueKind = "needs_review";
@@ -3423,13 +3456,21 @@ function classifySourceQuality(input: {
       "风控、网络或源站阻断不按低质处理",
     ];
     score = 70 + Math.min(consecutiveFailures, 10) * 4 + collectorFailureCount;
-  } else if (hasFrontRankEvidence || hasStrongClickEvidence || (visibleCount >= 25 && hiddenRatio < 0.35)) {
+  } else if (hasStrongPriceEvidence || hasFrontRankEvidence || hasStrongClickEvidence || (visibleCount >= 25 && hiddenRatio < 0.35)) {
+    const priceReason = sourceQualityPricePositiveReason(priceEvidence);
     kind = "priority_keep";
     reasons = [
-      hasFrontRankEvidence ? `样本前列报价 ${input.sampleFrontRankOfferCount} 条` : `可见报价 ${visibleCount} 条`,
+      priceReason || (hasFrontRankEvidence ? `样本前列报价 ${input.sampleFrontRankOfferCount} 条` : `可见报价 ${visibleCount} 条`),
       purchaseClicks > 0 ? `${UMAMI_MONITORING_WINDOW_DAYS} 天购买点击 ${purchaseClicks} 次` : "报价覆盖相对充足",
     ];
-    score = 120 + input.sampleFrontRankOfferCount * 12 + purchaseClicks * 8 + Math.min(visibleCount, 50);
+    score =
+      120 +
+      priceEvidence.lowestHitCount * 18 +
+      priceEvidence.top5HitCount * 8 +
+      priceEvidence.within10PctCount * 4 +
+      input.sampleFrontRankOfferCount * 12 +
+      purchaseClicks * 8 +
+      Math.min(visibleCount, 50);
   } else if ((manuallyHiddenCount >= 3 && manualHiddenRatio >= 0.5) || (hiddenCount >= 8 && hiddenRatio >= 0.75)) {
     kind = "duplicate_or_no_advantage";
     reasons = [
@@ -3437,6 +3478,17 @@ function classifySourceQuality(input: {
       "疑似重复、同质或价格无优势",
     ];
     score = 90 + Math.round(hiddenRatio * 20) + manuallyHiddenCount;
+  } else if (hasPriceNoAdvantage) {
+    kind = "duplicate_or_no_advantage";
+    reasons = [
+      sourceQualityPriceRiskReason(priceEvidence) || `可比报价 ${priceEvidence.benchmarkOfferCount} 条`,
+      "同商品/标签下暂无最低价或前五价格优势",
+    ];
+    score =
+      88 +
+      priceEvidence.highGapCount * 5 +
+      Math.round((priceEvidence.highGapShare || 0) * 30) +
+      Math.round((priceEvidence.medianGapToMin || 0) * 20);
   } else if (!input.source.enabled && visibleCount === 0 && purchaseClicks === 0) {
     kind = "disable_candidate";
     reasons = [
@@ -3458,20 +3510,38 @@ function classifySourceQuality(input: {
       "暂无点击或样本前列证据",
     ];
     score = 75 + Math.max(0, 3 - totalCount) * 8;
-  } else if (input.source.enabled && visibleCount > 0 && visibleCount <= 5 && purchaseClicks === 0 && !isNewSource) {
+  } else if (hasEnoughPriceBenchmarks && purchaseClicks === 0 && !hasAnyValueSignal && !isNewSource) {
+    kind = "low_quality_candidate";
+    reasons = [
+      sourceQualityPriceRiskReason(priceEvidence) || `可比报价 ${priceEvidence.benchmarkOfferCount} 条`,
+      "暂无点击或价格优势证据",
+    ];
+    score =
+      78 +
+      priceEvidence.highGapCount * 5 +
+      Math.round((priceEvidence.highGapShare || 0) * 30) +
+      Math.round((priceEvidence.medianGapToMin || 0) * 20);
+  } else if (input.source.enabled && visibleCount > 0 && visibleCount <= 5 && purchaseClicks === 0 && !isNewSource && !hasModeratePriceEvidence) {
     kind = "downfrequency_candidate";
     reasons = [
       `可见报价 ${visibleCount} 条`,
       `${UMAMI_MONITORING_WINDOW_DAYS} 天无购买点击`,
     ];
-    score = 65 + Math.max(0, 6 - visibleCount) * 6;
+    score = 65 + Math.max(0, 6 - visibleCount) * 6 + priceEvidence.within20PctCount * 2;
   } else if (isNewSource || hasAnyValueSignal || visibleCount >= 6) {
+    const priceReason = hasModeratePriceEvidence ? sourceQualityPricePositiveReason(priceEvidence) : null;
     kind = "valuable_lead";
     reasons = [
-      isNewSource ? "新入库渠道，先观察" : visibleCount >= 6 ? `可见报价 ${visibleCount} 条` : "已有价值信号",
+      priceReason || (isNewSource ? "新入库渠道，先观察" : visibleCount >= 6 ? `可见报价 ${visibleCount} 条` : "已有价值信号"),
       purchaseClicks > 0 ? `${UMAMI_MONITORING_WINDOW_DAYS} 天购买点击 ${purchaseClicks} 次` : "等待更多点击和价格优势证据",
     ];
-    score = 55 + purchaseClicks * 6 + input.sampleFrontRankOfferCount * 8 + Math.min(visibleCount, 20);
+    score =
+      55 +
+      priceEvidence.top5HitCount * 5 +
+      priceEvidence.within20PctCount * 3 +
+      purchaseClicks * 6 +
+      input.sampleFrontRankOfferCount * 8 +
+      Math.min(visibleCount, 20);
   } else {
     reasons = [
       visibleCount > 0 ? `可见报价 ${visibleCount} 条` : "暂无可见报价",
@@ -3491,6 +3561,61 @@ function classifySourceQuality(input: {
     nextAction: meta.nextAction,
     evidence,
   };
+}
+
+function emptySourceQualityPriceEvidence(): SourceQualitySource["evidence"]["price"] {
+  return {
+    competitiveScopeCount: 0,
+    pricedOfferCount: 0,
+    benchmarkOfferCount: 0,
+    lowestHitCount: 0,
+    top5HitCount: 0,
+    within10PctCount: 0,
+    within20PctCount: 0,
+    highGapCount: 0,
+    highGapShare: null,
+    medianGapToMin: null,
+    medianGapToTop5: null,
+    avgGapToMin: null,
+    sampleScopes: [],
+  };
+}
+
+function sourceQualityPriceEvidenceFromStats(stats: SourceQualityPriceStats): SourceQualitySource["evidence"]["price"] {
+  return {
+    competitiveScopeCount: stats.competitiveScopeCount,
+    pricedOfferCount: stats.pricedOfferCount,
+    benchmarkOfferCount: stats.benchmarkOfferCount,
+    lowestHitCount: stats.lowestHitCount,
+    top5HitCount: stats.top5HitCount,
+    within10PctCount: stats.within10PctCount,
+    within20PctCount: stats.within20PctCount,
+    highGapCount: stats.highGapCount,
+    highGapShare: stats.highGapShare,
+    medianGapToMin: stats.medianGapToMin,
+    medianGapToTop5: stats.medianGapToTop5,
+    avgGapToMin: stats.avgGapToMin,
+    sampleScopes: stats.sampleScopes,
+  };
+}
+
+function sourceQualityPricePositiveReason(price: SourceQualitySource["evidence"]["price"]): string | null {
+  if (price.lowestHitCount > 0) return `最低价命中 ${price.lowestHitCount} 条`;
+  if (price.top5HitCount > 0) return `前五价命中 ${price.top5HitCount} 条`;
+  if (price.within10PctCount > 0) return `最低价 10% 内 ${price.within10PctCount} 条`;
+  if (price.within20PctCount > 0) return `最低价 20% 内 ${price.within20PctCount} 条`;
+  return null;
+}
+
+function sourceQualityPriceRiskReason(price: SourceQualitySource["evidence"]["price"]): string | null {
+  if (price.highGapShare !== null && price.highGapShare > 0) return `高价占比 ${formatSourceQualityRatio(price.highGapShare)}`;
+  if (price.medianGapToMin !== null && price.medianGapToMin > 0) return `中位价差 +${formatSourceQualityRatio(price.medianGapToMin)}`;
+  if (price.medianGapToTop5 !== null && price.medianGapToTop5 > 0) return `较前五价中位差 +${formatSourceQualityRatio(price.medianGapToTop5)}`;
+  return null;
+}
+
+function formatSourceQualityRatio(value: number): string {
+  return `${Math.round(Math.max(0, value) * 100)}%`;
 }
 
 function countVisibleOfferSamplesBySource(offers: RawOffer[]): Map<string, number> {
@@ -4236,6 +4361,59 @@ async function listSourceOfferStats(): Promise<SourceOfferStats[]> {
   }
 
   return Array.from(map.values());
+}
+
+async function listSourceQualityPriceStats(): Promise<SourceQualityPriceStats[]> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase.rpc("list_source_quality_price_benchmarks");
+  if (error) throw error;
+
+  return ((data || []) as Array<Record<string, unknown>>)
+    .map((row): SourceQualityPriceStats => ({
+      sourceId: String(row.source_id || ""),
+      competitiveScopeCount: Number(row.competitive_scope_count || 0),
+      pricedOfferCount: Number(row.priced_offer_count || 0),
+      benchmarkOfferCount: Number(row.benchmark_offer_count || 0),
+      lowestHitCount: Number(row.lowest_hit_count || 0),
+      top5HitCount: Number(row.top5_hit_count || 0),
+      within10PctCount: Number(row.within_10pct_count || 0),
+      within20PctCount: Number(row.within_20pct_count || 0),
+      highGapCount: Number(row.high_gap_count || 0),
+      highGapShare: numberOrNull(row.high_gap_share),
+      medianGapToMin: numberOrNull(row.median_gap_to_min),
+      medianGapToTop5: numberOrNull(row.median_gap_to_top5),
+      avgGapToMin: numberOrNull(row.avg_gap_to_min),
+      sampleScopes: sourceQualityPriceSampleScopes(row.sample_scopes),
+    }))
+    .filter((row) => row.sourceId);
+}
+
+function sourceQualityPriceSampleScopes(value: unknown): SourceQualityPriceStats["sampleScopes"] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item): SourceQualityPriceStats["sampleScopes"][number] | null => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      return {
+        productId: String(record.productId || ""),
+        productName: String(record.productName || ""),
+        scopeKey: String(record.scopeKey || ""),
+        scopeLabel: String(record.scopeLabel || ""),
+        offerTitle: String(record.offerTitle || ""),
+        price: numberOrNull(record.price),
+        minPrice: numberOrNull(record.minPrice),
+        top5Price: numberOrNull(record.top5Price),
+        rank: integerOrNull(record.rank),
+        gapToMin: numberOrNull(record.gapToMin),
+        gapToTop5: numberOrNull(record.gapToTop5),
+      };
+    })
+    .filter((item): item is SourceQualityPriceStats["sampleScopes"][number] =>
+      Boolean(item && item.productId && item.scopeKey),
+    );
 }
 
 async function listAdminVisibleRawOffers(): Promise<{ rows: RawOffer[]; total: number }> {

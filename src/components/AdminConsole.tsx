@@ -7239,6 +7239,7 @@ function SourceTableRow({
   const hasIssue = sourceHasIssue(source);
   const disabledReason = sourceDisableReasonText(source);
   const qualityEvidence = sourceQualityEvidenceText(quality);
+  const priceEvidence = quality?.evidence.price;
 
   return (
     <div className={`px-3 py-3 transition-colors ${selected ? "bg-[#e8f3ec]/30" : "bg-white"}`}>
@@ -7310,6 +7311,18 @@ function SourceTableRow({
           ) : null}
           {quality?.evidence.sampleFrontRankOfferCount ? (
             <span className="mt-0.5 block text-xs font-normal text-[#2f7a4b]">样本前列 {quality.evidence.sampleFrontRankOfferCount}</span>
+          ) : null}
+          {priceEvidence?.lowestHitCount ? (
+            <span className="mt-0.5 block text-xs font-normal text-[#2f7a4b]">最低 {priceEvidence.lowestHitCount}</span>
+          ) : null}
+          {priceEvidence?.top5HitCount ? (
+            <span className="mt-0.5 block text-xs font-normal text-[#47657a]">前五 {priceEvidence.top5HitCount}</span>
+          ) : null}
+          {priceEvidence?.within10PctCount ? (
+            <span className="mt-0.5 block text-xs font-normal text-[#47657a]">10%内 {priceEvidence.within10PctCount}</span>
+          ) : null}
+          {priceEvidence?.highGapShare !== null && priceEvidence?.highGapShare !== undefined && priceEvidence.highGapShare > 0 ? (
+            <span className="mt-0.5 block text-xs font-normal text-[#9b3328]">高价 {formatPercent(priceEvidence.highGapShare)}</span>
           ) : null}
           {quality?.evidence.purchaseClicks ? (
             <span className="mt-0.5 block text-xs font-normal text-[#47657a]">点击 {quality.evidence.purchaseClicks}</span>
@@ -7453,6 +7466,12 @@ function sourceQualityToneForKind(kind?: SourceQualityQueueKind): BadgeTone {
 function sourceQualityEvidenceText(quality?: SourceQualitySource): string | null {
   if (!quality) return null;
   const parts: string[] = [];
+  const price = quality.evidence.price;
+  if (price.lowestHitCount) parts.push(`最低 ${price.lowestHitCount}`);
+  else if (price.top5HitCount) parts.push(`前五 ${price.top5HitCount}`);
+  else if (price.within10PctCount) parts.push(`10%内 ${price.within10PctCount}`);
+  if (price.highGapShare !== null && price.highGapShare > 0) parts.push(`高价 ${formatPercent(price.highGapShare)}`);
+  else if (price.medianGapToMin !== null && price.medianGapToMin > 0) parts.push(`价差 +${formatPercent(price.medianGapToMin)}`);
   if (quality.evidence.sampleFrontRankOfferCount) parts.push(`样本前列 ${quality.evidence.sampleFrontRankOfferCount}`);
   if (quality.evidence.purchaseClicks) parts.push(`点击 ${quality.evidence.purchaseClicks}`);
   if (quality.evidence.lastSuccessAt) parts.push(`确认 ${formatRelativeTime(quality.evidence.lastSuccessAt)}`);

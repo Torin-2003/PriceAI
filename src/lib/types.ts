@@ -311,6 +311,40 @@ export type SourceQualityQueueKind =
   | "downfrequency_candidate"
   | "disable_candidate";
 
+export type SourceQualityPriceScopeExample = {
+  productId: string;
+  productName: string;
+  scopeKey: string;
+  scopeLabel: string;
+  offerTitle: string;
+  price: number | null;
+  minPrice: number | null;
+  top5Price: number | null;
+  rank: number | null;
+  gapToMin: number | null;
+  gapToTop5: number | null;
+};
+
+export type SourceQualityPriceEvidence = {
+  competitiveScopeCount: number;
+  pricedOfferCount: number;
+  benchmarkOfferCount: number;
+  lowestHitCount: number;
+  top5HitCount: number;
+  within10PctCount: number;
+  within20PctCount: number;
+  highGapCount: number;
+  highGapShare: number | null;
+  medianGapToMin: number | null;
+  medianGapToTop5: number | null;
+  avgGapToMin: number | null;
+  sampleScopes: SourceQualityPriceScopeExample[];
+};
+
+export type SourceQualityPriceStats = SourceQualityPriceEvidence & {
+  sourceId: string;
+};
+
 export type SourceQualityEvidence = {
   visibleCount: number;
   hiddenCount: number;
@@ -331,6 +365,7 @@ export type SourceQualityEvidence = {
   latestRunStatus: CrawlRun["status"] | null;
   latestRunAt: string | null;
   latestError: string | null;
+  price: SourceQualityPriceEvidence;
 };
 
 export type SourceQualitySource = {
