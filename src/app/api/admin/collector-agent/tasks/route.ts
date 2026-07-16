@@ -6,6 +6,7 @@ import { z } from "zod";
 const DEFAULT_LIMIT = 3;
 const MAX_LIMIT = 20;
 const DEFAULT_COOLDOWN_MINUTES = 25;
+const TRANSIENT_UPSTREAM_COOLDOWN_MINUTES = 5;
 const FAMILY_HOSTS: Record<string, string[]> = {
   "liandong-shop": ["pay.ldxp.cn", "ldxp.cn"],
   ldxp: ["pay.ldxp.cn", "ldxp.cn"],
@@ -102,7 +103,7 @@ export async function GET(request: Request) {
     const fetchLimit = Math.max(query.limit * 50 * query.shardCount, query.limit);
     let sourcesQuery = supabase
       .from("sources")
-      .select("id,name,base_url,entry_url,collection_method,collector_kind,enabled,last_checked_at,last_success_at")
+      .select("id,name,base_url,entry_url,collection_method,collector_kind,enabled,last_checked_at,last_success_at,last_error")
       .eq("enabled", true)
       .eq("collector_kind", query.kind)
       .order("last_checked_at", { ascending: true, nullsFirst: true })
@@ -120,7 +121,7 @@ export async function GET(request: Request) {
     const candidateSources = (sources || [])
       .filter((source) => source.collection_method !== "public_json")
       .filter((source) => !excludedSourceIds.has(String(source.id)))
-      .filter((source) => !sourceWithinCooldown(source.last_checked_at, generatedAt))
+      .filter((source) => !sourceWithinCooldown(source, generatedAt))
       .filter((source) => {
         const sourceUrl = String(source.entry_url || source.base_url || "");
         const baseUrl = String(source.base_url || deriveBaseUrl(sourceUrl) || "");
@@ -500,14 +501,25 @@ function isMissingReapRpcError(error: unknown): boolean {
   return /reap_expired_collection_jobs|function/i.test(text) && /PGRST202|not find|not found|missing|does not exist/i.test(text);
 }
 
-function sourceWithinCooldown(value: unknown, nowIso: string): boolean {
-  if (!value) return false;
+function sourceWithinCooldown(
+  source: { last_checked_at?: unknown; last_error?: unknown },
+  nowIso: string,
+): boolean {
+  if (!source.last_checked_at) return false;
 
-  const checkedAt = new Date(String(value)).getTime();
+  const checkedAt = new Date(String(source.last_checked_at)).getTime();
   const now = new Date(nowIso).getTime();
   if (!Number.isFinite(checkedAt) || !Number.isFinite(now)) return false;
 
-  return now - checkedAt < DEFAULT_COOLDOWN_MINUTES * 60 * 1000;
+  const cooldownMinutes = isTransientUpstreamError(source.last_error)
+    ? TRANSIENT_UPSTREAM_COOLDOWN_MINUTES
+    : DEFAULT_COOLDOWN_MINUTES;
+
+  return now - checkedAt < cooldownMinutes * 60 * 1000;
+}
+
+function isTransientUpstreamError(value: unknown): boolean {
+  return /\bHTTP 520\b/i.test(String(value || ""));
 }
 
 type SourceShardAssignment = {
