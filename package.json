@@ -59,6 +59,7 @@
     "test:catalog": "node scripts/test-catalog.mjs",
     "filter:ldxp-sqlite": "node scripts/filter-ldxp-sqlite-candidates.mjs",
     "export:yunmao-source-square": "node scripts/export-yunmao-source-square.mjs",
+    "probe:yunmao-candidates": "node scripts/probe-yunmao-candidates.mjs",
     "update:star-history": "node scripts/update-star-history.mjs"
   },
   "dependencies": {
