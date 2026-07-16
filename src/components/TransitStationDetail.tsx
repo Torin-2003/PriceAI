@@ -21,6 +21,7 @@ import {
 import { DataTableHead, StatusChip } from "@/components/ComparisonUi";
 import { FeedbackDialog, transitStationFeedbackTypes } from "@/components/FeedbackLink";
 import { TransitAvailabilityStrip } from "@/components/TransitAvailabilityStrip";
+import { TransitLatencyBadge } from "@/components/TransitLatencyBadge";
 import { TransitPriceBreakdown } from "@/components/TransitPriceBreakdown";
 import { TransitStationSystemIcon } from "@/components/TransitStationSystemIcon";
 import { useMediaQuery } from "@/lib/client-hooks";
@@ -50,7 +51,6 @@ import {
   formatAvailability,
   formatCacheHitRate,
   formatPercent,
-  formatTransitLatencyMs,
   formatTransitFixedPriceRange,
   formatTransitModelMultiplier,
   getAvailabilitySourceMeta,
@@ -1526,7 +1526,8 @@ function PriceGroupRow({
   const primaryPrice = group.primaryPrice;
   const channelLabels = uniqueStrings(group.prices.map((price) => TRANSIT_CHANNEL_TYPE_LABELS[price.channelType]));
   const poolLabels = uniqueStrings(group.prices.map((price) => TRANSIT_ACCOUNT_POOL_LABELS[price.accountPool]));
-  const latencySummary = formatLatencySummary(group);
+  const hasLatencySummary = group.latestLatencyMs !== null && group.latestLatencyMs !== undefined
+    || group.avgLatency7dMs !== null && group.avgLatency7dMs !== undefined;
 
   return (
     <tr className="border-b border-[#dfe4e5] align-top transition hover:bg-[#f7f9f9]">
@@ -1612,8 +1613,14 @@ function PriceGroupRow({
           />
         </div>
         <div className="mt-2 break-words text-xs font-semibold text-[#2d3435]">{group.priceSource || "未公开"}</div>
-        {latencySummary ? (
-          <div className="mt-1 break-words text-[11px] font-semibold leading-5 text-[#5a6061]">{latencySummary}</div>
+        {hasLatencySummary ? (
+          <div className="mt-1">
+            <TransitLatencyBadge
+              latestLatencyMs={group.latestLatencyMs}
+              avgLatency7dMs={group.avgLatency7dMs}
+              prefix="响应延迟："
+            />
+          </div>
         ) : null}
         <div className="mt-1 whitespace-nowrap text-[11px] text-[#5a6061]">
           {availabilityTimestampLabel(group.availabilitySourceType)} {formatDateShortMinute(group.lastCheckedAt || group.latestVerifiedAt)}
@@ -1861,7 +1868,7 @@ function AvailabilityTable({ station }: { station: TransitStation }) {
               <DataTableHead explanation="近 7 日样本成功率，绿色条表示成功样本，灰色表示窗口内未检测。">可用状态</DataTableHead>
               <DataTableHead className="whitespace-nowrap text-right" explanation="PriceAI 在当前滚动窗口内记录的结构化可用性样本数。">样本数</DataTableHead>
               <DataTableHead explanation="同一范围内第一条与最新一条可用性样本的时间；只有一条样本时显示单次检查。">监测区间</DataTableHead>
-              <DataTableHead explanation="公开监测返回的最近请求延迟和 7 日平均延迟；没有字段时显示未记录。">延迟</DataTableHead>
+              <DataTableHead explanation="公开监测或 PriceAI 实测返回的最近请求耗时和 7 日平均请求耗时；不等同于首 Token 时间或 TPS 输出速度，没有字段时显示未记录。">响应延迟</DataTableHead>
               <DataTableHead explanation="该范围实际使用的代表模型，不等同于站点支持的全部模型。">监测模型</DataTableHead>
               <DataTableHead explanation="说明稳定性样本来自 PriceAI 实测、公开监测页、公开模型页、站长接口或商家提交。">来源</DataTableHead>
               <DataTableHead>说明</DataTableHead>
@@ -1882,7 +1889,13 @@ function AvailabilityTable({ station }: { station: TransitStation }) {
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-[#2d3435]">{row.sevenDaySamples}</td>
                 <td className="px-4 py-3 text-xs text-[#5a6061]">{formatMonitoringWindow(row)}</td>
-                <td className="px-4 py-3 text-xs font-semibold text-[#5a6061]">{formatLatencySummary(row) || "未记录"}</td>
+                <td className="px-4 py-3">
+                  <TransitLatencyBadge
+                    latestLatencyMs={row.latestLatencyMs}
+                    avgLatency7dMs={row.avgLatency7dMs}
+                    fallback="未记录"
+                  />
+                </td>
                 <td className="px-4 py-3 text-xs text-[#5a6061]">{row.monitorModel}</td>
                 <td className="px-4 py-3 whitespace-nowrap">
                   <ProbePolicyTag label={row.source.label} title={row.source.title} href={row.source.url} />
@@ -1940,7 +1953,16 @@ function AvailabilityMobileCard({ row }: { row: AvailabilityRow }) {
       </div>
       <div className="mt-3 grid gap-2">
         <MobileTextBlock label="监测区间" value={formatMonitoringWindow(row)} />
-        <MobileTextBlock label="延迟" value={formatLatencySummary(row) || "未记录"} />
+        <MobileTextBlock
+          label="响应延迟"
+          value={(
+            <TransitLatencyBadge
+              latestLatencyMs={row.latestLatencyMs}
+              avgLatency7dMs={row.avgLatency7dMs}
+              fallback="未记录"
+            />
+          )}
+        />
         <MobileTextBlock label="监测模型" value={row.monitorModel} />
         <MobileTextBlock label="来源" value={row.source.label} />
         <MobileTextBlock label="说明" value={row.note} />
@@ -1949,7 +1971,7 @@ function AvailabilityMobileCard({ row }: { row: AvailabilityRow }) {
   );
 }
 
-function MobileTextBlock({ label, value }: { label: string; value: string }) {
+function MobileTextBlock({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="rounded-md bg-[#f7f9f9] px-3 py-2 ring-1 ring-[#adb3b4]/15">
       <div className="text-[10px] font-bold text-[#7a8182]">{label}</div>
@@ -2001,17 +2023,6 @@ function formatMonitoringWindow(input: { firstCheckedAt?: string | null; lastChe
     return `单次检查 ${formatDateShortMinute(input.lastCheckedAt)}`;
   }
   return `${formatDateShortMinute(start)} - ${formatDateShortMinute(input.lastCheckedAt)}`;
-}
-
-function formatLatencySummary(input: { latestLatencyMs?: number | null; avgLatency7dMs?: number | null }): string | null {
-  const latest = input.latestLatencyMs ?? null;
-  const average = input.avgLatency7dMs ?? null;
-  if (latest === null && average === null) return null;
-  if (latest !== null && average !== null) {
-    return `最近 ${formatTransitLatencyMs(latest)} · 7日均 ${formatTransitLatencyMs(average)}`;
-  }
-  if (latest !== null) return `最近 ${formatTransitLatencyMs(latest)}`;
-  return `7日均 ${formatTransitLatencyMs(average)}`;
 }
 
 function latestLatencyFromPrices(prices: TransitModelPrice[]): number | null {

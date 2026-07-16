@@ -2032,6 +2032,33 @@ export function formatTransitLatencyMs(value: number | null | undefined): string
   return `${Math.round(value)}ms`;
 }
 
+export function formatTransitLatencySummary(
+  input: { latestLatencyMs?: number | null; avgLatency7dMs?: number | null },
+  options: { latestLabel?: string; averageLabel?: string } = {}
+): string | null {
+  const latest = input.latestLatencyMs ?? null;
+  const average = input.avgLatency7dMs ?? null;
+  const latestLabel = options.latestLabel ?? "最近";
+  const averageLabel = options.averageLabel ?? "7日均";
+
+  if (latest === null && average === null) return null;
+  if (latest !== null && average !== null) {
+    return `${latestLabel} ${formatTransitLatencyMs(latest)} · ${averageLabel} ${formatTransitLatencyMs(average)}`;
+  }
+  if (latest !== null) return `${latestLabel} ${formatTransitLatencyMs(latest)}`;
+  return `${averageLabel} ${formatTransitLatencyMs(average)}`;
+}
+
+export type TransitLatencyTone = "fast" | "normal" | "slow" | "very_slow" | "muted";
+
+export function getTransitLatencyTone(value: number | null | undefined): TransitLatencyTone {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "muted";
+  if (value <= 2000) return "fast";
+  if (value <= 5000) return "normal";
+  if (value <= 10000) return "slow";
+  return "very_slow";
+}
+
 export function getRepresentativeCacheUsage(
   prices: TransitModelPrice[]
 ): TransitModelPrice["cacheUsage"] | undefined {

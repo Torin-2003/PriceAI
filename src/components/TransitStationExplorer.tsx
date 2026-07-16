@@ -13,6 +13,7 @@ import {
   StatusChip,
 } from "@/components/ComparisonUi";
 import { TransitAvailabilityStrip } from "@/components/TransitAvailabilityStrip";
+import { TransitLatencyBadge } from "@/components/TransitLatencyBadge";
 import { TransitStationSystemIcon } from "@/components/TransitStationSystemIcon";
 import { TransitViewTabs } from "@/components/TransitViewTabs";
 import { useDebouncedValue } from "@/lib/client-hooks";
@@ -248,10 +249,10 @@ export default function TransitStationExplorer({ stations, rankingReferenceAt }:
       ? "最低综合倍率"
       : `${TRANSIT_MODEL_FAMILY_LABELS[effectiveFamilyFilter]} ${fixedPriceScope ? "固定价" : "综合倍率"}`;
   const availabilityColumnExplanation = modelFilter !== "all"
-    ? `${modelFilter} 近 7 日可用性样本汇总；样本不足时不会借用站点整体稳定性。`
+    ? `${modelFilter} 近 7 日可用性样本汇总；样本不足时不会借用站点整体稳定性。响应延迟是监测请求耗时，不等同于首 Token 或 TPS。`
     : effectiveFamilyFilter === "all"
-      ? "近 7 日站点整体可用性样本汇总；标签会标明来自 PriceAI 实测、公开监测页、公开模型页或站长接口。"
-      : `${TRANSIT_MODEL_FAMILY_LABELS[effectiveFamilyFilter]} 近 7 日可用性样本汇总；样本不足时不会借用站点整体稳定性。`;
+      ? "近 7 日站点整体可用性样本汇总；标签会标明来自 PriceAI 实测、公开监测页、公开模型页或站长接口。响应延迟是监测请求耗时，不等同于首 Token 或 TPS。"
+      : `${TRANSIT_MODEL_FAMILY_LABELS[effectiveFamilyFilter]} 近 7 日可用性样本汇总；样本不足时不会借用站点整体稳定性。响应延迟是监测请求耗时，不等同于首 Token 或 TPS。`;
 
   const stationDetailHref = useCallback(
     (slug: string) => listDetailNavigationHref(`/api-transit/${slug}`, returnQuery),
@@ -793,9 +794,14 @@ function AvailabilityCell({
     : scopedSummary
       ? `${scopedSummary.familyLabel} 分组近 7 日可用性样本；样本不足时不回退展示站点整体。`
     : "按当前公开模型分组汇总的近 7 日可用性样本；不直接使用历史原始站点探测样本。";
+  const hasLatencySummary = availability.latestLatencyMs !== null && availability.latestLatencyMs !== undefined
+    || availability.avgLatency7dMs !== null && availability.avgLatency7dMs !== undefined;
+  const title = hasLatencySummary
+    ? `${sourceTitle} 响应延迟表示公开监测或 PriceAI 实测的请求耗时，不等同于首 Token 时间或 TPS 输出速度。`
+    : sourceTitle;
 
   return (
-    <div className={compact ? "" : "min-w-[118px]"} title={sourceTitle}>
+    <div className={compact ? "" : "min-w-[118px]"} title={title}>
       {compact ? (
         <div className="mb-1 text-xs font-semibold text-[#5a6061]">
           {scopeLabel} <span className="text-[#202829]">{formatAvailability(availability)}</span>
@@ -822,6 +828,16 @@ function AvailabilityCell({
           hidden={!shouldShowAvailabilitySourceBadge(availability, source)}
         />
       </div>
+      {hasLatencySummary ? (
+        <div className="mt-1">
+          <TransitLatencyBadge
+            latestLatencyMs={availability.latestLatencyMs}
+            avgLatency7dMs={availability.avgLatency7dMs}
+            latestLabel="最近"
+            singleLine
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
