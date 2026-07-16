@@ -7,6 +7,7 @@ const DEFAULT_LIMIT = 3;
 const MAX_LIMIT = 20;
 const DEFAULT_COOLDOWN_MINUTES = 25;
 const TRANSIENT_UPSTREAM_COOLDOWN_MINUTES = 5;
+const FAMILY_SCOPED_FETCH_LIMIT = 1000;
 const FAMILY_HOSTS: Record<string, string[]> = {
   "liandong-shop": ["pay.ldxp.cn", "ldxp.cn"],
   ldxp: ["pay.ldxp.cn", "ldxp.cn"],
@@ -100,7 +101,9 @@ export async function GET(request: Request) {
       });
     }
 
-    const fetchLimit = Math.max(query.limit * 50 * query.shardCount, query.limit);
+    const fetchLimit = hostCandidates
+      ? FAMILY_SCOPED_FETCH_LIMIT
+      : Math.max(query.limit * 50 * query.shardCount, query.limit);
     let sourcesQuery = supabase
       .from("sources")
       .select("id,name,base_url,entry_url,collection_method,collector_kind,enabled,last_checked_at,last_success_at,last_error")
