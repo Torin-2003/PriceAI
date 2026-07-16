@@ -3519,7 +3519,7 @@ async function fetchShopApiProxyUrl(proxyApiUrl) {
     throw new Error(`Proxy API response from ${proxyApiUrl} did not contain a usable proxy address.`);
   }
 
-  return proxyUrl;
+  return proxyUrlWithApiAuth(proxyUrl, proxyApiUrl);
 }
 
 function extractProxyUrlFromPayload(text) {
@@ -3579,9 +3579,28 @@ function normalizeProxyUrl(value) {
     const url = new URL(prefixed);
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
     if (!url.hostname || !url.port) return null;
-    return `${url.protocol}//${url.hostname}:${url.port}`;
+    const auth = url.username || url.password ? `${url.username}:${url.password}@` : "";
+    return `${url.protocol}//${auth}${url.hostname}:${url.port}`;
   } catch {
     return null;
+  }
+}
+
+function proxyUrlWithApiAuth(proxyUrl, proxyApiUrl) {
+  try {
+    const proxy = new URL(proxyUrl);
+    if (proxy.username || proxy.password) return proxyUrl;
+
+    const api = new URL(proxyApiUrl);
+    const accessName = api.searchParams.get("accessName") || api.searchParams.get("username") || "";
+    const accessPassword = api.searchParams.get("accessPassword") || api.searchParams.get("password") || "";
+    if (!accessName && !accessPassword) return proxyUrl;
+
+    proxy.username = accessName;
+    proxy.password = accessPassword;
+    return proxy.toString();
+  } catch {
+    return proxyUrl;
   }
 }
 

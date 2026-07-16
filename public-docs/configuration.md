@@ -34,7 +34,7 @@ cp .env.example .env.local
 | `ADMIN_SESSION_VERSION` | 后台会话版本，用于强制旧会话失效 |
 | `CRON_SECRET` | 定时采集接口鉴权 |
 | `CRON_PUBLIC_BASE_URL` | 线上站点地址，例如 `https://priceai.cc` |
-| `PRICEAI_SHOPAPI_PROXY_API_URL` | 可选，51代理之类的取代理 API 链接，仅给 `shopApi` 采集用 |
+| `PRICEAI_SHOPAPI_PROXY_API_URL` | 可选，51代理之类的取代理 API 链接，仅给 `shopApi` 采集用；如果返回裸 `IP:Port` 且链接含 `accessName/accessPassword`，采集器会自动补代理鉴权 |
 | `PRICEAI_SHOPAPI_PROXY_HOSTS` | 可选，走代理的主机名，默认 `pay.ldxp.cn,ldxp.cn` |
 | `NEXT_PUBLIC_GA_MEASUREMENT_ID` | 可选，Google Analytics 4 Measurement ID |
 | `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | 可选，Umami Website ID |
