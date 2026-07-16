@@ -113,6 +113,9 @@ jobs:
 
       - run: npm run build:cloudflare
 
+      - name: Enable candidate Preview URLs
+        run: npx wrangler triggers deploy
+
       - name: Upload candidate Worker version
         id: upload
         run: npm run upload:cloudflare
