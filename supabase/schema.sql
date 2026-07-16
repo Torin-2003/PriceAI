@@ -2364,24 +2364,32 @@ as $$
   scope_offers as (
     select
       deduped.*,
-      scope_definitions.scope_key,
-      scope_definitions.scope_label
+      matched_scope.scope_key,
+      matched_scope.scope_label
     from deduped
-    cross join scope_definitions
-    where (
-        scope_definitions.scope_key = 'default'
-        or (
-          scope_definitions.tag_id is not null
-          and deduped.public_offer_filter_tags @> array[scope_definitions.tag_id]::text[]
+    join lateral (
+      select
+        scope_definitions.scope_key,
+        scope_definitions.scope_label
+      from scope_definitions
+      where scope_definitions.scope_key = 'default'
+        and not (deduped.public_offer_filter_tags @> array['shared_access']::text[])
+        and not (deduped.public_offer_filter_tags @> array['domestic_mirror_site']::text[])
+      union all
+      select
+        scope_definitions.scope_key,
+        scope_definitions.scope_label
+      from scope_definitions
+      where scope_definitions.tag_id is not null
+        and scope_definitions.tag_id = any(deduped.public_offer_filter_tags)
+        and (
+          scope_definitions.exclude_shared_mirror = false
+          or (
+            not (deduped.public_offer_filter_tags @> array['shared_access']::text[])
+            and not (deduped.public_offer_filter_tags @> array['domestic_mirror_site']::text[])
+          )
         )
-      )
-      and (
-        scope_definitions.exclude_shared_mirror = false
-        or (
-          not (deduped.public_offer_filter_tags @> array['shared_access']::text[])
-          and not (deduped.public_offer_filter_tags @> array['domestic_mirror_site']::text[])
-        )
-      )
+    ) matched_scope on true
   ),
   scope_stats as (
     select
@@ -2467,49 +2475,55 @@ as $$
           offer_metrics.public_updated_at desc nulls last
       ) as sample_rank
     from offer_metrics
-  )
-  select
-    offer_metrics.source_id,
-    count(distinct offer_metrics.product_id || '|' || offer_metrics.scope_key) as competitive_scope_count,
-    count(distinct offer_metrics.id) as priced_offer_count,
-    count(*) as benchmark_offer_count,
-    count(*) filter (where offer_metrics.price = offer_metrics.min_price) as lowest_hit_count,
-    count(*) filter (where offer_metrics.price_rank <= 5) as top5_hit_count,
-    count(*) filter (
-      where case
-        when offer_metrics.min_price > 0 then offer_metrics.price <= offer_metrics.min_price * 1.1
-        else offer_metrics.price = offer_metrics.min_price
-      end
-    ) as within_10pct_count,
-    count(*) filter (
-      where case
-        when offer_metrics.min_price > 0 then offer_metrics.price <= offer_metrics.min_price * 1.2
-        else offer_metrics.price = offer_metrics.min_price
-      end
-    ) as within_20pct_count,
-    count(*) filter (
-      where offer_metrics.gap_to_min is not null
-        and offer_metrics.gap_to_min >= 0.5
-        and offer_metrics.price > offer_metrics.top5_price
-    ) as high_gap_count,
-    case
-      when count(*) > 0
-      then round(
-        count(*) filter (
-          where offer_metrics.gap_to_min is not null
-            and offer_metrics.gap_to_min >= 0.5
-            and offer_metrics.price > offer_metrics.top5_price
-        )::numeric / count(*)::numeric,
-        4
-      )
-      else 0
-    end as high_gap_share,
-    percentile_disc(0.5) within group (order by offer_metrics.gap_to_min)
-      filter (where offer_metrics.gap_to_min is not null) as median_gap_to_min,
-    percentile_disc(0.5) within group (order by offer_metrics.gap_to_top5)
-      filter (where offer_metrics.gap_to_top5 is not null) as median_gap_to_top5,
-    avg(offer_metrics.gap_to_min) filter (where offer_metrics.gap_to_min is not null) as avg_gap_to_min,
-    coalesce(
+  ),
+  source_aggregates as (
+    select
+      offer_metrics.source_id,
+      count(distinct offer_metrics.product_id || '|' || offer_metrics.scope_key) as competitive_scope_count,
+      count(distinct offer_metrics.id) as priced_offer_count,
+      count(*) as benchmark_offer_count,
+      count(*) filter (where offer_metrics.price = offer_metrics.min_price) as lowest_hit_count,
+      count(*) filter (where offer_metrics.price_rank <= 5) as top5_hit_count,
+      count(*) filter (
+        where case
+          when offer_metrics.min_price > 0 then offer_metrics.price <= offer_metrics.min_price * 1.1
+          else offer_metrics.price = offer_metrics.min_price
+        end
+      ) as within_10pct_count,
+      count(*) filter (
+        where case
+          when offer_metrics.min_price > 0 then offer_metrics.price <= offer_metrics.min_price * 1.2
+          else offer_metrics.price = offer_metrics.min_price
+        end
+      ) as within_20pct_count,
+      count(*) filter (
+        where offer_metrics.gap_to_min is not null
+          and offer_metrics.gap_to_min >= 0.5
+          and offer_metrics.price > offer_metrics.top5_price
+      ) as high_gap_count,
+      case
+        when count(*) > 0
+        then round(
+          count(*) filter (
+            where offer_metrics.gap_to_min is not null
+              and offer_metrics.gap_to_min >= 0.5
+              and offer_metrics.price > offer_metrics.top5_price
+          )::numeric / count(*)::numeric,
+          4
+        )
+        else 0
+      end as high_gap_share,
+      percentile_disc(0.5) within group (order by offer_metrics.gap_to_min)
+        filter (where offer_metrics.gap_to_min is not null) as median_gap_to_min,
+      percentile_disc(0.5) within group (order by offer_metrics.gap_to_top5)
+        filter (where offer_metrics.gap_to_top5 is not null) as median_gap_to_top5,
+      avg(offer_metrics.gap_to_min) filter (where offer_metrics.gap_to_min is not null) as avg_gap_to_min
+    from offer_metrics
+    group by offer_metrics.source_id
+  ),
+  source_samples as (
+    select
+      sampled_metrics.source_id,
       jsonb_agg(
         jsonb_build_object(
           'productId', sampled_metrics.product_id,
@@ -2525,21 +2539,33 @@ as $$
           'gapToTop5', case when sampled_metrics.gap_to_top5 is null then null else round(sampled_metrics.gap_to_top5, 4) end
         )
         order by sampled_metrics.sample_rank
-      ) filter (where sampled_metrics.sample_rank <= 5),
-      '[]'::jsonb
-    ) as sample_scopes
-  from offer_metrics
-  left join sampled_metrics
-    on sampled_metrics.id = offer_metrics.id
-    and sampled_metrics.product_id = offer_metrics.product_id
-    and sampled_metrics.scope_key = offer_metrics.scope_key
-    and sampled_metrics.source_id = offer_metrics.source_id
-  group by offer_metrics.source_id
+      ) as sample_scopes
+    from sampled_metrics
+    where sampled_metrics.sample_rank <= 5
+    group by sampled_metrics.source_id
+  )
+  select
+    source_aggregates.source_id,
+    source_aggregates.competitive_scope_count,
+    source_aggregates.priced_offer_count,
+    source_aggregates.benchmark_offer_count,
+    source_aggregates.lowest_hit_count,
+    source_aggregates.top5_hit_count,
+    source_aggregates.within_10pct_count,
+    source_aggregates.within_20pct_count,
+    source_aggregates.high_gap_count,
+    source_aggregates.high_gap_share,
+    source_aggregates.median_gap_to_min,
+    source_aggregates.median_gap_to_top5,
+    source_aggregates.avg_gap_to_min,
+    coalesce(source_samples.sample_scopes, '[]'::jsonb) as sample_scopes
+  from source_aggregates
+  left join source_samples on source_samples.source_id = source_aggregates.source_id
   order by
-    count(*) filter (where offer_metrics.price = offer_metrics.min_price) desc,
-    count(*) filter (where offer_metrics.price_rank <= 5) desc,
-    count(*) desc,
-    offer_metrics.source_id asc;
+    source_aggregates.lowest_hit_count desc,
+    source_aggregates.top5_hit_count desc,
+    source_aggregates.benchmark_offer_count desc,
+    source_aggregates.source_id asc;
 $$;
 
 revoke execute on function list_source_quality_price_benchmarks() from anon, authenticated, public;
