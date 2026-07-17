@@ -418,6 +418,46 @@ assert.equal(preservedRicherAvailabilityOffer.availability_seven_day_rate, 0.75)
 assert.equal(preservedRicherAvailabilityOffer.cache_hit_rate, 0.42);
 assert.equal(preservedRicherAvailabilityOffer.cache_hit_sample_tokens, 2000);
 
+const clearedRemovedPublicStatusOffer = __test.mergeOfferForRefresh(
+  {
+    id: "new",
+    station_id: "zivv-pro",
+    standard_model: "Claude Sonnet 4.6",
+    group_name: "Claude Anti【目前不稳定】",
+    auto_publish: true,
+    status: "active",
+    created_at: "new",
+    availability_source_type: "public_status",
+    availability_source_label: "公开监测页",
+    availability_seven_day_rate: null,
+    availability_seven_day_samples: 0,
+    availability_first_checked_at: null,
+    availability_last_checked_at: null,
+    availability_note: "Zivv 公开状态页未返回 Claude Sonnet 4.6 / Claude Anti【目前不稳定】 的服务监测；暂显示样本不足。",
+  },
+  {
+    id: "old",
+    station_id: "zivv-pro",
+    standard_model: "Claude Sonnet 4.6",
+    group_name: "Claude Anti【目前不稳定】",
+    status: "active",
+    created_at: "old",
+    availability_source_type: "public_status",
+    availability_source_label: "公开监测页",
+    availability_seven_day_rate: 0.737469,
+    availability_seven_day_samples: 120,
+    availability_first_checked_at: "2026-06-28T15:23:04.168617+00:00",
+    availability_last_checked_at: "2026-07-05T14:01:46.184092+00:00",
+    availability_note: "Zivv 公开状态页 7 日服务监测：Antigravity Claude，页面 uptime 73.75%，历史点 120 个；当前异常。",
+  },
+  true,
+);
+assert.equal(clearedRemovedPublicStatusOffer.availability_source_type, "public_status");
+assert.equal(clearedRemovedPublicStatusOffer.availability_seven_day_rate, null);
+assert.equal(clearedRemovedPublicStatusOffer.availability_seven_day_samples, 0);
+assert.equal(clearedRemovedPublicStatusOffer.availability_first_checked_at, null);
+assert.equal(clearedRemovedPublicStatusOffer.availability_last_checked_at, null);
+
 const incomingPublicStatusBeatsEmptyProbeOffer = __test.mergeOfferForRefresh(
   {
     id: "new",
@@ -2090,6 +2130,7 @@ const zivvParsed = __test.parseZivvModelHubPayload(
         quota_type: 1,
         groups: [
           { name: "Claude MAX", input_rate: 3, output_rate: 15, cache_read_rate: 0.3, cache_write_rate: 3.75 },
+          { name: "Claude Anti【目前不稳定】", input_rate: 2.6, output_rate: 13, cache_read_rate: 0.26, cache_write_rate: 3.25 },
         ],
       },
       {
@@ -2149,15 +2190,24 @@ __test.applyZivvStatusAvailability(
           { timestamp: "2026-06-30T08:00:00.000Z", ok: true, latency_ms: 1800 },
         ],
       },
+      {
+        name: "Antigravity Claude",
+        model: "claude-sonnet-4-6",
+        current: { ok: false, timestamp: "2026-06-30T08:00:00.000Z" },
+        uptime_percent: 73.75,
+        history: [
+          { timestamp: "2026-06-30T08:00:00.000Z", ok: false, error: "disabled" },
+        ],
+      },
     ],
   },
   "2026-06-30T08:00:00.000Z",
 );
 
-assert.equal(zivvParsed.station.availability_seven_day_samples, 3);
+assert.equal(zivvParsed.station.availability_seven_day_samples, 4);
 assert.equal(zivvParsed.station.availability_source_type, "public_status");
 assert.equal(zivvParsed.station.availability_source_label, "公开监测页");
-assert.equal(zivvParsed.availabilitySamples.length, 6);
+assert.equal(zivvParsed.availabilitySamples.length, 7);
 assert.equal(zivvParsed.availabilitySamples[0].source_type, "public_status");
 assert.equal(zivvParsed.collectionError, null);
 const codexProOffer = zivvParsed.offers.find((offer) => offer.standard_model === "GPT 5.4" && offer.group_name === "Codex Pro");
@@ -2166,6 +2216,13 @@ assert.equal(codexProOffer.availability_seven_day_rate, 0.995);
 assert.equal(codexProOffer.availability_source_type, "public_status");
 const codexPlusOffer = zivvParsed.offers.find((offer) => offer.standard_model === "GPT 5.4" && offer.group_name === "Codex Plus【目前不稳定】");
 assert.equal(codexPlusOffer.availability_seven_day_samples, 0);
+assert.equal(codexPlusOffer.availability_source_type, "public_status");
+const claudeAntiOffer = zivvParsed.offers.find((offer) => offer.standard_model === "Claude Sonnet 4.6" && offer.group_name === "Claude Anti【目前不稳定】");
+assert.equal(claudeAntiOffer.availability_seven_day_rate, null);
+assert.equal(claudeAntiOffer.availability_seven_day_samples, 0);
+assert.equal(claudeAntiOffer.availability_first_checked_at, null);
+assert.equal(claudeAntiOffer.availability_last_checked_at, null);
+assert.equal(claudeAntiOffer.availability_source_type, "public_status");
 const zivvImageOffer = zivvParsed.offers.find((offer) => offer.standard_model === "GPT Image 2" && offer.group_name === "GPT Image");
 assert.equal(zivvImageOffer.billing_mode, "fixed");
 assert.equal(zivvImageOffer.model_multiplier, null);

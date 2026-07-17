@@ -1849,8 +1849,7 @@ function applyZivvStatusAvailability(source, parsed, payload, collectedAt) {
 
   for (const offer of parsed.offers || []) {
     const availability = offerAvailabilityByKey.get(offerKey(offer));
-    if (!availability) continue;
-    applyAvailabilityToOffer(offer, availability);
+    applyAvailabilityToOffer(offer, availability || emptyZivvPublicStatusAvailability(source, offer));
   }
 
   const stationAvailability = summarizeZivvStatusAvailability(services, collectedAt);
@@ -2002,11 +2001,22 @@ function zivvStatusGroupName(service) {
   const name = String(service?.name || "").toLowerCase();
   if (name.includes("gemini anti")) return "Gemini Anti";
   if (name.includes("gemini cli")) return "Gemini CLI";
-  if (name.includes("antigravity") || name.includes("anti")) return "Claude Anti【目前不稳定】";
+  if (name.includes("claude anti")) return "Claude Anti【目前不稳定】";
   if (name.includes("claude max")) return "Claude MAX";
   if (name.includes("codex plus")) return "Codex Plus【目前不稳定】";
   if (name.includes("codex pro")) return "Codex Pro";
   return stringOrNull(service?.name);
+}
+
+function emptyZivvPublicStatusAvailability(source, offer) {
+  return {
+    rate: null,
+    samples: 0,
+    firstCheckedAt: null,
+    lastCheckedAt: null,
+    note: `Zivv 公开状态页未返回 ${offer.standard_model} / ${offer.group_name} 的服务监测；暂显示样本不足。`,
+    ...availabilitySourceFields(source, AVAILABILITY_SOURCES.publicStatus),
+  };
 }
 
 function normalizeZivvStatusHistory(service) {
@@ -3846,6 +3856,13 @@ function mergeExistingAvailability(row, existing) {
   const incomingSamples = Math.max(0, integerValue(row.availability_seven_day_samples) || 0);
   const existingSamples = Math.max(0, integerValue(existing.availability_seven_day_samples) || 0);
   if (existingSamples <= 0) return row;
+  const incomingClearsPublicStatus =
+    Boolean(stringOrNull(row.standard_model) && stringOrNull(row.group_name)) &&
+    incomingSamples === 0 &&
+    row.availability_seven_day_rate === null &&
+    row.availability_source_type === "public_status" &&
+    existing.availability_source_type === "public_status";
+  if (incomingClearsPublicStatus) return row;
   const incomingPriority = availabilitySourcePriority(row.availability_source_type);
   const existingPriority = availabilitySourcePriority(existing.availability_source_type);
   const keepIncoming =
