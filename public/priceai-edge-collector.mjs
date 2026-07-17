@@ -845,7 +845,19 @@ function inferShopApiFeeModel(sampleResults) {
   const noFee = valid.every((result) => closeCurrency(result.effectivePrice.feeAmount, 0));
   if (noFee) return { kind: "no_fee", rate: 0 };
 
-  return null;
+  const observedRates = valid
+    .map((result) => {
+      const listedPrice = numberOrNull(result.effectivePrice.listedPrice) ?? result.listedPrice;
+      const feeAmount = numberOrNull(result.effectivePrice.feeAmount);
+      if (!listedPrice || feeAmount === null || feeAmount <= 0) return null;
+      return feeAmount / listedPrice;
+    })
+    .filter((rate) => rate !== null && Number.isFinite(rate) && rate > 0 && rate <= 0.2)
+    .sort((left, right) => left - right);
+  if (!observedRates.length) return null;
+
+  const medianRate = observedRates[Math.floor(observedRates.length / 2)];
+  return { kind: "observed_rate", rate: Math.round(medianRate * 10_000) / 10_000 };
 }
 
 function applyShopApiFeeModel(listedPrice, model) {
