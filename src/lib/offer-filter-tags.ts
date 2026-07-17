@@ -486,7 +486,18 @@ export function filterOfferFilterTagsForProduct(productId: string, tags: OfferFi
 }
 
 export function filterOfferFilterFacetsForProduct(productId: string, facets: OfferFilterTagFacet[]): OfferFilterTagFacet[] {
-  return facets.filter((facet) => offerFilterTagAppliesToProduct(productId, facet.id));
+  const counts = new Map<OfferFilterTagId, number>();
+  for (const facet of facets) {
+    const count = Number(facet.count || 0);
+    if (Number.isFinite(count) && count > 0) counts.set(facet.id, count);
+  }
+
+  return OFFER_FILTER_TAGS
+    .filter((definition) => counts.has(definition.id) && offerFilterTagAppliesToProduct(productId, definition.id))
+    .map((definition) => ({
+      ...definition,
+      count: counts.get(definition.id) || 0,
+    }));
 }
 
 export function offerFilterTagAppliesToProduct(productId: string, tagId: OfferFilterTagId): boolean {

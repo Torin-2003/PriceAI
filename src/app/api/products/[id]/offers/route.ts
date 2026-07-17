@@ -30,7 +30,7 @@ export async function GET(
   const cachePagination = cachePaginationParams(searchParams);
 
   return withCloudflarePublicCache(request, {
-    namespace: "product-offers-v1",
+    namespace: "product-offers-v2",
     ttlSeconds: PRICE_DATA_EDGE_SECONDS,
     cacheKeySearchParams: cacheSearchParams({
       tags: normalized.filterTags.join(","),
