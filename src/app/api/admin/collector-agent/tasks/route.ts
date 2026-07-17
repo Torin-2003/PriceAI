@@ -149,8 +149,19 @@ export async function GET(request: Request) {
       .slice(0, query.limit);
 
     await markSourcesDispatched(selectedSources.map((source) => String(source.id)), generatedAt);
-    const rawOfferUrlsBySource = await loadRawOfferUrlsBySource(selectedSources.map((source) => String(source.id)));
-    const tasks = selectedSources.map((source) => sourceTaskFromRow(source, rawOfferUrlsBySource.get(String(source.id)) || []));
+    const selectedSourceIds = selectedSources.map((source) => String(source.id));
+    const [rawOfferUrlsBySource, feePoliciesBySource] = await Promise.all([
+      loadRawOfferUrlsBySource(selectedSourceIds),
+      loadActiveShopApiFeePolicies(selectedSourceIds),
+    ]);
+    const tasks = selectedSources.map((source) => {
+      const sourceId = String(source.id);
+      return sourceTaskFromRow(
+        source,
+        rawOfferUrlsBySource.get(sourceId) || [],
+        feePoliciesBySource.get(sourceId) || [],
+      );
+    });
 
     return Response.json({
       ok: true,
@@ -230,6 +241,7 @@ async function claimQueuedSourceTasks(input: {
 
   const sourceById = new Map((sources || []).map((source) => [String(source.id), source]));
   const shardAssignments = await loadSourceShardAssignments(sourceIds, input.kind, input.family, input.shardCount);
+  const feePoliciesBySource = await loadActiveShopApiFeePolicies(sourceIds);
   const tasks: Array<ReturnType<typeof sourceTaskFromRow> & {
     collectionJobId: string;
     collectionJobRequestedBy: string | null;
@@ -271,7 +283,11 @@ async function claimQueuedSourceTasks(input: {
 
     const rawOfferUrlsBySource = await loadRawOfferUrlsBySource([sourceId]);
     tasks.push({
-      ...sourceTaskFromRow(source, rawOfferUrlsBySource.get(sourceId) || []),
+      ...sourceTaskFromRow(
+        source,
+        rawOfferUrlsBySource.get(sourceId) || [],
+        feePoliciesBySource.get(sourceId) || [],
+      ),
       collectionJobId: String(job.id),
       collectionJobRequestedBy: job.requested_by ? String(job.requested_by) : null,
       collectionJobCreatedAt: job.created_at ? String(job.created_at) : null,
@@ -417,7 +433,7 @@ function sourceTaskFromRow(source: {
   collector_kind?: unknown;
   last_checked_at?: unknown;
   last_success_at?: unknown;
-}, rawOfferUrls: string[]) {
+}, rawOfferUrls: string[], feePolicies: ShopApiFeePolicy[] = []) {
   const sourceUrl = String(source.entry_url || source.base_url || "");
   const baseUrl = String(source.base_url || deriveBaseUrl(sourceUrl) || "");
   return {
@@ -429,6 +445,7 @@ function sourceTaskFromRow(source: {
     lastCheckedAt: source.last_checked_at ? String(source.last_checked_at) : null,
     lastSuccessAt: source.last_success_at ? String(source.last_success_at) : null,
     rawOfferUrls,
+    shopApiFeePolicies: feePolicies,
   };
 }
 
@@ -453,6 +470,7 @@ function sourceTaskFromProbeJob(job: Record<string, unknown>) {
     lastCheckedAt: null,
     lastSuccessAt: null,
     rawOfferUrls: [sourceUrl],
+    shopApiFeePolicies: [],
     taskMode: "submission_probe" as const,
     submissionId,
   };
@@ -523,6 +541,77 @@ function sourceWithinCooldown(
 
 function isTransientUpstreamError(value: unknown): boolean {
   return /\bHTTP 520\b/i.test(String(value || ""));
+}
+
+type ShopApiFeePolicy = {
+  shopToken: string;
+  strategy: "no_fee" | "fixed_3pct" | "observed_rate";
+  rate: number;
+  observedAt: string;
+  expiresAt: string;
+};
+
+async function loadActiveShopApiFeePolicies(sourceIds: string[]): Promise<Map<string, ShopApiFeePolicy[]>> {
+  const uniqueSourceIds = Array.from(new Set(sourceIds.filter(Boolean)));
+  const map = new Map<string, ShopApiFeePolicy[]>();
+  if (!uniqueSourceIds.length) return map;
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return map;
+
+  const { data, error } = await supabase
+    .from("shop_api_fee_policies")
+    .select("source_id,shop_token,strategy,rate,observed_at,expires_at")
+    .in("source_id", uniqueSourceIds)
+    .gt("expires_at", new Date().toISOString());
+
+  if (error) {
+    if (isMissingShopApiFeePoliciesError(error)) return map;
+    throw error;
+  }
+
+  for (const row of data || []) {
+    const sourceId = String(row.source_id || "");
+    const policy = normalizeShopApiFeePolicy(row);
+    if (!sourceId || !policy) continue;
+    const policies = map.get(sourceId) || [];
+    policies.push(policy);
+    map.set(sourceId, policies);
+  }
+
+  return map;
+}
+
+function normalizeShopApiFeePolicy(row: {
+  shop_token?: unknown;
+  strategy?: unknown;
+  rate?: unknown;
+  observed_at?: unknown;
+  expires_at?: unknown;
+}): ShopApiFeePolicy | null {
+  const strategy = String(row.strategy || "");
+  if (strategy !== "no_fee" && strategy !== "fixed_3pct" && strategy !== "observed_rate") return null;
+
+  const rate = Number(row.rate);
+  if (!Number.isFinite(rate) || rate < 0 || rate > 0.2) return null;
+
+  const observedAt = validIsoDate(row.observed_at);
+  const expiresAt = validIsoDate(row.expires_at);
+  if (!observedAt || !expiresAt || new Date(expiresAt).getTime() <= Date.now()) return null;
+
+  return {
+    shopToken: String(row.shop_token || "").trim() || "source",
+    strategy,
+    rate,
+    observedAt,
+    expiresAt,
+  };
+}
+
+function validIsoDate(value: unknown): string | null {
+  const time = new Date(String(value || "")).getTime();
+  if (!Number.isFinite(time)) return null;
+  return new Date(time).toISOString();
 }
 
 type SourceShardAssignment = {
@@ -659,4 +748,19 @@ function isMissingSourceShardAssignmentsError(error: unknown): boolean {
     .join(" ");
 
   return /source_shard_assignments/i.test(text) && /PGRST|42P01|not found|does not exist|schema cache/i.test(text);
+}
+
+function isMissingShopApiFeePoliciesError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown; details?: unknown; hint?: unknown };
+  const text = [
+    candidate.code,
+    candidate.message,
+    candidate.details,
+    candidate.hint,
+  ]
+    .map((value) => String(value || ""))
+    .join(" ");
+
+  return /shop_api_fee_policies/i.test(text) && /PGRST|42P01|not found|does not exist|schema cache/i.test(text);
 }

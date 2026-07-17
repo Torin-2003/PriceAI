@@ -67,6 +67,8 @@ const CRAWL_LOG_INGEST_COMPLETED_RETENTION_MS = 24 * 60 * 60 * 1000;
 const CRAWL_LOG_INGEST_FAILED_RETRY_MS = 60 * 1000;
 const CRAWL_LOG_INGEST_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const COVERED_COLLECTION_JOB_LIMIT = 20;
+const SHOP_API_FEE_POLICY_TTL_HOURS = 7 * 24;
+const PERSISTABLE_SHOP_API_FEE_STRATEGIES = new Set(["no_fee", "fixed_3pct", "observed_rate"]);
 
 let lastCrawlLogIngestPrunedAt = 0;
 
@@ -247,6 +249,16 @@ async function saveCrawlLogRun(
       throw error;
     }
 
+    await persistShopApiFeePolicies(supabase, payload, {
+      sourceId: source.id,
+      sourceName: source.name,
+      runId,
+      collectedAt,
+    }).catch((error) => {
+      if (isMissingShopApiFeePoliciesError(error)) return;
+      logApiError("shop api fee policy persist", error);
+    });
+
     const completedCollectionJobs = await completeCoveredCollectionJobs(supabase, {
       sourceId: source.id,
       sourceName: source.name,
@@ -297,6 +309,115 @@ function aggregateResults(
     }),
     { successCount: 0, writtenCount: 0, unchangedCount: 0, refreshedCount: 0, confirmedCount: 0 },
   );
+}
+
+async function persistShopApiFeePolicies(
+  supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
+  payload: CrawlLogPayload,
+  input: {
+    sourceId: string;
+    sourceName: string;
+    runId: string;
+    collectedAt: string;
+  },
+): Promise<void> {
+  const rows = shopApiFeePolicyRowsFromPayload(payload, input);
+  if (!rows.length) return;
+
+  const { error } = await supabase
+    .from("shop_api_fee_policies")
+    .upsert(rows, { onConflict: "source_id,shop_token" });
+
+  if (error) throw error;
+}
+
+function shopApiFeePolicyRowsFromPayload(
+  payload: CrawlLogPayload,
+  input: {
+    sourceId: string;
+    sourceName: string;
+    runId: string;
+    collectedAt: string;
+  },
+): Array<Record<string, unknown>> {
+  if (payload.status !== "success" && payload.status !== "partial") return [];
+
+  const details = payload.details || {};
+  const pricingSummaries = details.shopApiPricing;
+  if (!Array.isArray(pricingSummaries)) return [];
+
+  const collectorNodeId = collectorNodeIdFromDetails(details);
+  const defaultShopToken = shopTokenFromUrl(String(payload.sourceEntryUrl || payload.sourceUrl || "")) || "source";
+  const defaultShopUrl = payload.sourceEntryUrl || payload.sourceUrl;
+  const rows = new Map<string, Record<string, unknown>>();
+
+  for (const summaryValue of pricingSummaries) {
+    const summary = objectRecord(summaryValue);
+    const strategy = String(summary.strategy || "");
+    if (!PERSISTABLE_SHOP_API_FEE_STRATEGIES.has(strategy)) continue;
+    if (String(summary.sampleSelection || "") === "cached_policy") continue;
+    if (String(summary.policySource || "") === "persisted") continue;
+
+    const resolvedSampleSize = nonNegativeIntegerValue(summary.resolvedSampleSize);
+    if (!resolvedSampleSize) continue;
+
+    const rate = normalizedShopApiFeeRate(strategy, summary.rate);
+    if (rate === null) continue;
+
+    const observedAt = validDateString(summary.observedAt) ||
+      validDateString(summary.sampledAt) ||
+      dateFromDetails(details, "collectedAt") ||
+      input.collectedAt;
+    const expiresAt = addHours(observedAt, SHOP_API_FEE_POLICY_TTL_HOURS);
+    const shopToken = String(summary.shopToken || "").trim() || defaultShopToken;
+    const probes = Array.isArray(summary.probes) ? summary.probes : [];
+
+    rows.set(shopToken, {
+      source_id: input.sourceId,
+      shop_token: shopToken,
+      source_name: input.sourceName,
+      shop_url: String(summary.shopUrl || defaultShopUrl || ""),
+      strategy,
+      rate,
+      sample_size: nonNegativeIntegerValue(summary.sampleSize) || 0,
+      resolved_sample_size: resolvedSampleSize,
+      sample_selection: typeof summary.sampleSelection === "string" ? summary.sampleSelection : null,
+      probes,
+      observed_at: observedAt,
+      expires_at: expiresAt,
+      collector_node_id: collectorNodeId,
+      last_seen_run_id: input.runId,
+      updated_at: new Date().toISOString(),
+    });
+  }
+
+  return Array.from(rows.values());
+}
+
+function normalizedShopApiFeeRate(strategy: string, value: unknown): number | null {
+  if (strategy === "no_fee") return 0;
+  if (strategy === "fixed_3pct") return 0.03;
+
+  const rate = numberValue(value);
+  if (rate === null || rate <= 0 || rate > 0.2) return null;
+  return Math.round(rate * 10_000) / 10_000;
+}
+
+function nonNegativeIntegerValue(value: unknown): number | null {
+  const numeric = numberValue(value);
+  if (numeric === null || !Number.isInteger(numeric) || numeric < 0) return null;
+  return numeric;
+}
+
+function validDateString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return null;
+  return new Date(time).toISOString();
+}
+
+function addHours(isoDate: string, hours: number): string {
+  return new Date(new Date(isoDate).getTime() + hours * 60 * 60 * 1000).toISOString();
 }
 
 async function completeCoveredCollectionJobs(
@@ -845,4 +966,22 @@ function dateFromDetails(details: Record<string, unknown> | undefined, key: stri
 
 function shopCreatedAtFromDetails(details: Record<string, unknown> | undefined): string | null {
   return dateFromDetails(details, "shopCreatedAt") || dateFromDetails(details, "sourceShopCreatedAt");
+}
+
+function shopTokenFromUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    const match = url.pathname.match(/\/shop\/([^/?#]+)/i);
+    return match?.[1] ? decodeURIComponent(match[1]) : null;
+  } catch {
+    const match = value.match(/\/shop\/([^/?#]+)/i);
+    return match?.[1] || null;
+  }
+}
+
+function isMissingShopApiFeePoliciesError(error: unknown): boolean {
+  const code = supabaseErrorCode(error);
+  const message = supabaseErrorMessage(error);
+  const text = `${code} ${message}`;
+  return /shop_api_fee_policies/i.test(text) && /PGRST|42P01|not found|does not exist|schema cache/i.test(text);
 }

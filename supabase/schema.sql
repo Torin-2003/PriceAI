@@ -238,6 +238,26 @@ create table if not exists source_shard_assignments (
   primary key (source_id, collector_kind, family, shard_count)
 );
 
+create table if not exists shop_api_fee_policies (
+  source_id text not null references sources(id) on delete cascade,
+  shop_token text not null,
+  source_name text,
+  shop_url text,
+  strategy text not null check (strategy in ('no_fee', 'fixed_3pct', 'observed_rate')),
+  rate numeric not null check (rate >= 0 and rate <= 0.2),
+  sample_size integer not null default 0 check (sample_size >= 0),
+  resolved_sample_size integer not null default 0 check (resolved_sample_size >= 0),
+  sample_selection text,
+  probes jsonb not null default '[]'::jsonb check (jsonb_typeof(probes) = 'array'),
+  observed_at timestamptz not null,
+  expires_at timestamptz not null,
+  collector_node_id text,
+  last_seen_run_id text references crawl_runs(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (source_id, shop_token)
+);
+
 create table if not exists collector_heartbeats (
   node_id text primary key,
   node_name text not null,
@@ -300,6 +320,12 @@ create index if not exists source_shard_assignments_lookup_idx
   where active = true;
 create index if not exists source_shard_assignments_assigned_at_idx
   on source_shard_assignments(assigned_at desc);
+create index if not exists shop_api_fee_policies_source_expires_idx
+  on shop_api_fee_policies(source_id, expires_at desc);
+create index if not exists shop_api_fee_policies_expires_idx
+  on shop_api_fee_policies(expires_at);
+create index if not exists shop_api_fee_policies_strategy_idx
+  on shop_api_fee_policies(strategy);
 create index if not exists collector_heartbeats_last_seen_at_idx on collector_heartbeats(last_seen_at desc);
 create index if not exists collector_heartbeats_status_last_seen_at_idx on collector_heartbeats(status, last_seen_at desc);
 
@@ -1674,6 +1700,11 @@ create trigger source_shard_assignments_set_updated_at
 before update on source_shard_assignments
 for each row execute function set_updated_at();
 
+drop trigger if exists shop_api_fee_policies_set_updated_at on shop_api_fee_policies;
+create trigger shop_api_fee_policies_set_updated_at
+before update on shop_api_fee_policies
+for each row execute function set_updated_at();
+
 drop trigger if exists collector_heartbeats_set_updated_at on collector_heartbeats;
 create trigger collector_heartbeats_set_updated_at
 before update on collector_heartbeats
@@ -1691,6 +1722,7 @@ alter table crawl_runs enable row level security;
 alter table crawl_log_ingest_runs enable row level security;
 alter table collection_jobs enable row level security;
 alter table source_shard_assignments enable row level security;
+alter table shop_api_fee_policies enable row level security;
 alter table collector_heartbeats enable row level security;
 
 create table if not exists channel_submissions (

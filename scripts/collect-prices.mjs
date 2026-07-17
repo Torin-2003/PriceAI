@@ -735,6 +735,7 @@ async function collectShopApi(target, options = {}) {
     const offers = [];
     const rawSeenOfferIds = new Set();
     const partialReasons = [];
+    const pricingSummaries = [];
     let fetchedItemCount = 0;
     let publishedItemCount = 0;
     let reportedGoodsCount = 0;
@@ -756,7 +757,6 @@ async function collectShopApi(target, options = {}) {
       const sourceUrl = shopInfo.data.link || `${base}/shop/${token}`;
       const shopCreatedAt = timestampFromShopApiValue(shopInfo.data.create_time);
       const useAllGoodsList = shopApiAllGoodsListEnabled(options);
-      const pricingSummaries = [];
 
       if (useAllGoodsList) {
         const reportedGoods = shopApiReportedGoodsCount(shopInfo.data);
@@ -777,6 +777,7 @@ async function collectShopApi(target, options = {}) {
         fetchedItemCount += listResult.items.length;
 
         const priceResolver = await createShopApiSampledPriceResolver({
+          target,
           base,
           token,
           sourceUrl,
@@ -819,7 +820,11 @@ async function collectShopApi(target, options = {}) {
         continue;
       }
 
-      const defaultChannelId = await getShopApiDefaultChannelId(base, token, sourceUrl, options, requestOptions);
+      const cachedPolicyResolver = createShopApiPersistedPriceResolver(target, token, sourceUrl);
+      if (cachedPolicyResolver) pricingSummaries.push(cachedPolicyResolver.summary);
+      const defaultChannelId = cachedPolicyResolver
+        ? 0
+        : await getShopApiDefaultChannelId(base, token, sourceUrl, options, requestOptions);
       const categoriesPayload = await postJson(
         `${base}/shopApi/Shop/categoryList`,
         { token, goods_type: "card", category_key: "" },
@@ -882,15 +887,17 @@ async function collectShopApi(target, options = {}) {
             const rawSeenOfferId = stableShopApiOfferIdFromUrl(itemUrl);
             if (rawSeenOfferId) rawSeenOfferIds.add(rawSeenOfferId);
 
-            const effectivePrice = await resolveShopApiEffectivePrice({
-              base,
-              goodsKey: item.goods_key,
-              listedPrice,
-              channelId: defaultChannelId,
-              referer: item.link || sourceUrl,
-              options,
-              requestOptions,
-            });
+            const effectivePrice = cachedPolicyResolver
+              ? null
+              : await resolveShopApiEffectivePrice({
+                  base,
+                  goodsKey: item.goods_key,
+                  listedPrice,
+                  channelId: defaultChannelId,
+                  referer: item.link || sourceUrl,
+                  options,
+                  requestOptions,
+                });
 
             const offer = makeShopApiOfferFromItem({
               target,
@@ -901,7 +908,9 @@ async function collectShopApi(target, options = {}) {
               shopCreatedAt,
               shopAvailability,
               priceResolver: {
-                priceFor: () => effectivePrice,
+                priceFor: cachedPolicyResolver
+                  ? (entry, entryListedPrice) => cachedPolicyResolver.priceFor(entry, entryListedPrice)
+                  : () => effectivePrice,
               },
             });
             if (!offer) continue;
@@ -930,7 +939,7 @@ async function collectShopApi(target, options = {}) {
       reportedGoodsCount: hasReportedGoodsCount ? reportedGoodsCount : null,
       partialReason: partialReasons.join(" "),
       shopApiListMode: shopApiAllGoodsListEnabled(options) ? "all_goods" : "category",
-      shopApiPricing: offers.collectionDetails?.shopApiPricing,
+      shopApiPricing: pricingSummaries,
     };
 
     return offers;
@@ -1038,21 +1047,27 @@ async function fetchShopApiGoodsListPages({ base, token, sourceUrl, categoryId, 
   return { items, partialReasons };
 }
 
-async function createShopApiSampledPriceResolver({ base, token, sourceUrl, items, options = {}, requestOptions = null }) {
+async function createShopApiSampledPriceResolver({ target, base, token, sourceUrl, items, options = {}, requestOptions = null }) {
   const forcedModel = shopApiForcedFeeModel(options);
   if (forcedModel) {
     return {
       summary: {
         sampleSize: 0,
         resolvedSampleSize: 0,
+        sampleSelection: "forced",
         strategy: `${forcedModel.kind}_forced`,
         rate: forcedModel.rate,
+        shopToken: token,
+        shopUrl: sourceUrl,
       },
       priceFor(_item, listedPrice) {
         return applyShopApiFeeModel(listedPrice, forcedModel);
       },
     };
   }
+
+  const persistedResolver = createShopApiPersistedPriceResolver(target, token, sourceUrl);
+  if (persistedResolver) return persistedResolver;
 
   const sampleSize = shopApiPriceSampleSizeFor(options);
   const sampleItems = selectShopApiPriceSampleItems(items, sampleSize);
@@ -1088,6 +1103,10 @@ async function createShopApiSampledPriceResolver({ base, token, sourceUrl, items
     sampleSelection: sampleSize > 0 ? "high_price_probe" : "disabled",
     strategy: model ? model.kind : "listed_fallback",
     rate: model?.rate ?? null,
+    shopToken: token,
+    shopUrl: sourceUrl,
+    policySource: "sampled_probe",
+    observedAt: new Date().toISOString(),
     probes: sampleResults.map(shopApiPriceProbeSummary),
   };
 
@@ -1104,6 +1123,73 @@ async function createShopApiSampledPriceResolver({ base, token, sourceUrl, items
         priceBasis: "listed_fallback",
       };
     },
+  };
+}
+
+function createShopApiPersistedPriceResolver(target, token, sourceUrl) {
+  const model = shopApiPersistedFeeModel(target, token);
+  if (!model) return null;
+
+  return {
+    summary: {
+      sampleSize: 0,
+      resolvedSampleSize: 0,
+      sampleSelection: "cached_policy",
+      strategy: model.kind,
+      rate: model.rate,
+      shopToken: model.shopToken || token,
+      shopUrl: sourceUrl,
+      policySource: "persisted",
+      policyObservedAt: model.observedAt,
+      policyExpiresAt: model.expiresAt,
+    },
+    priceFor(_item, listedPrice) {
+      return applyShopApiFeeModel(listedPrice, model);
+    },
+  };
+}
+
+function shopApiPersistedFeeModel(target, token) {
+  const policies = Array.isArray(target?.shopApiFeePolicies) ? target.shopApiFeePolicies : [];
+  if (!policies.length) return null;
+
+  const normalizedToken = String(token || "").trim();
+  const active = policies
+    .map(normalizeShopApiFeePolicy)
+    .filter(Boolean)
+    .filter((policy) => new Date(policy.expiresAt).getTime() > Date.now());
+  if (!active.length) return null;
+
+  const selected =
+    active.find((policy) => policy.shopToken === normalizedToken) ||
+    active.find((policy) => policy.shopToken === "source") ||
+    (active.length === 1 ? active[0] : null);
+  if (!selected) return null;
+
+  return {
+    kind: selected.strategy,
+    rate: selected.rate,
+    shopToken: selected.shopToken,
+    observedAt: selected.observedAt,
+    expiresAt: selected.expiresAt,
+  };
+}
+
+function normalizeShopApiFeePolicy(policy) {
+  if (!policy || typeof policy !== "object") return null;
+  const strategy = String(policy.strategy || "").trim();
+  if (!["no_fee", "fixed_3pct", "observed_rate"].includes(strategy)) return null;
+  const rate = numberOrNull(policy.rate);
+  if (rate === null || rate < 0 || rate > 0.2) return null;
+  const observedAt = isoDateOrNull(policy.observedAt || policy.observed_at);
+  const expiresAt = isoDateOrNull(policy.expiresAt || policy.expires_at);
+  if (!observedAt || !expiresAt) return null;
+  return {
+    shopToken: String(policy.shopToken || policy.shop_token || "source").trim() || "source",
+    strategy,
+    rate,
+    observedAt,
+    expiresAt,
   };
 }
 
@@ -2230,6 +2316,7 @@ async function discoverShopTokens(target, options = {}, requestOptions = null) {
 async function loadTargets() {
   let sources = BUILTIN_SOURCES;
   let rawOffers = [];
+  let feePoliciesBySource = new Map();
 
   const supabase = getSupabaseClient();
   if (supabase) {
@@ -2243,6 +2330,7 @@ async function loadTargets() {
 
     sources = sourcesResult.data || [];
     rawOffers = offersResult.data || [];
+    feePoliciesBySource = await loadShopApiFeePolicies(supabase, sources.map((source) => source.id));
   }
 
   const rawBySource = new Map();
@@ -2262,10 +2350,38 @@ async function loadTargets() {
 
   return sources
     .filter((source) => source.collection_method !== "public_json")
-    .map((source) => buildTarget(source, rawBySource.get(source.id) || []));
+    .map((source) => buildTarget(source, rawBySource.get(source.id) || [], feePoliciesBySource.get(source.id) || []));
 }
 
-function buildTarget(source, rawOffers) {
+async function loadShopApiFeePolicies(supabase, sourceIds) {
+  const map = new Map();
+  const uniqueSourceIds = Array.from(new Set((sourceIds || []).map((id) => String(id || "")).filter(Boolean)));
+  if (!uniqueSourceIds.length) return map;
+
+  const { data, error } = await supabase
+    .from("shop_api_fee_policies")
+    .select("source_id,shop_token,strategy,rate,observed_at,expires_at")
+    .in("source_id", uniqueSourceIds)
+    .gt("expires_at", new Date().toISOString());
+
+  if (error) {
+    if (isMissingShopApiFeePoliciesError(error)) return map;
+    throw error;
+  }
+
+  for (const row of data || []) {
+    const sourceId = String(row.source_id || "");
+    const policy = normalizeShopApiFeePolicy(row);
+    if (!sourceId || !policy) continue;
+    const policies = map.get(sourceId) || [];
+    policies.push(policy);
+    map.set(sourceId, policies);
+  }
+
+  return map;
+}
+
+function buildTarget(source, rawOffers, shopApiFeePolicies = []) {
   const sourceUrl = source.entry_url || source.base_url;
   const baseUrl = source.base_url || deriveBaseUrl(sourceUrl);
   const host = normalizeHostname(baseUrl || sourceUrl);
@@ -2289,6 +2405,7 @@ function buildTarget(source, rawOffers) {
     lastSuccessAt: source.last_success_at || null,
     lastCheckedAt: source.last_checked_at || null,
     rawOffers,
+    shopApiFeePolicies,
   };
 }
 
@@ -4194,6 +4311,12 @@ function timestampFromShopApiValue(value) {
   return date.toISOString();
 }
 
+function isoDateOrNull(value) {
+  const time = new Date(String(value || "")).getTime();
+  if (!Number.isFinite(time)) return null;
+  return new Date(time).toISOString();
+}
+
 function compact(values) {
   return values
     .map((value) => cleanText(value || ""))
@@ -4315,6 +4438,19 @@ function goodsKeyFromUrl(value) {
 function errorMessage(error) {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+function isMissingShopApiFeePoliciesError(error) {
+  if (!error || typeof error !== "object") return false;
+  const text = [
+    error.code,
+    error.message,
+    error.details,
+    error.hint,
+  ]
+    .map((value) => String(value || ""))
+    .join(" ");
+  return /shop_api_fee_policies/i.test(text) && /PGRST|42P01|not found|does not exist|schema cache/i.test(text);
 }
 
 function parseArgs(values) {
