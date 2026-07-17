@@ -24,8 +24,8 @@ const productSeoProfiles: Record<string, ProductSeoProfile> = {
     metadataDescription: "查看 ChatGPT 普号、OpenAI 账号、体验号、成品账号的有货最低价、渠道报价、库存和更新时间。",
   }),
   "chatgpt-plus": profile({
-    metadataTitle: "ChatGPT Plus 低价订阅价格对比：试用成品号、iDEAL、UPI 和 Pix",
-    metadataDescription: "查看 ChatGPT Plus 低价订阅、试用成品号、荷兰 iDEAL、欧洲渠道、印度 UPI、巴西 Pix 的有货最低价、库存和更新时间。",
+    metadataTitle: "ChatGPT Plus 日抛价格对比：成品号、网页号和接码状态",
+    metadataDescription: "查看 ChatGPT Plus 日抛、短期成品号、网页号、已接码/未接码成品号，以及 Pix/iDEAL/UPI/欧洲渠道的有货最低价、库存和更新时间。",
   }),
   "chatgpt-plus-recharge": profile({
     metadataTitle: "ChatGPT Plus 正价代充价格对比：菲区卡充、美区 iOS 和官方直充",

@@ -363,7 +363,7 @@ assert.equal(
     summary: "旧快照摘要",
     aliases: [],
   }).displayName,
-  "ChatGPT Plus 低价订阅 / 试用成品号",
+  "ChatGPT Plus 日抛 / 成品号",
   "Public stale snapshots should be overwritten by the current catalog display name.",
 );
 assert.equal(

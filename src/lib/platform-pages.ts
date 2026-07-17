@@ -72,7 +72,7 @@ export const platformPageConfigs = {
     optionsEyebrow: "Options",
     optionsTitle: "先弄清自己要买哪一种。",
     optionsIntro:
-      "同样写着 ChatGPT，可能是普通账号、Plus 月卡、Pro 高倍率套餐、Team / Business 团队权益、卡密或成品号。先确认需求，再比价格。",
+      "同样写着 ChatGPT，可能是普通账号、Plus 日抛、短期成品号、Pro 高倍率套餐、Team / Business 团队权益、卡密或直充。先确认需求，再比价格。",
     optionCards: [
       {
         title: "普号",
@@ -80,8 +80,8 @@ export const platformPageConfigs = {
         icon: "info",
       },
       {
-        title: "Plus",
-        text: "最常见的月度会员，渠道标题里可能写直充、代充、Plus CDK、卡密、成品号、账号购买或自助开通。",
+        title: "Plus 日抛/成品号",
+        text: "常见标题会写日抛、短期成品号、网页号、已接码、未接码、直充、代充、Plus CDK 或卡密，需要先分清交付方式。",
         icon: "check",
       },
       {
@@ -113,8 +113,8 @@ export const platformPageConfigs = {
     ],
     faqs: [
       [
-        "ChatGPT Plus 和成品号要分开看吗？",
-        "PriceAI 现在把低价订阅、试用成品号和 Pix/iDEAL/UPI 等低价渠道放在 ChatGPT Plus 低价订阅桶里；把官方路径、地区价、iOS 和卡充类放在 ChatGPT Plus 正价代充桶里。具体交付方式仍需要看原始商品名和原平台说明。",
+        "ChatGPT Plus 日抛和成品号怎么理解？",
+        "PriceAI 现在把日抛、短期成品号、网页号、已接码/未接码成品号，以及 Pix/iDEAL/UPI 等低价渠道放在 ChatGPT Plus 日抛 / 成品号桶里；把官方路径、地区价、iOS 和卡充类放在 ChatGPT Plus 正价代充桶里。日抛通常偏短期体验或首登质保，不等于完整月卡；具体交付方式仍需要看原始商品名和原平台说明。",
       ],
       [
         "ChatGPT Plus CDK、卡密和账号购买有什么区别？",
@@ -130,7 +130,7 @@ export const platformPageConfigs = {
       ],
       [
         "为什么有些 ChatGPT 商品价格差很多？",
-        "常见原因包括官方订阅、地区价、代订、成品号、团队权益、短期号、卡密等路径不同。PriceAI 只做信息整理，不判断某个渠道一定安全。",
+        "常见原因包括官方订阅、地区价、代订、成品号、日抛/短期号、团队权益、卡密等路径不同。PriceAI 只做信息整理，不判断某个渠道一定安全。",
       ],
       [
         "外层最低价为什么只看有货报价？",
