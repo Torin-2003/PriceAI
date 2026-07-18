@@ -1253,6 +1253,12 @@ function isVerificationService(value: string): boolean {
     return false;
   }
 
+  // A title can mention the target subscription (for example "GPT Plus")
+  // while actually selling a separate phone/SMS service. Treat explicit
+  // service and number-taking language as the product type unless the title
+  // also describes an account or subscription being delivered.
+  if (isExplicitVerificationServiceDelivery(value)) return true;
+
   if (isAiSubscriptionOrAccountTitle(value)) {
     return false;
   }
@@ -1264,7 +1270,31 @@ function isVerificationService(value: string): boolean {
   return matches(value, ["验证"]) && matches(value, ["手机号", "手机号码", "短信", "接码"]);
 }
 
+function isExplicitVerificationServiceDelivery(value: string): boolean {
+  if (!matches(value, ["接码服务", "取号", "取号服务", "短信服务", "手机号服务", "号码服务"])) {
+    return false;
+  }
+
+  return !matches(value, [
+    "成品号",
+    "成品账号",
+    "账号",
+    "账户",
+    "会员",
+    "订阅",
+    "月卡",
+    "年卡",
+    "直充",
+    "代充",
+    "卡密",
+    "自助开通",
+    "自动发货",
+  ]);
+}
+
 function isBundledVerificationAccount(value: string): boolean {
+  if (isExplicitVerificationServiceDelivery(value)) return false;
+
   if (hasAccountBundleSignal(value) && matches(value, ["接码", "收码", "验证码", "手机号", "手机号码", "手机验证"])) {
     return true;
   }

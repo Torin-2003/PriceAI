@@ -140,6 +140,7 @@ const cases = [
   ["Plus月卡★成品号【质保3天】（荷兰货 + icloud邮箱 + 2FA）", "chatgpt-plus"],
   ["长效【微软邮箱交付】GPT账号（白号）FREE普通号含access_token", "chatgpt-free-account"],
   ["OpenAI ChatGPT 手机接码", "openai-phone-verification"],
+  ["GPT Plus | 接码服务 | 页面手动操作 | 非 API 取号", "openai-phone-verification"],
   ["ChatGPT Codex-日本 接码自助卡密", "openai-phone-verification"],
   ["OpenAI Codex 手机接码 自助卡密 美国+1 号码", "openai-phone-verification"],
   ["#plus成品号#--Codex接码（美区）单次接码（接码三次的号码可二验）", "openai-phone-verification"],
