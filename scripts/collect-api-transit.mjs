@@ -32,6 +32,7 @@ const APINODE_PUBLIC_SITE_INFO_COLLECTORS = new Set(["apinode_public_site_info",
 const ZIVV_MODEL_HUB_COLLECTORS = new Set(["zivv_model_hub"]);
 const AI_TRANSIT_SNAPSHOT_COLLECTORS = new Set(["ai_transit_snapshot"]);
 const MAX_PUBLIC_AVAILABILITY_SAMPLE_COUNT = 60;
+const AVAILABILITY_SNAPSHOT_DELETE_BATCH_SIZE = 500;
 const SOURCE_SKIPPED = Symbol("source_skipped");
 const AVAILABILITY_SOURCES = {
   publicStatus: {
@@ -3436,15 +3437,34 @@ async function postRows(rows, options) {
 
 async function deleteSupersededAvailabilitySampleSnapshots(supabase, snapshots) {
   for (const snapshot of snapshots) {
-    const { error } = await supabase
-      .from("api_transit_availability_samples")
-      .delete()
-      .eq("station_id", snapshot.stationId)
-      .eq("source_type", snapshot.sourceType)
-      .neq("run_id", snapshot.runId);
-    if (error) {
-      error.table = "api_transit_availability_samples";
-      throw error;
+    while (true) {
+      const { data, error: readError } = await supabase
+        .from("api_transit_availability_samples")
+        .select("id")
+        .eq("station_id", snapshot.stationId)
+        .eq("source_type", snapshot.sourceType)
+        .neq("run_id", snapshot.runId)
+        .order("checked_at", { ascending: false })
+        .limit(AVAILABILITY_SNAPSHOT_DELETE_BATCH_SIZE);
+      if (readError) {
+        readError.table = "api_transit_availability_samples";
+        throw readError;
+      }
+
+      const ids = (data || []).map((row) => stringOrNull(row?.id)).filter(Boolean);
+      if (!ids.length) break;
+
+      const { error: deleteError } = await supabase
+        .from("api_transit_availability_samples")
+        .delete()
+        .in("id", ids)
+        .eq("station_id", snapshot.stationId)
+        .eq("source_type", snapshot.sourceType)
+        .neq("run_id", snapshot.runId);
+      if (deleteError) {
+        deleteError.table = "api_transit_availability_samples";
+        throw deleteError;
+      }
     }
   }
 }
