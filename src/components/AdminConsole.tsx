@@ -3959,7 +3959,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
 
             {/* Wholesale tab */}
             {activeTab === "wholesale" && (
-              <div role="tabpanel" id="tabpanel-wholesale">
+              <div role="tabpanel" id="tabpanel-wholesale" className="h-full min-h-0">
                 <WholesaleAdminPanel data={embeddedApiTransitData} />
               </div>
             )}

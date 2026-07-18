@@ -322,7 +322,7 @@ export function WholesaleAdminPanel({ data }: { data: ApiTransitAdminData }) {
   }
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-4 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
       {message ? <MessageBox message={message} onDismiss={() => setMessage(null)} /> : null}
 
       <div className="rounded-lg border border-[#adb3b4]/20 bg-white p-4 shadow-[0_20px_55px_rgba(45,52,53,0.045)]">
@@ -387,8 +387,8 @@ export function WholesaleAdminPanel({ data }: { data: ApiTransitAdminData }) {
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <section className="overflow-hidden rounded-lg border border-[#adb3b4]/20 bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)]">
+      <div className="grid gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-[#adb3b4]/20 bg-white shadow-[0_20px_55px_rgba(45,52,53,0.045)]">
           <div className="flex items-center justify-between border-b border-[#edf0f1] bg-[#f2f4f4] px-4 py-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-[#202829]">
               <Inbox size={16} />
@@ -396,7 +396,7 @@ export function WholesaleAdminPanel({ data }: { data: ApiTransitAdminData }) {
             </div>
             <span className="text-xs font-medium text-[#5a6061]">{filteredLeads.length} 条</span>
           </div>
-          <div className="divide-y divide-[#edf0f1]">
+          <div className="min-h-0 flex-1 divide-y divide-[#edf0f1] overflow-y-auto overscroll-contain">
             {filteredLeads.map((lead) => (
               <WholesaleLeadRow
                 key={lead.id}
@@ -1734,7 +1734,7 @@ function WholesaleLeadDetailPanel({
   ];
 
   return (
-    <aside className="space-y-4 xl:sticky xl:top-5 xl:self-start">
+    <aside className="min-h-0 space-y-4 overflow-y-auto overscroll-contain pr-1 xl:self-stretch">
       <section className="rounded-lg border border-[#adb3b4]/20 bg-white p-4 shadow-[0_20px_55px_rgba(45,52,53,0.045)]">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">

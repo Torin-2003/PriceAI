@@ -81,11 +81,11 @@ export function AdminShell({ sections, activeItemId, onSelectItem, children }: A
   }, []);
 
   return (
-    <div className={`grid gap-4 lg:gap-5 ${sidebarCollapsed ? "lg:grid-cols-[56px_minmax(0,1fr)]" : "lg:grid-cols-[264px_minmax(0,1fr)]"}`}>
-      <aside className="lg:sticky lg:top-[72px] lg:self-start">
+    <div className={`grid gap-4 lg:h-[calc(100dvh-88px)] lg:min-h-0 lg:gap-5 ${sidebarCollapsed ? "lg:grid-cols-[56px_minmax(0,1fr)]" : "lg:grid-cols-[264px_minmax(0,1fr)]"}`}>
+      <aside className="lg:sticky lg:top-[72px] lg:h-full lg:min-h-0">
         <nav
           aria-label="后台分区导航"
-          className={`flex flex-col rounded-lg border border-[#adb3b4]/20 bg-white shadow-[0_3px_8px_rgba(45,52,53,0.025)] lg:max-h-[calc(100dvh-88px)] ${sidebarCollapsed ? "lg:p-2" : "p-3"}`}
+          className={`flex h-full min-h-0 flex-col rounded-lg border border-[#adb3b4]/20 bg-white shadow-[0_3px_8px_rgba(45,52,53,0.025)] ${sidebarCollapsed ? "lg:p-2" : "p-3"}`}
         >
           <div className={`mb-3 flex items-center border-b border-[#adb3b4]/15 pb-3 ${sidebarCollapsed ? "lg:justify-center" : "justify-between"}`}>
             <div className={sidebarCollapsed ? "lg:hidden" : ""}>
@@ -113,7 +113,7 @@ export function AdminShell({ sections, activeItemId, onSelectItem, children }: A
               <span className={sidebarCollapsed ? "lg:hidden" : ""}>退出后台</span>
             </button>
           </form>
-          <div className={`grid min-w-0 gap-2 overflow-y-auto overscroll-contain pr-0.5 md:grid-cols-2 lg:block lg:[scrollbar-gutter:stable] ${sidebarCollapsed ? "lg:space-y-2" : "lg:space-y-2"}`}>
+          <div className={`grid min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pr-0.5 md:grid-cols-2 lg:block lg:[scrollbar-gutter:stable] ${sidebarCollapsed ? "lg:space-y-2" : "lg:space-y-2"}`}>
             {sections.map((section) => (
               <section key={section.id} className="min-w-0">
                 <button
@@ -178,7 +178,7 @@ export function AdminShell({ sections, activeItemId, onSelectItem, children }: A
         </nav>
       </aside>
 
-      <section className="min-w-0">
+      <section className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
         <div className="mb-3 flex min-h-12 flex-col gap-2 border-b border-[#adb3b4]/15 pb-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             {activeSection ? (
@@ -190,7 +190,7 @@ export function AdminShell({ sections, activeItemId, onSelectItem, children }: A
             ) : null}
           </div>
         </div>
-        {children}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain lg:pr-1">{children}</div>
       </section>
     </div>
   );
