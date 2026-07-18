@@ -2312,15 +2312,6 @@ function formatCompactNumber(value: number): string {
   return Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1);
 }
 
-export function getTransitAvailabilityRecentSamplesForDisplay(
-  recentSamples: TransitAvailability["recentSamples"],
-  fallbackRecentSamples: TransitAvailability["recentSamples"] = undefined
-): TransitAvailability["recentSamples"] {
-  if (recentSamples?.length) return recentSamples;
-  if (fallbackRecentSamples?.length) return fallbackRecentSamples;
-  return undefined;
-}
-
 export function formatAvailability(
   availability: Pick<TransitAvailability, "sevenDayRate" | "sevenDaySamples"> &
     Partial<Pick<TransitAvailability, "recentSamples">>

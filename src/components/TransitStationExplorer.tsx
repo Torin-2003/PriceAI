@@ -58,7 +58,6 @@ import {
   getAvailabilitySourceMeta,
   getFamilyAvailabilitySourceMeta,
   getFamilyRateSummary,
-  getTransitAvailabilityRecentSamplesForDisplay,
   getStandardModelAvailabilitySourceMeta,
   getStandardModelRateSummary,
   getNormalizedSourceTags,
@@ -250,10 +249,10 @@ export default function TransitStationExplorer({ stations, rankingReferenceAt }:
       ? "最低综合倍率"
       : `${TRANSIT_MODEL_FAMILY_LABELS[effectiveFamilyFilter]} ${fixedPriceScope ? "固定价" : "综合倍率"}`;
   const availabilityColumnExplanation = modelFilter !== "all"
-    ? `${modelFilter} 近 7 日可用性样本汇总；分组没有最近样本时回退站点级最近样本，完全没有样本时才显示样本不足。响应延迟是监测请求耗时，不等同于首 Token 或 TPS。`
+    ? `${modelFilter} 近 7 日可用性样本汇总；最近样本只使用同模型、同分组或同家族的兼容监测范围。响应延迟是监测请求耗时，不等同于首 Token 或 TPS。`
     : effectiveFamilyFilter === "all"
       ? "近 7 日站点整体可用性样本汇总；标签会标明来自 PriceAI 实测、公开监测页、公开模型页或站长接口。响应延迟是监测请求耗时，不等同于首 Token 或 TPS。"
-      : `${TRANSIT_MODEL_FAMILY_LABELS[effectiveFamilyFilter]} 近 7 日可用性样本汇总；分组没有最近样本时回退站点级最近样本，完全没有样本时才显示样本不足。响应延迟是监测请求耗时，不等同于首 Token 或 TPS。`;
+      : `${TRANSIT_MODEL_FAMILY_LABELS[effectiveFamilyFilter]} 近 7 日可用性样本汇总；最近样本只使用同模型、同分组或同家族的兼容监测范围。响应延迟是监测请求耗时，不等同于首 Token 或 TPS。`;
 
   const stationDetailHref = useCallback(
     (slug: string) => listDetailNavigationHref(`/api-transit/${slug}`, returnQuery),
@@ -779,26 +778,11 @@ function AvailabilityCell({
       ? null
       : getFamilyRateSummary(station, activeFamily);
   const stationAvailability = getStationPublishedAvailabilitySummary(station);
-  const availability = scopedSummary
-    ? {
-        ...scopedSummary,
-        recentSamples: getTransitAvailabilityRecentSamplesForDisplay(
-          scopedSummary.recentSamples,
-          stationAvailability.recentSamples,
-        ),
-      }
-    : stationAvailability;
-  const usingStationFallback = Boolean(
-    scopedSummary && !scopedSummary.recentSamples?.length && stationAvailability.recentSamples?.length,
-  );
+  const availability = scopedSummary || stationAvailability;
   const source = activeStandardModel !== "all"
-    ? usingStationFallback
-      ? getAvailabilitySourceMeta(stationAvailability)
-      : getStandardModelAvailabilitySourceMeta(station, activeStandardModel)
+    ? getStandardModelAvailabilitySourceMeta(station, activeStandardModel)
     : scopedSummary
-      ? usingStationFallback
-        ? getAvailabilitySourceMeta(stationAvailability)
-        : getFamilyAvailabilitySourceMeta(station, scopedSummary.family)
+      ? getFamilyAvailabilitySourceMeta(station, scopedSummary.family)
       : getAvailabilitySourceMeta(stationAvailability);
   const scopeLabel = activeStandardModel !== "all"
     ? `${activeStandardModel} 稳定性`
@@ -806,10 +790,10 @@ function AvailabilityCell({
       ? `${scopedSummary.familyLabel} 稳定性`
       : "站点整体稳定性";
   const sourceTitle = activeStandardModel !== "all"
-    ? `${activeStandardModel} 近 7 日可用性样本；分组没有最近样本时回退站点级最近样本，完全没有样本时才显示样本不足。`
+    ? `${activeStandardModel} 近 7 日可用性样本；最近样本只使用同模型、同分组或同家族的兼容监测范围。`
     : scopedSummary
-      ? `${scopedSummary.familyLabel} 分组近 7 日可用性样本；分组没有最近样本时回退站点级最近样本，完全没有样本时才显示样本不足。`
-    : "按当前公开模型分组汇总的近 7 日可用性样本；分组没有最近样本时回退站点级最近样本，完全没有样本时才显示样本不足。";
+      ? `${scopedSummary.familyLabel} 分组近 7 日可用性样本；最近样本只使用同模型、同分组或同家族的兼容监测范围。`
+    : "按当前公开模型分组汇总的近 7 日可用性样本。";
   const hasLatencySummary = availability.latestLatencyMs !== null && availability.latestLatencyMs !== undefined
     || availability.avgLatency7dMs !== null && availability.avgLatency7dMs !== undefined;
   const title = hasLatencySummary

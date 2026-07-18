@@ -60,7 +60,6 @@ import {
   getFamilyAvailabilitySourceMeta,
   getFamilyPrices,
   getFamilyRateSummary,
-  getTransitAvailabilityRecentSamplesForDisplay,
   getRepresentativeTransitPrice,
   getPrimaryTransitCommercialOffer,
   getPrimaryTransitOutboundOffer,
@@ -401,7 +400,6 @@ export default function TransitStationDetail({ station, children }: Props) {
 }
 
 export function TransitStationPricingPanels({ station }: { station: TransitStation }) {
-  const stationAvailability = getStationPublishedAvailabilitySummary(station);
   const families = useMemo(() => getStationPriceFamilies(station), [station]);
   const familyKey = families.join("|");
 
@@ -410,7 +408,6 @@ export function TransitStationPricingPanels({ station }: { station: TransitStati
       key={`${station.id}:${familyKey}`}
       station={station}
       families={families}
-      stationAvailability={stationAvailability}
     />
   );
 }
@@ -418,11 +415,9 @@ export function TransitStationPricingPanels({ station }: { station: TransitStati
 function TransitStationPricingPanelList({
   station,
   families,
-  stationAvailability,
 }: {
   station: TransitStation;
   families: TransitModelFamily[];
-  stationAvailability: Pick<TransitStation["availability"], "recentSamples" | "sourceType" | "sourceLabel" | "sourceUrl">;
 }) {
   const [expandedFamilies, setExpandedFamilies] = useState<Set<TransitModelFamily>>(
     () => getDefaultExpandedFamilies(families),
@@ -447,7 +442,6 @@ function TransitStationPricingPanelList({
           key={family}
           station={station}
           family={family}
-          stationAvailability={stationAvailability}
           expanded={expandedFamilies.has(family)}
           onToggle={() => toggleFamily(family)}
         />
@@ -923,17 +917,15 @@ function verificationDotClass(status: NonNullable<TransitStation["verificationEv
 function PriceTable({
   station,
   family,
-  stationAvailability,
   expanded,
   onToggle,
 }: {
   station: TransitStation;
   family: TransitModelFamily;
-  stationAvailability: Pick<TransitStation["availability"], "recentSamples" | "sourceType" | "sourceLabel" | "sourceUrl">;
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const groups = getFamilyPriceGroups(station, family, stationAvailability);
+  const groups = getFamilyPriceGroups(station, family);
   const summary = getFamilyRateSummary(station, family);
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const trend = buildFamilyTrend(groups);
@@ -1641,7 +1633,6 @@ function PriceGroupRow({
 function getFamilyPriceGroups(
   station: TransitStation,
   family: TransitModelFamily,
-  stationAvailability?: Pick<TransitStation["availability"], "recentSamples" | "sourceType" | "sourceLabel" | "sourceUrl">,
 ): TransitPriceGroup[] {
   const grouped = new Map<string, TransitModelPrice[]>();
   for (const price of getFamilyPrices(station, family)) {
@@ -1652,7 +1643,7 @@ function getFamilyPriceGroups(
   }
 
   return Array.from(grouped.entries())
-    .map(([groupName, prices]) => buildPriceGroup(station, groupName, prices, stationAvailability))
+    .map(([groupName, prices]) => buildPriceGroup(station, groupName, prices))
     .sort((left, right) => nullableSortValue(left.combinedRate) - nullableSortValue(right.combinedRate));
 }
 
@@ -1660,7 +1651,6 @@ function buildPriceGroup(
   station: TransitStation,
   groupName: string,
   prices: TransitModelPrice[],
-  stationAvailability?: Pick<TransitStation["availability"], "recentSamples" | "sourceType" | "sourceLabel" | "sourceUrl">,
 ): TransitPriceGroup {
   const primaryPrice = getRepresentativeTransitPrice(prices) ?? prices[0];
   const availabilityPrices = getTransitAvailabilityRollupPrices(station, prices);
@@ -1708,14 +1698,7 @@ function buildPriceGroup(
       .at(-1) ?? primaryPrice.lastVerifiedAt;
   const availabilitySource = getTransitPriceAvailabilitySource(station, primaryPrice);
   const recentSamples = getRecentTransitAvailabilitySamples(availabilityPrices);
-  const displayRecentSamples = getTransitAvailabilityRecentSamplesForDisplay(
-    recentSamples,
-    stationAvailability?.recentSamples,
-  );
-  const usingStationFallback = Boolean(displayRecentSamples?.length && !recentSamples?.length);
-  const sourceMeta = displayRecentSamples?.length && !recentSamples?.length
-    ? getAvailabilitySourceMeta(stationAvailability ?? availabilitySource)
-    : getAvailabilitySourceMeta(availabilitySource);
+  const sourceMeta = getAvailabilitySourceMeta(availabilitySource);
 
   return {
     groupName,
@@ -1739,7 +1722,7 @@ function buildPriceGroup(
     sevenDaySamples: availabilitySamples,
     firstCheckedAt,
     lastCheckedAt,
-    recentSamples: displayRecentSamples,
+    recentSamples,
     latestLatencyMs: latestLatencyFromPrices(availabilityPrices),
     avgLatency7dMs: weightedAverageLatencyFromPrices(availabilityPrices),
     latestVerifiedAt,
@@ -1747,9 +1730,7 @@ function buildPriceGroup(
     availabilitySourceLabel: sourceMeta.label,
     availabilitySourceTitle: sourceMeta.title,
     availabilitySourceUrl: sourceMeta.url,
-    availabilitySourceType: usingStationFallback
-      ? stationAvailability?.sourceType ?? availabilitySource.sourceType
-      : availabilitySource.sourceType,
+    availabilitySourceType: availabilitySource.sourceType,
     history: normalizedGroupHistory(station, primaryPrice),
   };
 }
@@ -1837,29 +1818,22 @@ function AvailabilityTable({ station }: { station: TransitStation }) {
     },
     ...families.map((family) => {
       const summary = getFamilyRateSummary(station, family);
-      const recentSamples = getTransitAvailabilityRecentSamplesForDisplay(
-        summary.recentSamples,
-        stationAvailability.recentSamples,
-      );
-      const usingStationFallback = Boolean(!summary.recentSamples?.length && stationAvailability.recentSamples?.length);
       return {
         label: TRANSIT_MODEL_FAMILY_LABELS[family],
         rate: summary.sevenDayRate,
         sevenDaySamples: summary.sevenDaySamples,
         firstCheckedAt: summary.firstCheckedAt,
         lastCheckedAt: summary.lastCheckedAt,
-        recentSamples,
+        recentSamples: summary.recentSamples,
         latestLatencyMs: summary.latestLatencyMs,
         avgLatency7dMs: summary.avgLatency7dMs,
         monitorModel: getFamilyMonitorModelLabel(station, family),
         note: formatAvailability({
           sevenDayRate: summary.sevenDayRate,
           sevenDaySamples: summary.sevenDaySamples,
-          recentSamples,
+          recentSamples: summary.recentSamples,
         }),
-        source: usingStationFallback
-          ? getAvailabilitySourceMeta(stationAvailability)
-          : getFamilyAvailabilitySourceMeta(station, family),
+        source: getFamilyAvailabilitySourceMeta(station, family),
       };
     }),
   ];

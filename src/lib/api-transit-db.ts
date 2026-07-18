@@ -1031,6 +1031,17 @@ async function readRecentAvailabilitySampleRows(
   const ids = Array.from(new Set(stationIds.filter(Boolean)));
   if (!ids.length || rowLimit <= 0) return [];
   const since = new Date(Date.now() - TRANSIT_RECENT_AVAILABILITY_SAMPLE_LOOKBACK_MS).toISOString();
+  const perScopeLimit = Math.min(TRANSIT_RECENT_AVAILABILITY_SAMPLE_LIMIT, Math.max(1, rowLimit));
+
+  const rpcResult = await client
+    .rpc("list_recent_api_transit_availability_samples", {
+      p_station_ids: ids,
+      p_limit_per_scope: perScopeLimit,
+      p_since: since,
+    })
+    .abortSignal(signal);
+  if (!rpcResult.error) return dbRows(rpcResult.data);
+  if (!isMissingRecentAvailabilitySamplesRpc(rpcResult.error)) throw rpcResult.error;
 
   const query = () => client
     .from("api_transit_availability_samples")
@@ -1180,7 +1191,13 @@ function appendRecentAvailabilitySample(
 function normalizeRecentAvailabilitySamples(
   samples: NonNullable<TransitAvailability["recentSamples"]>
 ): NonNullable<TransitAvailability["recentSamples"]> {
-  return samples
+  const deduped = new Map<string, NonNullable<TransitAvailability["recentSamples"]>[number]>();
+  for (const sample of samples) {
+    const key = sample.checkedAt || `missing:${deduped.size}`;
+    if (!deduped.has(key)) deduped.set(key, sample);
+  }
+
+  return Array.from(deduped.values())
     .map((sample, index) => ({
       ok: sample.ok,
       checkedAt: sample.checkedAt,
@@ -1423,6 +1440,14 @@ function isMissingTableError(error: unknown): boolean {
       "code" in error &&
       (error as { code?: unknown }).code === "42P01"
   );
+}
+
+function isMissingRecentAvailabilitySamplesRpc(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const value = error as { code?: unknown; message?: unknown };
+  const code = typeof value.code === "string" ? value.code : "";
+  const message = typeof value.message === "string" ? value.message : "";
+  return code === "PGRST202" || message.includes("list_recent_api_transit_availability_samples");
 }
 
 function historyKey(row: DbRow): string {

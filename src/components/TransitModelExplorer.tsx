@@ -43,9 +43,7 @@ import {
   getRateBadgeClass,
   getTransitModelSummaries,
   getTransitModelDetectionBadgeClass,
-  getStationPublishedAvailabilitySummary,
   getTransitPriceAvailabilitySourceMeta,
-  getTransitAvailabilityRecentSamplesForDisplay,
   getTransitPriceDetectionSummary,
   getTransitStationSystemLabel,
   getUsageAdviceBadgeClass,
@@ -554,22 +552,10 @@ function PriceAvailabilityCell({ entry }: { entry: TransitModelPriceEntry }) {
 }
 
 function getTransitModelPriceAvailabilityDisplay(entry: TransitModelPriceEntry) {
-  const stationAvailability = getStationPublishedAvailabilitySummary(entry.station);
-  const availability = {
-    ...entry.price.availability,
-    recentSamples: getTransitAvailabilityRecentSamplesForDisplay(
-      entry.price.availability.recentSamples,
-      stationAvailability.recentSamples,
-    ),
+  return {
+    availability: entry.price.availability,
+    source: getTransitPriceAvailabilitySourceMeta(entry.station, entry.price),
   };
-  const usingStationFallback = Boolean(
-    !entry.price.availability.recentSamples?.length && stationAvailability.recentSamples?.length,
-  );
-  const source = usingStationFallback
-    ? getAvailabilitySourceMeta(stationAvailability)
-    : getTransitPriceAvailabilitySourceMeta(entry.station, entry.price);
-
-  return { availability, source };
 }
 
 function AvailabilitySourcePill({

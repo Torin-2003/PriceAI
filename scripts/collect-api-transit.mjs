@@ -239,6 +239,7 @@ export async function collectApiTransitPrices(options = {}) {
   const offers = [];
   const runs = [];
   const availabilitySamples = [];
+  const availabilitySampleSnapshots = [];
 
   for (const source of selectedSources) {
     const runStartedAt = new Date().toISOString();
@@ -286,6 +287,13 @@ export async function collectApiTransitPrices(options = {}) {
           run_id: runId,
         })),
       );
+      if (isZivvModelHubSource(source) && parsed.availabilitySamples?.length) {
+        availabilitySampleSnapshots.push({
+          stationId: source.id,
+          sourceType: AVAILABILITY_SOURCES.publicStatus.type,
+          runId,
+        });
+      }
     } catch (error) {
       if (error?.code === SOURCE_SKIPPED) {
         runs.push({
@@ -346,10 +354,17 @@ export async function collectApiTransitPrices(options = {}) {
     offers,
     runs,
     availabilitySamples: dedupedAvailabilitySamples,
+    availabilitySampleSnapshots,
   };
 
   if (options.post || options.db) {
-    result.database = await postRows({ stations, offers, runs, availabilitySamples: dedupedAvailabilitySamples }, options);
+    result.database = await postRows({
+      stations,
+      offers,
+      runs,
+      availabilitySamples: dedupedAvailabilitySamples,
+      availabilitySampleSnapshots,
+    }, options);
   }
 
   return result;
@@ -2101,6 +2116,7 @@ function buildAvailabilitySampleRow(input) {
   const standardModel = stringOrNull(input.standardModel) || null;
   const groupName = stringOrNull(input.groupName) || null;
   const scope = input.scope === "offer" ? "offer" : "station";
+  const sourceType = input.availabilitySource?.type || "unknown";
 
   return {
     id: stableId(
@@ -2109,7 +2125,7 @@ function buildAvailabilitySampleRow(input) {
       scope,
       standardModel || "station",
       groupName || "default",
-      String(input.index || 0),
+      sourceType,
       checkedAt,
     ),
     run_id: null,
@@ -2121,7 +2137,7 @@ function buildAvailabilitySampleRow(input) {
     latency_ms: integerValue(input.latencyMs),
     ping_latency_ms: integerValue(input.pingLatencyMs),
     checked_at: checkedAt,
-    source_type: input.availabilitySource?.type || "unknown",
+    source_type: sourceType,
     source_label: input.availabilitySource?.label || null,
     source_url: availabilitySourceUrl(input.source, input.availabilitySource),
   };
@@ -3407,6 +3423,7 @@ async function postRows(rows, options) {
   await deactivateOffersById(supabase, staleOfferIds);
   await upsertRows(supabase, "api_transit_detection_runs", rows.runs, { onConflict: "id" });
   await upsertRows(supabase, "api_transit_availability_samples", rows.availabilitySamples || [], { onConflict: "id" });
+  await deleteSupersededAvailabilitySampleSnapshots(supabase, rows.availabilitySampleSnapshots || []);
 
   return {
     ...plan,
@@ -3415,6 +3432,21 @@ async function postRows(rows, options) {
     skipped: false,
     message: postRowsMessage(options, refreshedOfferKeys, autoPublishStationIds),
   };
+}
+
+async function deleteSupersededAvailabilitySampleSnapshots(supabase, snapshots) {
+  for (const snapshot of snapshots) {
+    const { error } = await supabase
+      .from("api_transit_availability_samples")
+      .delete()
+      .eq("station_id", snapshot.stationId)
+      .eq("source_type", snapshot.sourceType)
+      .neq("run_id", snapshot.runId);
+    if (error) {
+      error.table = "api_transit_availability_samples";
+      throw error;
+    }
+  }
 }
 
 function collectSuccessfulAutoPublishStationIds(stations) {
@@ -4419,6 +4451,7 @@ function errorMessage(error) {
 }
 
 export const __test = {
+  buildAvailabilitySampleRow,
   collectSuccessfulRefreshStationIds,
   collectRefreshedOfferKeys,
   dedupeRowsById,

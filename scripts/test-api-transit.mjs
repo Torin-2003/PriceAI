@@ -2166,6 +2166,43 @@ const zivvParsed = __test.parseZivvModelHubPayload(
   "2026-06-30T08:00:00.000Z",
 );
 
+const zivvStableSampleId = __test.buildAvailabilitySampleRow({
+  stationId: "zivv-pro",
+  scope: "offer",
+  standardModel: "GPT 5.5",
+  groupName: "Codex Pro",
+  ok: true,
+  checkedAt: "2026-06-30T08:00:00.000Z",
+  index: 1,
+  availabilitySource: { type: "public_status", label: "公开监测页" },
+}).id;
+assert.equal(
+  __test.buildAvailabilitySampleRow({
+    stationId: "zivv-pro",
+    scope: "offer",
+    standardModel: "GPT 5.5",
+    groupName: "Codex Pro",
+    ok: false,
+    checkedAt: "2026-06-30T08:00:00.000Z",
+    index: 99,
+    availabilitySource: { type: "public_status", label: "公开监测页" },
+  }).id,
+  zivvStableSampleId,
+);
+assert.notEqual(
+  __test.buildAvailabilitySampleRow({
+    stationId: "zivv-pro",
+    scope: "offer",
+    standardModel: "GPT 5.5",
+    groupName: "Codex Pro",
+    ok: true,
+    checkedAt: "2026-06-30T08:00:00.000Z",
+    index: 1,
+    availabilitySource: { type: "priceai_probe", label: "PriceAI 实测" },
+  }).id,
+  zivvStableSampleId,
+);
+
 __test.applyZivvStatusAvailability(
   { id: "zivv-pro", collectorKind: "zivv_model_hub" },
   zivvParsed,
