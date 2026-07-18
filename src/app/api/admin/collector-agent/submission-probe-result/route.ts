@@ -2,6 +2,7 @@ import { recordSubmissionProbeResult } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { requireAdminOrCronRequest } from "@/lib/env";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { clearAdminDataCache } from "@/lib/data";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -51,6 +52,7 @@ export async function POST(request: Request) {
     if (payload.collectionJobId) {
       await finishSubmissionProbeJob(payload.collectionJobId, payload.submissionId, payload.result);
     }
+    clearAdminDataCache();
 
     return Response.json({ ok: true, submission });
   } catch (error) {

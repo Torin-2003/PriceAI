@@ -4,6 +4,7 @@ import { queueSubmissionProbeJob, recordSubmissionProbeResult } from "@/lib/admi
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { requireAdminRequest } from "@/lib/env";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { clearAdminDataCache } from "@/lib/data";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
         baseUrl,
         collectorKind: "shopApi",
       });
+      clearAdminDataCache();
       return Response.json({ ok: true, result: queued.result, submission: queued.submission, jobId: queued.jobId });
     }
 
@@ -66,6 +68,7 @@ export async function POST(request: Request) {
       fallbackDetect: true,
     });
     const updated = await recordSubmissionProbeResult(payload.id, result);
+    clearAdminDataCache();
 
     return Response.json({ ok: true, result, submission: updated });
   } catch (error) {

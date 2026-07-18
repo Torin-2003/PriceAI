@@ -46,7 +46,7 @@ import { AdminUsersPanel } from "@/components/admin/AdminUsersPanel";
 import { InfrastructureOverviewPanel } from "@/components/admin/InfrastructureOverviewPanel";
 import { apiProviderTypeLabels } from "@/lib/api-models";
 import { formatBeijingDateTimeLocalValue, parseBeijingDateTimeLocalValue } from "@/lib/beijing-time";
-import { classifyOffer, getCanonicalProduct } from "@/lib/catalog";
+import { classifyOffer } from "@/lib/catalog";
 import { communityAssetDisplayUrl } from "@/lib/community-asset-url";
 import { safeExternalHttpUrl } from "@/lib/external-url";
 import { shouldCreateFeedbackVerification } from "@/lib/trust-risk";
@@ -232,22 +232,6 @@ type SubmissionQualitySummary = {
   priceEvidence?: SubmissionPriceEvidence | null;
 };
 
-type SubmissionPriceBenchmarkRow = {
-  productId: string;
-  productName: string;
-  title: string;
-  price: number;
-};
-
-type SubmissionPriceBenchmark = {
-  productId: string;
-  productName: string;
-  prices: number[];
-  rows: SubmissionPriceBenchmarkRow[];
-};
-
-type SubmissionPriceBenchmarkIndex = Map<string, SubmissionPriceBenchmark>;
-
 type SubmissionPriceEvidenceSample = {
   productId: string;
   productName: string;
@@ -255,7 +239,7 @@ type SubmissionPriceEvidenceSample = {
   price: number;
   minPrice: number;
   top5Price: number;
-  rank: number;
+  rank: number | null;
   gapToMin: number;
   gapToTop5: number;
 };
@@ -657,6 +641,17 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     () => submissions.filter((s) => !isCollectorTodo(s)),
     [submissions],
   );
+  useEffect(() => {
+    if (!authed) return;
+    let active = true;
+    void fetch("/api/admin/submissions?status=pending", { credentials: "include" })
+      .then((response) => response.json())
+      .then((json) => {
+        if (active && json.ok) setSubmissions(json.submissions || []);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [authed]);
   const collectorTodoSubmissions = useMemo(
     () => submissions.filter(isCollectorTodo),
     [submissions],
@@ -822,10 +817,6 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
         s.url.toLowerCase().includes(q),
     );
   }, [reviewSubmissions, searchQuery]);
-  const submissionPriceBenchmarkIndex = useMemo(
-    () => buildSubmissionPriceBenchmarkIndex(data.rawOffers),
-    [data.rawOffers],
-  );
   const reviewSourceCounts = useMemo(() => {
     const counts = createSubmissionSourceCounts();
     for (const submission of searchFilteredReview) {
@@ -870,12 +861,12 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
         submission,
         probeResult,
         existingSource: existingSourceForSubmission(submission, sourceById),
-        priceEvidence: buildSubmissionPriceEvidence(probeResult, submissionPriceBenchmarkIndex),
+        priceEvidence: null,
       });
       counts[summary.kind] += 1;
     }
     return counts;
-  }, [probeResults, scopedReview, sourceById, submissionPriceBenchmarkIndex]);
+  }, [probeResults, scopedReview, sourceById]);
 
   const filteredReview = useMemo(() => {
     if (submissionQualityFilter === "all") return scopedReview;
@@ -885,11 +876,11 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
         submission,
         probeResult,
         existingSource: existingSourceForSubmission(submission, sourceById),
-        priceEvidence: buildSubmissionPriceEvidence(probeResult, submissionPriceBenchmarkIndex),
+        priceEvidence: null,
       });
       return summary.kind === submissionQualityFilter;
     });
-  }, [probeResults, scopedReview, sourceById, submissionPriceBenchmarkIndex, submissionQualityFilter]);
+  }, [probeResults, scopedReview, sourceById, submissionQualityFilter]);
 
   const filteredTodo = useMemo(() => {
     if (!searchQuery.trim()) return collectorTodoSubmissions;
@@ -1958,7 +1949,8 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     setGlobalMessage(result.ok ? { type: "success", text: "手动报价已保存，刷新页面后可查看。" } : { type: "error", text: result.message || "保存失败。" });
   }
 
-  async function refreshSubmissions() {
+  async function refreshSubmissions(options: { silent?: boolean } = {}) {
+    if (!options.silent) setLoadingAction("refresh-submissions");
     try {
       const response = await fetch("/api/admin/submissions?status=pending", {
         credentials: "include",
@@ -1966,9 +1958,13 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       const json = await response.json().catch(() => ({ ok: false }));
       if (response.ok && json.ok) {
         setSubmissions(json.submissions || []);
+      } else if (!options.silent) {
+        setGlobalMessage({ type: "error", text: json.message || "刷新渠道提交失败。" });
       }
     } catch {
-      /* ignore */
+      if (!options.silent) setGlobalMessage({ type: "error", text: "刷新渠道提交失败。" });
+    } finally {
+      if (!options.silent) setLoadingAction(null);
     }
   }
 
@@ -3312,9 +3308,10 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                   <button
                     type="button"
                     onClick={() => refreshSubmissions()}
+                    disabled={loadingAction === "refresh-submissions"}
                     className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4]"
                   >
-                    <RefreshCcw size={14} />
+                    <RefreshCcw size={14} className={loadingAction === "refresh-submissions" ? "animate-spin" : ""} />
                     刷新
                   </button>
                 </div>
@@ -3329,10 +3326,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                         existingSource={existingSourceForSubmission(submission, sourceById)}
                         loadingAction={loadingAction}
                         probeResult={probeResults[submission.id]}
-                        priceEvidence={buildSubmissionPriceEvidence(
-                          probeResults[submission.id] || probeResultFromMeta(submission.parsedMeta || {}),
-                          submissionPriceBenchmarkIndex,
-                        )}
+                        priceEvidence={null}
                         expanded={expandedId === submission.id}
                         focused={focusedIndex === index}
                         selected={selectedIds.has(submission.id)}
@@ -4814,7 +4808,8 @@ function SubmissionQualityPanel({ summary }: { summary: SubmissionQualitySummary
           {summary.priceEvidence.highGapCount ? `，高价 ${summary.priceEvidence.highGapCount}` : ""}
           {summary.priceEvidence.sampleScopes[0] ? (
             <span className="ml-1 text-[#adb3b4]">
-              例：{summary.priceEvidence.sampleScopes[0].productName} 第 {summary.priceEvidence.sampleScopes[0].rank} 位，
+              例：{summary.priceEvidence.sampleScopes[0].productName}
+              {summary.priceEvidence.sampleScopes[0].rank ? ` 第 ${summary.priceEvidence.sampleScopes[0].rank} 位，` : "，"}
               {formatCurrency(summary.priceEvidence.sampleScopes[0].price)} / 最低 {formatCurrency(summary.priceEvidence.sampleScopes[0].minPrice)}
               {summary.priceEvidence.sampleScopes[0].gapToMin > 0 ? `（${formatPriceGap(summary.priceEvidence.sampleScopes[0].gapToMin)}）` : ""}
             </span>
@@ -11413,7 +11408,7 @@ function buildApiProviderCandidateContext(candidate: ApiProviderCandidate): stri
 }
 
 function isCollectorTodo(submission: ChannelSubmission): boolean {
-  return stringMeta(submission.parsedMeta || {}, "review_stage") === "collector_todo";
+  return submission.reviewStage === "collector_todo";
 }
 
 function buildCollectorContext(submission: ChannelSubmission): string {
@@ -11452,8 +11447,7 @@ function existingSourceForSubmission(submission: ChannelSubmission, sourceById: 
 }
 
 function isSameChannelPendingSubmission(submission: ChannelSubmission): boolean {
-  const meta = submission.parsedMeta || {};
-  return Boolean(stringMeta(meta, "duplicate_pending_submission_id") || stringMeta(meta, "duplicate_pending_submission_name"));
+  return Boolean(submission.duplicateOfSubmissionId && submission.duplicateOfSubmissionId !== submission.id);
 }
 
 function sameChannelSubmissionReviewerNote(submission: ChannelSubmission): string {
@@ -11524,154 +11518,6 @@ function submissionLinkTypeFor(submission: ChannelSubmission): SubmissionUrlType
 
 function submissionLinkTypeLabel(value: SubmissionLinkTypeFilter): string {
   return submissionLinkTypeFilterOptions.find((option) => option.value === value)?.label || "待判断";
-}
-
-function buildSubmissionPriceBenchmarkIndex(offers: RawOffer[]): SubmissionPriceBenchmarkIndex {
-  const index: SubmissionPriceBenchmarkIndex = new Map();
-
-  for (const offer of offers) {
-    if (!isSubmissionBenchmarkOffer(offer)) continue;
-
-    const product = benchmarkProductFromOffer(offer);
-    if (!product || product.id === "other-product") continue;
-
-    const price = offer.price;
-    if (typeof price !== "number") continue;
-
-    const current = index.get(product.id) || {
-      productId: product.id,
-      productName: product.name,
-      prices: [],
-      rows: [],
-    };
-    current.prices.push(price);
-    current.rows.push({
-      productId: product.id,
-      productName: product.name,
-      title: offer.sourceTitle,
-      price,
-    });
-    index.set(product.id, current);
-  }
-
-  for (const benchmark of index.values()) {
-    benchmark.prices.sort((a, b) => a - b);
-    benchmark.rows.sort((a, b) => a.price - b.price);
-  }
-
-  return index;
-}
-
-function isSubmissionBenchmarkOffer(offer: RawOffer): boolean {
-  if (offer.hidden) return false;
-  if (offer.status === "out_of_stock") return false;
-  if (!offer.url) return false;
-  if (offer.currency && offer.currency.toUpperCase() !== "CNY") return false;
-  if (offer.effectiveStatus === "unavailable" || offer.effectiveStatus === "stale" || offer.effectiveStatus === "failed") return false;
-  if (offer.freshnessStatus === "expired" || offer.freshnessStatus === "failed") return false;
-  if (offer.expiresAt) {
-    const expiresAt = Date.parse(offer.expiresAt);
-    if (Number.isFinite(expiresAt) && expiresAt < Date.now()) return false;
-  }
-  return typeof offer.price === "number" && Number.isFinite(offer.price) && offer.price > 0;
-}
-
-function benchmarkProductFromOffer(offer: RawOffer): { id: string; name: string } | null {
-  if (!offer.sourceTitle) return null;
-  const classified = classifyOffer(offer.sourceTitle, {
-    tags: offer.tags,
-    categorySlug: offer.categorySlug || offer.storedCategorySlug,
-    price: offer.price,
-  });
-  const productId = offer.canonicalProductId || offer.storedCanonicalProductId || classified.id;
-  const product = productId === classified.id ? classified : getCanonicalProduct(productId);
-  return { id: product.id, name: product.displayName };
-}
-
-function buildSubmissionPriceEvidence(
-  probeResult: ProbeResult | null | undefined,
-  benchmarkIndex: SubmissionPriceBenchmarkIndex,
-): SubmissionPriceEvidence | null {
-  if (!probeResult || probeResult.status !== "success" || !Array.isArray(probeResult.offers)) return null;
-
-  const sampleScopes: SubmissionPriceEvidenceSample[] = [];
-  const benchmarkScopes = new Set<string>();
-  let comparableOfferCount = 0;
-  let lowestHitCount = 0;
-  let top5HitCount = 0;
-  let within10PctCount = 0;
-  let within20PctCount = 0;
-  let highGapCount = 0;
-
-  for (const offer of probeResult.offers) {
-    if (!isComparableProbeOffer(offer)) continue;
-
-    const price = offer.price;
-    if (typeof price !== "number") continue;
-
-    const product = classifyOffer(offer.sourceTitle, {
-      tags: offer.tags,
-      price,
-    });
-    if (product.id === "other-product") continue;
-
-    const benchmark = benchmarkIndex.get(product.id);
-    if (!benchmark || !benchmark.prices.length) continue;
-
-    const minPrice = benchmark.prices[0];
-    const top5Price = benchmark.prices[Math.min(4, benchmark.prices.length - 1)];
-    if (!Number.isFinite(minPrice) || minPrice <= 0 || !Number.isFinite(top5Price) || top5Price <= 0) continue;
-
-    benchmarkScopes.add(product.id);
-    comparableOfferCount += 1;
-
-    const rank = 1 + benchmark.prices.filter((value) => value < price).length;
-    const gapToMin = (price - minPrice) / minPrice;
-    const gapToTop5 = (price - top5Price) / top5Price;
-
-    if (price <= minPrice) lowestHitCount += 1;
-    if (price <= top5Price) top5HitCount += 1;
-    if (price <= minPrice * 1.1) within10PctCount += 1;
-    if (price <= minPrice * 1.2) within20PctCount += 1;
-    if (gapToMin >= 0.5 && price > top5Price) highGapCount += 1;
-
-    sampleScopes.push({
-      productId: product.id,
-      productName: product.displayName,
-      title: offer.sourceTitle,
-      price,
-      minPrice,
-      top5Price,
-      rank,
-      gapToMin,
-      gapToTop5,
-    });
-  }
-
-  if (!comparableOfferCount) return null;
-
-  sampleScopes.sort((a, b) => {
-    const top5Delta = Number(a.price > a.top5Price) - Number(b.price > b.top5Price);
-    if (top5Delta) return top5Delta;
-    return a.rank - b.rank || a.gapToMin - b.gapToMin;
-  });
-
-  return {
-    comparableOfferCount,
-    benchmarkScopeCount: benchmarkScopes.size,
-    lowestHitCount,
-    top5HitCount,
-    within10PctCount,
-    within20PctCount,
-    highGapCount,
-    sampleScopes: sampleScopes.slice(0, 5),
-  };
-}
-
-function isComparableProbeOffer(offer: ProbeOffer): boolean {
-  if (offer.status === "out_of_stock") return false;
-  if (offer.currency && offer.currency.toUpperCase() !== "CNY") return false;
-  return typeof offer.price === "number" && Number.isFinite(offer.price) && offer.price > 0;
 }
 
 function submissionPricePositiveReason(priceEvidence: SubmissionPriceEvidence | null | undefined): string | null {
@@ -11776,6 +11622,17 @@ function buildSubmissionQualitySummary(input: {
   existingSource?: Source | null;
   priceEvidence?: SubmissionPriceEvidence | null;
 }): SubmissionQualitySummary {
+  const persisted = input.submission.preclassification;
+  if (persisted) {
+    return {
+      kind: persisted.kind,
+      label: persisted.label,
+      tone: persisted.tone,
+      reasons: persisted.reasons,
+      detail: persisted.detail,
+      priceEvidence: persisted.priceEvidence as SubmissionPriceEvidence | null | undefined,
+    };
+  }
   const meta = input.submission.parsedMeta || {};
   const probe = input.probeResult || probeResultFromMeta(meta);
   const suggestedCollector = collectorKindMeta(meta, "suggested_collector_kind");

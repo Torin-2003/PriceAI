@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createSubmission } from "@/lib/admin";
+import { clearAdminDataCache } from "@/lib/data";
 import {
   checkPublicWriteRateLimit,
   getPublicClientFingerprint,
@@ -33,7 +34,7 @@ function getErrorStatus(error: unknown, message: string): number {
   const publicRequestStatus = getPublicRequestErrorStatus(error);
   if (publicRequestStatus) return publicRequestStatus;
   if (error instanceof z.ZodError) return 400;
-  if (message.includes("刚刚被提交过")) return 409;
+  if (message.includes("刚刚被提交过") || message.includes("已有信息更完整的待审记录")) return 409;
   if (message.includes("提交过于频繁")) return 429;
   if (
     message.includes("URL 格式") ||
@@ -88,7 +89,7 @@ export async function POST(request: Request) {
         if ("ignored" in result) {
           results.push({ url, ok: true, ignored: true });
         } else {
-          results.push({ url, ok: true, id: result.id });
+          results.push({ url, ok: true, id: result.id, merged: Boolean(result.merged) });
         }
       } catch (error) {
         results.push({ url, ok: false, message: getErrorMessage(error) });
@@ -110,6 +111,7 @@ export async function POST(request: Request) {
       );
     }
 
+    clearAdminDataCache();
     return Response.json({
       ok: true,
       results,

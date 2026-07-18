@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { approveSubmission } from "@/lib/admin";
+import { approveSubmission, markSubmissionApprovalFailed } from "@/lib/admin";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { normalizeCollectorKind } from "@/lib/collector-registry";
-import { clearPublicDataCache, markPublicApiSnapshotsDirty } from "@/lib/data";
+import { clearAdminDataCache, clearPublicDataCache, markPublicApiSnapshotsDirty } from "@/lib/data";
 import { requireAdminRequest } from "@/lib/env";
 import { revalidatePublicOfferPaths } from "@/lib/public-revalidation";
 import type { CollectorKind } from "@/lib/types";
@@ -18,15 +18,18 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
+  let submissionId: string | null = null;
   try {
     await requireAdminRequest(request);
     const payload = schema.parse(await request.json());
+    submissionId = payload.id;
     const result = await approveSubmission(payload.id, {
       name: payload.name ?? null,
       sourceUrl: payload.sourceUrl ?? null,
       collectionMethod: payload.collectionMethod,
       collectorKind: payload.collectorKind,
     });
+    clearAdminDataCache();
     clearPublicDataCache();
     revalidatePublicOfferPaths();
     const snapshotRefreshQueued = await markPublicApiSnapshotsDirty("admin submission approve", {
@@ -34,8 +37,10 @@ export async function POST(request: Request) {
     });
     return Response.json({ ok: true, ...result, snapshotRefreshQueued });
   } catch (error) {
-    logApiError("admin submission approve", error);
     const rawMessage = error instanceof Error ? error.message : "审核失败。";
+    if (submissionId) await markSubmissionApprovalFailed(submissionId, rawMessage);
+    clearAdminDataCache();
+    logApiError("admin submission approve", error);
     return Response.json(
       { ok: false, message: safeApiErrorMessage(error, "审核失败。") },
       { status: error instanceof z.ZodError ? 400 : errorStatus(rawMessage) },

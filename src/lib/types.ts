@@ -1001,6 +1001,39 @@ export type OfferInput = {
 
 export type SubmissionStatus = "pending" | "approved" | "rejected";
 
+export type SubmissionReviewStage =
+  | "submitted"
+  | "parsed"
+  | "probe_queued"
+  | "probe_running"
+  | "ready_to_approve"
+  | "needs_collector_review"
+  | "known_collector_probe_failed"
+  | "collector_todo"
+  | "approval_in_progress"
+  | "approval_failed"
+  | "approved"
+  | "rejected";
+
+export type SubmissionQualityKind =
+  | "priority_approve"
+  | "valuable_lead"
+  | "needs_review"
+  | "low_quality"
+  | "duplicate"
+  | "environment_issue";
+
+export type SubmissionPreclassification = {
+  kind: SubmissionQualityKind;
+  label: string;
+  tone: "default" | "info" | "warn" | "success" | "danger" | "muted";
+  reasons: string[];
+  detail?: string;
+  priceEvidence?: Record<string, unknown> | null;
+  version?: string;
+  classifiedAt?: string;
+};
+
 export type OfferFeedbackStatus = "pending" | "resolved" | "ignored";
 export type SiteFeedbackStatus = OfferFeedbackStatus;
 export type OfferFeedbackScope = "offer" | "merchant";
@@ -1065,6 +1098,11 @@ export type ChannelSubmission = {
   notes: string | null;
   parsedTitle: string | null;
   parsedMeta: Record<string, unknown>;
+  normalizedUrl: string | null;
+  canonicalChannelKey: string | null;
+  reviewStage: SubmissionReviewStage;
+  duplicateOfSubmissionId: string | null;
+  preclassification: SubmissionPreclassification | null;
   status: SubmissionStatus;
   reviewerNote: string | null;
   approvedSourceId: string | null;

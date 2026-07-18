@@ -12,6 +12,16 @@ import { safeFetch } from "./safe-fetch";
 import { isFeedbackEvidenceReference } from "./feedback-evidence";
 import { getSupabaseServerClient } from "./supabase";
 import {
+  buildSubmissionPriceEvidence,
+  channelSubmissionKey,
+  classifySubmission,
+  normalizeSubmissionUrl,
+  storedPreclassification,
+  type SubmissionPreclassification as StoredSubmissionPreclassification,
+  type SubmissionPriceBenchmark,
+  type SubmissionProbeResult as ReviewSubmissionProbeResult,
+} from "./submission-review";
+import {
   buildInitialFeedbackVerificationResult,
   feedbackRequiresContact,
   feedbackRequiresEvidence,
@@ -47,6 +57,7 @@ import type {
   SiteFeedbackStatus,
   SiteFeedbackType,
   Source,
+  SubmissionReviewStage,
   SubmissionStatus,
 } from "./types";
 import {
@@ -1623,6 +1634,18 @@ async function findSourceRowByEntryUrl(entryUrl: string | null | undefined): Pro
 }
 
 function mapSubmissionRow(row: Record<string, unknown>): ChannelSubmission {
+  const parsedMeta = row.parsed_meta && typeof row.parsed_meta === "object"
+    ? (row.parsed_meta as Record<string, unknown>)
+    : {};
+  const duplicateOfSubmissionId = row.duplicate_of_submission_id
+    ? String(row.duplicate_of_submission_id)
+    : stringValue(parsedMeta.duplicate_pending_submission_id);
+  const safeDuplicateId = duplicateOfSubmissionId && duplicateOfSubmissionId !== String(row.id)
+    ? duplicateOfSubmissionId
+    : null;
+  const storedClassification = row.preclassification && typeof row.preclassification === "object" && !Array.isArray(row.preclassification)
+    ? row.preclassification as ChannelSubmission["preclassification"]
+    : null;
   return {
     id: String(row.id),
     url: String(row.url || ""),
@@ -1630,10 +1653,14 @@ function mapSubmissionRow(row: Record<string, unknown>): ChannelSubmission {
     contact: row.contact ? String(row.contact) : null,
     notes: row.notes ? String(row.notes) : null,
     parsedTitle: row.parsed_title ? String(row.parsed_title) : null,
-    parsedMeta:
-      row.parsed_meta && typeof row.parsed_meta === "object"
-        ? (row.parsed_meta as Record<string, unknown>)
-        : {},
+    parsedMeta,
+    normalizedUrl: row.normalized_url ? String(row.normalized_url) : stringValue(parsedMeta.normalized_url),
+    canonicalChannelKey: row.canonical_channel_key
+      ? String(row.canonical_channel_key)
+      : channelSubmissionKey(stringValue(parsedMeta.canonical_source_url) || String(row.url || "")),
+    reviewStage: String(row.review_stage || parsedMeta.review_stage || "submitted") as SubmissionReviewStage,
+    duplicateOfSubmissionId: safeDuplicateId,
+    preclassification: storedClassification && typeof storedClassification.kind === "string" ? storedClassification : null,
     status: String(row.status || "pending") as SubmissionStatus,
     reviewerNote: row.reviewer_note ? String(row.reviewer_note) : null,
     approvedSourceId: row.approved_source_id ? String(row.approved_source_id) : null,
@@ -2182,7 +2209,7 @@ async function findPreferredPendingSubmissionByCanonicalUrl(
     .select("id,url,name,contact,notes,parsed_title,parsed_meta,created_at,status")
     .eq("status", "pending")
     .order("created_at", { ascending: false })
-    .limit(300);
+    .limit(1000);
   if (error) throw error;
 
   let preferred: (PendingSubmissionDuplicate & { score: number; createdMs: number }) | null = null;
@@ -2965,7 +2992,7 @@ export async function createSubmission(input: {
   honeypot?: string | null;
   submitterIp?: string | null;
   rateLimitPerHour?: number;
-}): Promise<{ id: string; status: SubmissionStatus } | { ignored: true }> {
+}): Promise<{ id: string; status: SubmissionStatus; merged?: boolean } | { ignored: true }> {
   if (input.honeypot) {
     return { ignored: true };
   }
@@ -2973,30 +3000,13 @@ export async function createSubmission(input: {
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase 尚未配置，无法接受提交。");
 
-  let normalizedUrl: string;
-  try {
-    const parsed = new URL(input.url);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      throw new Error("仅支持 http/https。");
-    }
-    normalizedUrl = parsed.toString();
-  } catch {
+  const normalizedUrl = normalizeSubmissionUrl(input.url);
+  if (!normalizedUrl) {
     throw new Error("URL 格式不正确。");
   }
 
   const ip = input.submitterIp || null;
-  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-
-  const { data: dupRows } = await supabase
-    .from("channel_submissions")
-    .select("id")
-    .eq("url", normalizedUrl)
-    .gte("created_at", fiveMinAgo)
-    .limit(1);
-  if (dupRows && dupRows.length) {
-    throw new Error("该链接刚刚被提交过，请稍后再试。");
-  }
 
   if (ip) {
     const rateLimitPerHour = input.rateLimitPerHour ?? 5;
@@ -3026,6 +3036,19 @@ export async function createSubmission(input: {
   }
 
   const canonicalSourceUrl = stringValue(parsedMeta.canonical_source_url) || stringValue(parsedMeta.normalized_url) || normalizedUrl;
+  const canonicalKey = channelSubmissionKey(canonicalSourceUrl);
+  const existingRoot = canonicalKey ? await findPendingSubmissionRootByCanonicalKey(canonicalKey) : null;
+  if (existingRoot) {
+    return mergeSubmissionIntoPendingRoot(existingRoot, {
+      name: input.name?.trim() || null,
+      contact: input.contact?.trim() || null,
+      notes: input.notes?.trim() || null,
+      parsedTitle,
+      parsedMeta,
+      normalizedUrl,
+      canonicalKey,
+    });
+  }
   const duplicatePending = await findPreferredPendingSubmissionByCanonicalUrl(canonicalSourceUrl, {
     submittedName: input.name?.trim() || null,
     submittedUrl: normalizedUrl,
@@ -3035,11 +3058,27 @@ export async function createSubmission(input: {
     currentMeta: parsedMeta,
   });
   if (duplicatePending) {
+    const duplicateRoot = await findSubmissionRowById(duplicatePending.id);
+    if (duplicateRoot) {
+      return mergeSubmissionIntoPendingRoot(duplicateRoot, {
+        name: input.name?.trim() || null,
+        contact: input.contact?.trim() || null,
+        notes: input.notes?.trim() || null,
+        parsedTitle,
+        parsedMeta,
+        normalizedUrl,
+        canonicalKey,
+      });
+    }
     throw new Error("该渠道已有信息更完整的待审记录，请勿重复提交。");
   }
 
   const id = stableId("submission", normalizedUrl, ip || "", Date.now().toString());
-  const { error } = await supabase.from("channel_submissions").insert({
+  const preclassification = storedPreclassification(classifySubmission({
+    suggestedCollector: normalizeCollectorKind(parsedMeta.suggested_collector_kind),
+    existingSourceName: stringValue(parsedMeta.existing_source_name),
+  }));
+  const insertRow = {
     id,
     url: normalizedUrl,
     name: input.name?.trim() || null,
@@ -3049,10 +3088,124 @@ export async function createSubmission(input: {
     parsed_meta: parsedMeta,
     status: "pending",
     submitter_ip: ip,
-  });
-  if (error) throw error;
+    ...submissionReviewColumns({
+      reviewStage: "parsed",
+      preclassification,
+      normalizedUrl,
+      canonicalChannelKey: canonicalKey,
+      duplicateOfSubmissionId: null,
+    }),
+  };
+  const { error } = await supabase.from("channel_submissions").insert(insertRow);
+  if (error) {
+    if (error.code === "23505" && canonicalKey) {
+      const concurrentRoot = await findPendingSubmissionRootByCanonicalKey(canonicalKey);
+      if (concurrentRoot) {
+        return mergeSubmissionIntoPendingRoot(concurrentRoot, {
+          name: input.name?.trim() || null,
+          contact: input.contact?.trim() || null,
+          notes: input.notes?.trim() || null,
+          parsedTitle,
+          parsedMeta,
+          normalizedUrl,
+          canonicalKey,
+        });
+      }
+    }
+    throw error;
+  }
 
   return { id, status: "pending" };
+}
+
+async function findPendingSubmissionRootByCanonicalKey(canonicalKey: string): Promise<Record<string, unknown> | null> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("channel_submissions")
+    .select("*")
+    .eq("status", "pending")
+    .eq("canonical_channel_key", canonicalKey)
+    .is("duplicate_of_submission_id", null)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) {
+    if (isMissingSubmissionReviewContractError(error)) return null;
+    throw error;
+  }
+  return data?.[0] || null;
+}
+
+async function findSubmissionRowById(id: string): Promise<Record<string, unknown> | null> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return null;
+  const { data, error } = await supabase.from("channel_submissions").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function mergeSubmissionIntoPendingRoot(
+  row: Record<string, unknown>,
+  incoming: {
+    name: string | null;
+    contact: string | null;
+    notes: string | null;
+    parsedTitle: string | null;
+    parsedMeta: Record<string, unknown>;
+    normalizedUrl: string;
+    canonicalKey: string | null;
+  },
+): Promise<{ id: string; status: SubmissionStatus; merged: true }> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) throw new Error("Supabase 尚未配置，无法合并提交。");
+  const current = mapSubmissionRow(row);
+  const mergedMeta: Record<string, unknown> = {
+    ...current.parsedMeta,
+    ...incoming.parsedMeta,
+    normalized_url: current.normalizedUrl || incoming.normalizedUrl,
+    merged_submission_at: new Date().toISOString(),
+  };
+  for (const key of [
+    "probe_result",
+    "probe_checked_at",
+    "probe_job_id",
+    "review_stage",
+    "collector_todo_at",
+    "collector_todo_reason",
+  ]) {
+    if (current.parsedMeta[key] !== undefined) mergedMeta[key] = current.parsedMeta[key];
+  }
+  delete mergedMeta.duplicate_pending_submission_id;
+  delete mergedMeta.duplicate_pending_submission_name;
+  delete mergedMeta.duplicate_pending_submission_url;
+  delete mergedMeta.duplicate_pending_reason;
+  const mergedSubmission: ChannelSubmission = {
+    ...current,
+    name: current.name || incoming.name,
+    contact: current.contact || incoming.contact,
+    notes: current.notes || incoming.notes,
+    parsedTitle: current.parsedTitle || incoming.parsedTitle,
+    parsedMeta: mergedMeta,
+    normalizedUrl: current.normalizedUrl || incoming.normalizedUrl,
+    canonicalChannelKey: current.canonicalChannelKey || incoming.canonicalKey,
+  };
+  const preclassification = await buildStoredSubmissionPreclassification(mergedSubmission, mergedMeta);
+  const { error } = await supabase.from("channel_submissions").update({
+    name: mergedSubmission.name,
+    contact: mergedSubmission.contact,
+    notes: mergedSubmission.notes,
+    parsed_title: mergedSubmission.parsedTitle,
+    parsed_meta: mergedMeta,
+    ...submissionReviewColumns({
+      reviewStage: mergedSubmission.reviewStage === "submitted" ? "parsed" : mergedSubmission.reviewStage,
+      preclassification,
+      normalizedUrl: mergedSubmission.normalizedUrl,
+      canonicalChannelKey: mergedSubmission.canonicalChannelKey,
+      duplicateOfSubmissionId: null,
+    }),
+  }).eq("id", current.id).eq("status", "pending");
+  if (error) throw error;
+  return { id: current.id, status: "pending", merged: true };
 }
 
 export async function createOfferFeedback(input: {
@@ -3655,9 +3808,83 @@ export async function listSubmissions(status: SubmissionStatus = "pending"): Pro
     .select("*")
     .eq("status", status)
     .order("created_at", { ascending: false })
-    .limit(300);
+    .limit(1000);
   if (error) throw error;
   return (data || []).map(mapSubmissionRow);
+}
+
+async function buildStoredSubmissionPreclassification(
+  submission: ChannelSubmission,
+  meta: Record<string, unknown> = submission.parsedMeta || {},
+): Promise<StoredSubmissionPreclassification> {
+  const probe = getStoredProbeResult(meta) as ReviewSubmissionProbeResult | null;
+  const priceEvidence = probe?.status === "success"
+    ? buildSubmissionPriceEvidence(probe, await listSubmissionPriceBenchmarks(probe))
+    : null;
+  const duplicateName = submission.duplicateOfSubmissionId
+    ? stringValue(meta.duplicate_pending_submission_name) || stringValue(meta.duplicate_pending_submission_url) || "另一条待审记录"
+    : null;
+  return storedPreclassification(classifySubmission({
+    probe,
+    suggestedCollector: normalizeCollectorKind(meta.suggested_collector_kind),
+    duplicateName,
+    existingSourceName: stringValue(meta.existing_source_name),
+    priceEvidence,
+  }));
+}
+
+async function listSubmissionPriceBenchmarks(
+  probe: ReviewSubmissionProbeResult,
+): Promise<Map<string, SubmissionPriceBenchmark>> {
+  const productIds = Array.from(new Set((probe.offers || [])
+    .map((offer) => classifyOffer(offer.sourceTitle, { tags: offer.tags, price: offer.price }).id)
+    .filter((id) => id !== "other-product")));
+  if (!productIds.length) return new Map();
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return new Map();
+  const { data, error } = await supabase.rpc("list_submission_price_benchmarks", { p_product_ids: productIds });
+  if (error) {
+    if (isMissingSubmissionReviewContractError(error)) return new Map();
+    throw error;
+  }
+
+  const benchmarks = new Map<string, SubmissionPriceBenchmark>();
+  for (const row of (data || []) as unknown as Record<string, unknown>[]) {
+    const productId = String(row.product_id || "");
+    if (!productId) continue;
+    benchmarks.set(productId, {
+      productId,
+      offerCount: numberValue(row.offer_count) || 0,
+      minPrice: numberValue(row.min_price) || 0,
+      top5Price: numberValue(row.top5_price) || 0,
+    });
+  }
+  return benchmarks;
+}
+
+function isMissingSubmissionReviewContractError(error: { message?: string; code?: string }): boolean {
+  const message = `${error.code || ""} ${error.message || ""}`.toLowerCase();
+  return message.includes("list_submission_price_benchmarks") || message.includes("preclassification") || message.includes("review_stage");
+}
+
+function submissionReviewColumns(input: {
+  reviewStage: SubmissionReviewStage;
+  preclassification: StoredSubmissionPreclassification;
+  normalizedUrl?: string | null;
+  canonicalChannelKey?: string | null;
+  duplicateOfSubmissionId?: string | null;
+}): Record<string, unknown> {
+  return {
+    review_stage: input.reviewStage,
+    preclassification_kind: input.preclassification.kind,
+    preclassification: input.preclassification,
+    classification_version: input.preclassification.version || null,
+    classified_at: input.preclassification.classifiedAt || null,
+    ...(input.normalizedUrl !== undefined ? { normalized_url: input.normalizedUrl } : {}),
+    ...(input.canonicalChannelKey !== undefined ? { canonical_channel_key: input.canonicalChannelKey } : {}),
+    ...(input.duplicateOfSubmissionId !== undefined ? { duplicate_of_submission_id: input.duplicateOfSubmissionId } : {}),
+  };
 }
 
 export async function reparseSubmission(id: string): Promise<ChannelSubmission> {
@@ -3693,7 +3920,7 @@ export async function reparseSubmission(id: string): Promise<ChannelSubmission> 
   }
 
   const previousMeta = submission.parsedMeta || {};
-  const nextMeta = {
+  const nextMeta: Record<string, unknown> = {
     ...parsedMeta,
     probe_result: previousMeta.probe_result,
     probe_checked_at: previousMeta.probe_checked_at,
@@ -3701,12 +3928,29 @@ export async function reparseSubmission(id: string): Promise<ChannelSubmission> 
   };
   if (!nextMeta.probe_result) delete nextMeta.probe_result;
   if (!nextMeta.probe_checked_at) delete nextMeta.probe_checked_at;
+  const normalizedUrl = normalizeSubmissionUrl(submission.url);
+  const canonicalKey = channelSubmissionKey(stringValue(nextMeta["canonical_source_url"]) || normalizedUrl);
+  const nextSubmission = {
+    ...submission,
+    parsedTitle,
+    parsedMeta: nextMeta,
+    normalizedUrl,
+    canonicalChannelKey: canonicalKey,
+  };
+  const preclassification = await buildStoredSubmissionPreclassification(nextSubmission, nextMeta);
 
   const { data: updated, error: updateError } = await supabase
     .from("channel_submissions")
     .update({
       parsed_title: parsedTitle,
       parsed_meta: nextMeta,
+      ...submissionReviewColumns({
+        reviewStage: submission.reviewStage === "collector_todo" ? "collector_todo" : "parsed",
+        preclassification,
+        normalizedUrl,
+        canonicalChannelKey: canonicalKey,
+        duplicateOfSubmissionId: submission.duplicateOfSubmissionId,
+      }),
     })
     .eq("id", id)
     .eq("status", "pending")
@@ -3773,10 +4017,24 @@ export async function recordSubmissionProbeResult(
     contact: submission.contact,
     notes: submission.notes,
   });
+  const reviewStage: SubmissionReviewStage = success
+    ? "ready_to_approve"
+    : knownCollector
+      ? "known_collector_probe_failed"
+      : "needs_collector_review";
+  const nextSubmission = { ...submission, parsedMeta: nextMeta, reviewStage };
+  const preclassification = await buildStoredSubmissionPreclassification(nextSubmission, nextMeta);
 
   const { data: updated, error: updateError } = await supabase
     .from("channel_submissions")
-    .update({ parsed_meta: nextMeta })
+    .update({
+      parsed_meta: nextMeta,
+      ...submissionReviewColumns({
+        reviewStage,
+        preclassification,
+        duplicateOfSubmissionId: submission.duplicateOfSubmissionId,
+      }),
+    })
     .eq("id", id)
     .eq("status", "pending")
     .select("*")
@@ -3823,6 +4081,33 @@ export async function queueSubmissionProbeJob(
     getSuggestedSourceId(submission.parsedMeta) ||
     (sourceHost ? inferSubmittedSourceId(sourceHost, sourceName, shopToken) : stableId("submission-probe-source", sourceName, sourceUrl));
   const baseUrl = input.baseUrl || deriveBaseUrl(sourceUrl);
+  const { data: activeJobs, error: activeJobError } = await supabase
+    .from("collection_jobs")
+    .select("id,status")
+    .eq("requested_by", "submission_probe")
+    .in("status", ["pending", "running"])
+    .contains("result", { intent: "submission_probe", submissionId: id })
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (activeJobError) throw activeJobError;
+  const activeJob = activeJobs?.[0];
+  if (activeJob) {
+    const existingProbe = getStoredProbeResult(submission.parsedMeta);
+    const result: SubmissionProbeResult = existingProbe && (existingProbe.status === "queued" || existingProbe.status === "running")
+      ? existingProbe
+      : {
+          sourceId,
+          sourceName,
+          sourceUrl,
+          baseUrl: baseUrl || undefined,
+          kind: collectorKind,
+          status: activeJob.status === "running" ? "running" : "queued",
+          offerCount: 0,
+          offers: [],
+          message: activeJob.status === "running" ? "轻量采集节点正在执行试采集。" : "已在低频试采集队列中，等待轻量采集节点领取。",
+        };
+    return { submission, result, jobId: String(activeJob.id) };
+  }
   const jobId = stableId("submission-probe", id, sourceId, queuedAt);
   const result: SubmissionProbeResult = {
     sourceId,
@@ -3885,16 +4170,28 @@ export async function queueSubmissionProbeJob(
     contact: submission.contact,
     notes: submission.notes,
   });
+  const nextSubmission = { ...submission, parsedMeta: nextMeta, reviewStage: "probe_queued" as const };
+  const preclassification = await buildStoredSubmissionPreclassification(nextSubmission, nextMeta);
 
   const { data: updated, error: updateError } = await supabase
     .from("channel_submissions")
-    .update({ parsed_meta: nextMeta })
+    .update({
+      parsed_meta: nextMeta,
+      ...submissionReviewColumns({
+        reviewStage: "probe_queued",
+        preclassification,
+        duplicateOfSubmissionId: submission.duplicateOfSubmissionId,
+      }),
+    })
     .eq("id", id)
     .eq("status", "pending")
     .select("*")
     .maybeSingle();
-  if (updateError) throw updateError;
-  if (!updated) throw new Error("提交记录不存在或已被处理。");
+  if (updateError || !updated) {
+    await supabase.from("collection_jobs").delete().eq("id", jobId).eq("status", "pending");
+    if (updateError) throw updateError;
+    throw new Error("提交记录不存在或已被处理。");
+  }
 
   return { submission: mapSubmissionRow(updated), result, jobId };
 }
@@ -3923,12 +4220,19 @@ export async function markSubmissionCollectorTodo(id: string, note?: string | nu
     support_status: "needs_collector",
     support_reason: reason,
   };
+  const nextSubmission = { ...submission, parsedMeta: nextMeta, reviewStage: "collector_todo" as const };
+  const preclassification = await buildStoredSubmissionPreclassification(nextSubmission, nextMeta);
 
   const { data: updated, error: updateError } = await supabase
     .from("channel_submissions")
     .update({
       parsed_meta: nextMeta,
       reviewer_note: reason,
+      ...submissionReviewColumns({
+        reviewStage: "collector_todo",
+        preclassification,
+        duplicateOfSubmissionId: submission.duplicateOfSubmissionId,
+      }),
     })
     .eq("id", id)
     .eq("status", "pending")
@@ -3984,6 +4288,32 @@ export async function approveSubmission(
   const suggestedId = getSuggestedSourceId(submission.parsedMeta);
   const existingSourceId = getExistingSourceId(submission.parsedMeta);
   const existingSource = await findExistingSourceForApproval(existingSourceId || suggestedId, canonicalSourceUrl);
+  const storedProbe = getStoredProbeResult(submission.parsedMeta);
+  const hasProbeOffers = storedProbe?.status === "success" && Array.isArray(storedProbe.offers) && storedProbe.offers.length > 0;
+  const hasRunnableCollector = Boolean(
+    selectedCollectorKind &&
+    selectedCollectorKind !== "auto" &&
+    selectedCollectorKind !== "browser" &&
+    selectedCollectorKind !== "unsupported"
+  );
+  if (!existingSource && !hasProbeOffers && !hasRunnableCollector) {
+    throw new Error("请先试采集成功；或手动指定一个已支持采集器后再通过。");
+  }
+
+  const approvalStartedAt = new Date().toISOString();
+  const { error: approvalStartError } = await supabase
+    .from("channel_submissions")
+    .update({
+      review_stage: "approval_in_progress",
+      parsed_meta: {
+        ...submission.parsedMeta,
+        review_stage: "approval_in_progress",
+        approval_started_at: approvalStartedAt,
+      },
+    })
+    .eq("id", id)
+    .eq("status", "pending");
+  if (approvalStartError && !isMissingSubmissionReviewContractError(approvalStartError)) throw approvalStartError;
   const fallbackName =
     overrides.name?.trim() ||
     submission.name ||
@@ -4000,7 +4330,7 @@ export async function approveSubmission(
       baseUrl,
       collectionMethod: overrides.collectionMethod || suggestedMethod || "http",
       collectorKind: selectedCollectorKind,
-      enabled: true,
+      enabled: false,
       notes: submission.notes ? `用户提交：${submission.notes}` : "由用户提交渠道入口审核通过。",
     });
 
@@ -4012,21 +4342,12 @@ export async function approveSubmission(
       baseUrl,
       collectionMethod: overrides.collectionMethod || existingSource.collectionMethod || suggestedMethod || "http",
       collectorKind: selectedCollectorKind || existingSource.collectorKind || null,
-      enabled: true,
+      enabled: existingSource.enabled,
       notes: existingSource.notes,
     });
   }
 
   const importedOffers = getProbeOffersForImport(submission.parsedMeta, source, canonicalSourceUrl);
-  const hasRunnableCollector =
-    selectedCollectorKind &&
-    selectedCollectorKind !== "auto" &&
-    selectedCollectorKind !== "browser" &&
-    selectedCollectorKind !== "unsupported";
-  if (!existingSource && !importedOffers.length && !hasRunnableCollector) {
-    throw new Error("请先试采集成功；或手动指定一个已支持采集器后再通过。");
-  }
-
   const importedOfferResult = importedOffers.length
     ? await upsertRawOffers(importedOffers, { collectionMethod: source.collectionMethod === "manual" ? "http" : source.collectionMethod })
     : { receivedCount: 0, writtenCount: 0, unchangedCount: 0, refreshedCount: 0, confirmedCount: 0 };
@@ -4074,18 +4395,23 @@ export async function approveSubmission(
     approved_source_url: canonicalSourceUrl,
     manual_source_url: manualSourceUrl,
   };
-  const { data: updated, error: updateError } = await supabase
-    .from("channel_submissions")
-    .update({
-      status: "approved",
-      approved_source_id: source.id,
-      parsed_meta: nextMeta,
-      reviewed_at: reviewedAt,
-    })
-    .eq("id", id)
-    .select("*")
-    .maybeSingle();
+  const approvedClassification = storedPreclassification(classifySubmission({
+    probe: storedProbe as ReviewSubmissionProbeResult | null,
+    suggestedCollector: selectedCollectorKind,
+    existingSourceName: existingSource?.name || null,
+  }), reviewedAt);
+  const { data: finalizedRows, error: updateError } = await supabase.rpc("finalize_channel_submission_approval", {
+    p_submission_id: id,
+    p_source_id: source.id,
+    p_parsed_meta: nextMeta,
+    p_reviewed_at: reviewedAt,
+    p_preclassification: approvedClassification,
+    p_classification_version: approvedClassification.version || null,
+  });
   if (updateError) throw updateError;
+  const updated = Array.isArray(finalizedRows) ? finalizedRows[0] : finalizedRows;
+  if (!updated) throw new Error("提交记录不存在或已被处理。");
+  source = { ...source, enabled: true, updatedAt: reviewedAt };
 
   return {
     submission: updated ? mapSubmissionRow(updated) : { ...submission, status: "approved", approvedSourceId: source.id, reviewedAt },
@@ -4099,12 +4425,25 @@ export async function rejectSubmission(id: string, note?: string | null): Promis
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase 尚未配置。");
 
+  const { data: currentRow, error: currentError } = await supabase
+    .from("channel_submissions")
+    .select("*")
+    .eq("id", id)
+    .eq("status", "pending")
+    .maybeSingle();
+  if (currentError) throw currentError;
+  if (!currentRow) throw new Error("提交记录不存在或已被处理。");
+  const current = mapSubmissionRow(currentRow);
+  const reviewedAt = new Date().toISOString();
+
   const { data, error } = await supabase
     .from("channel_submissions")
     .update({
       status: "rejected",
       reviewer_note: note?.trim() || null,
-      reviewed_at: new Date().toISOString(),
+      reviewed_at: reviewedAt,
+      review_stage: "rejected",
+      parsed_meta: { ...current.parsedMeta, review_stage: "rejected", rejected_at: reviewedAt },
     })
     .eq("id", id)
     .eq("status", "pending")
@@ -4114,6 +4453,30 @@ export async function rejectSubmission(id: string, note?: string | null): Promis
   if (!data) throw new Error("提交记录不存在或已被处理。");
 
   return mapSubmissionRow(data);
+}
+
+export async function markSubmissionApprovalFailed(id: string, reason: string): Promise<void> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return;
+  const { data, error } = await supabase
+    .from("channel_submissions")
+    .select("id,status,review_stage,parsed_meta")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data || data.status !== "pending" || data.review_stage !== "approval_in_progress") return;
+  const meta = data.parsed_meta && typeof data.parsed_meta === "object" && !Array.isArray(data.parsed_meta)
+    ? data.parsed_meta as Record<string, unknown>
+    : {};
+  await supabase.from("channel_submissions").update({
+    review_stage: "approval_failed",
+    reviewer_note: reason.slice(0, 500),
+    parsed_meta: {
+      ...meta,
+      review_stage: "approval_failed",
+      approval_failed_at: new Date().toISOString(),
+      approval_error: reason.slice(0, 1000),
+    },
+  }).eq("id", id).eq("status", "pending");
 }
 
 async function getSourceById(id: string): Promise<Source | null> {
