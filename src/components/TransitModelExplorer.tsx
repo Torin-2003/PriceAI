@@ -43,7 +43,9 @@ import {
   getRateBadgeClass,
   getTransitModelSummaries,
   getTransitModelDetectionBadgeClass,
+  getStationPublishedAvailabilitySummary,
   getTransitPriceAvailabilitySourceMeta,
+  getTransitAvailabilityRecentSamplesForDisplay,
   getTransitPriceDetectionSummary,
   getTransitStationSystemLabel,
   getUsageAdviceBadgeClass,
@@ -530,8 +532,7 @@ function RateAndCacheCell({ entry }: { entry: TransitModelPriceEntry }) {
 }
 
 function PriceAvailabilityCell({ entry }: { entry: TransitModelPriceEntry }) {
-  const availability = entry.price.availability;
-  const source = getTransitPriceAvailabilitySourceMeta(entry.station, entry.price);
+  const { availability, source } = getTransitModelPriceAvailabilityDisplay(entry);
 
   return (
     <div className="min-w-0" title={source.title}>
@@ -550,6 +551,25 @@ function PriceAvailabilityCell({ entry }: { entry: TransitModelPriceEntry }) {
       </div>
     </div>
   );
+}
+
+function getTransitModelPriceAvailabilityDisplay(entry: TransitModelPriceEntry) {
+  const stationAvailability = getStationPublishedAvailabilitySummary(entry.station);
+  const availability = {
+    ...entry.price.availability,
+    recentSamples: getTransitAvailabilityRecentSamplesForDisplay(
+      entry.price.availability.recentSamples,
+      stationAvailability.recentSamples,
+    ),
+  };
+  const usingStationFallback = Boolean(
+    !entry.price.availability.recentSamples?.length && stationAvailability.recentSamples?.length,
+  );
+  const source = usingStationFallback
+    ? getAvailabilitySourceMeta(stationAvailability)
+    : getTransitPriceAvailabilitySourceMeta(entry.station, entry.price);
+
+  return { availability, source };
 }
 
 function AvailabilitySourcePill({
@@ -667,6 +687,7 @@ function ModelMobileExpandedPanel({ summary, stationId }: { summary: TransitMode
         {entries.length > 0 ? (
           entries.slice(0, 8).map((entry) => {
             const detection = getTransitPriceDetectionSummary(entry.station, entry.price);
+            const availabilityDisplay = getTransitModelPriceAvailabilityDisplay(entry);
 
             return (
               <button
@@ -697,7 +718,7 @@ function ModelMobileExpandedPanel({ summary, stationId }: { summary: TransitMode
                     label="缓存"
                     value={isTransitFixedPrice(entry.price) ? "不适用" : `${formatCacheHitRate(entry.price.cacheUsage)} · ${formatTransitTokenVolume(entry.price.cacheUsage?.sampleTokens)}`}
                   />
-                  <MobileQuoteMetric label="可用性" value={formatAvailability(entry.price.availability)} />
+                  <MobileQuoteMetric label="可用性" value={formatAvailability(availabilityDisplay.availability)} />
                 </div>
                 <div className="mt-2 flex items-center gap-1.5">
                   <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-[#7f8889]" aria-hidden="true" />

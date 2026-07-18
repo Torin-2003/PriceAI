@@ -2312,14 +2312,25 @@ function formatCompactNumber(value: number): string {
   return Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1);
 }
 
+export function getTransitAvailabilityRecentSamplesForDisplay(
+  recentSamples: TransitAvailability["recentSamples"],
+  fallbackRecentSamples: TransitAvailability["recentSamples"] = undefined
+): TransitAvailability["recentSamples"] {
+  if (recentSamples?.length) return recentSamples;
+  if (fallbackRecentSamples?.length) return fallbackRecentSamples;
+  return undefined;
+}
+
 export function formatAvailability(
   availability: Pick<TransitAvailability, "sevenDayRate" | "sevenDaySamples"> &
     Partial<Pick<TransitAvailability, "recentSamples">>
 ): string {
-  if (availability.sevenDaySamples <= 0 || availability.sevenDayRate === null) {
-    return "样本不足";
+  if (availability.sevenDaySamples > 0 && availability.sevenDayRate !== null) {
+    return `${formatPercent(availability.sevenDayRate)} · 样本 ${availability.sevenDaySamples}`;
   }
-  return `${formatPercent(availability.sevenDayRate)} · 样本 ${availability.sevenDaySamples}`;
+  const recentSampleCount = availability.recentSamples?.length ?? 0;
+  if (recentSampleCount > 0) return `最近 ${recentSampleCount} 次样本`;
+  return "样本不足";
 }
 
 export type AvailabilitySourceTone = "success" | "info" | "warning" | "muted";

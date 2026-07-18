@@ -8,6 +8,7 @@ import {
   getStationPublishedAvailabilitySummary,
   getStandardModelRateSummary,
   getTransitRecentAvailabilitySampleLookupScopes,
+  getTransitAvailabilityRecentSamplesForDisplay,
   getTransitAvailabilityRollupPrices,
   getTransitModelSummaries,
   getNormalizedSourceTags,
@@ -154,6 +155,14 @@ assertEqual(scoreTransitTtft(500, [500, 2000]) > scoreTransitTtft(2000, [500, 20
 assertEqual(getRechargeCoefficientFromRatio("1 CNY = 1 USD balance"), 1);
 assertEqual(getRechargeCoefficientFromRatio("1 CNY = 5 USD balance"), 0.2);
 assertEqual(
+  getTransitAvailabilityRecentSamplesForDisplay(undefined, [
+    { ok: true, checkedAt: "2026-07-14T10:00:00.000Z" },
+    { ok: false, checkedAt: "2026-07-14T10:01:00.000Z" },
+    { ok: true, checkedAt: "2026-07-14T10:02:00.000Z" },
+  ])?.length,
+  3,
+);
+assertEqual(
   formatAvailability({
     sevenDayRate: null,
     sevenDaySamples: 0,
@@ -163,7 +172,7 @@ assertEqual(
       { ok: true, checkedAt: "2026-07-14T10:02:00.000Z" },
     ],
   }),
-  "样本不足",
+  "最近 3 次样本",
 );
 assertEqual(formatAvailability({ sevenDayRate: null, sevenDaySamples: 0 }), "样本不足");
 
