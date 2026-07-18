@@ -1033,6 +1033,16 @@ async function readRecentAvailabilitySampleRows(
   const since = new Date(Date.now() - TRANSIT_RECENT_AVAILABILITY_SAMPLE_LOOKBACK_MS).toISOString();
   const perScopeLimit = Math.min(TRANSIT_RECENT_AVAILABILITY_SAMPLE_LIMIT, Math.max(1, rowLimit));
 
+  const scopedRpcResult = await client
+    .rpc("list_recent_api_transit_availability_sample_scopes", {
+      p_station_ids: ids,
+      p_limit_per_scope: perScopeLimit,
+      p_since: since,
+    })
+    .abortSignal(signal);
+  if (!scopedRpcResult.error) return expandRecentAvailabilitySampleScopeRows(scopedRpcResult.data);
+  if (!isMissingRecentAvailabilitySampleScopesRpc(scopedRpcResult.error)) throw scopedRpcResult.error;
+
   const rpcResult = await client
     .rpc("list_recent_api_transit_availability_samples", {
       p_station_ids: ids,
@@ -1076,6 +1086,25 @@ async function readRecentAvailabilitySampleRows(
   }
 
   return dbRows(data);
+}
+
+function expandRecentAvailabilitySampleScopeRows(value: unknown): DbRow[] {
+  return dbRows(value).flatMap((row) => {
+    const samples = Array.isArray(row.samples) ? row.samples : [];
+    return samples.flatMap((sample) => {
+      if (!sample || typeof sample !== "object") return [];
+      const record = sample as Record<string, unknown>;
+      return [{
+        station_id: row.station_id,
+        scope: row.scope,
+        standard_model: row.standard_model,
+        group_name: row.group_name,
+        source_type: row.source_type,
+        ok: record.ok,
+        checked_at: record.checked_at,
+      }];
+    });
+  });
 }
 
 function buildRecentAvailabilitySamplesByKey(rows: DbRow[]): RecentAvailabilitySamplesByKey {
@@ -1448,6 +1477,14 @@ function isMissingRecentAvailabilitySamplesRpc(error: unknown): boolean {
   const code = typeof value.code === "string" ? value.code : "";
   const message = typeof value.message === "string" ? value.message : "";
   return code === "PGRST202" || message.includes("list_recent_api_transit_availability_samples");
+}
+
+function isMissingRecentAvailabilitySampleScopesRpc(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const value = error as { code?: unknown; message?: unknown };
+  const code = typeof value.code === "string" ? value.code : "";
+  const message = typeof value.message === "string" ? value.message : "";
+  return code === "PGRST202" || message.includes("list_recent_api_transit_availability_sample_scopes");
 }
 
 function historyKey(row: DbRow): string {
