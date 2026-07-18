@@ -711,6 +711,9 @@ async function createShopApiSampledPriceResolver({ base, token, sourceUrl, items
   const sampleResults = [];
   const channel = await getShopApiDefaultChannel(base, token, sourceUrl);
   const channelId = channel.id;
+  const productFeePolicy = SHOP_API_PRODUCT_LEVEL_FEE_HOSTS.has(normalizeHostname(base))
+    ? null
+    : await probeShopApiProductFeePolicy({ base, token, sourceUrl, item: sampleItems[0] || items[0] });
 
   if (SHOP_API_PRODUCT_LEVEL_FEE_HOSTS.has(normalizeHostname(base))) {
     for (const item of items) {
@@ -728,7 +731,9 @@ async function createShopApiSampledPriceResolver({ base, token, sourceUrl, items
     }
   }
 
-  for (const item of sampleItems) {
+  for (const item of SHOP_API_PRODUCT_LEVEL_FEE_HOSTS.has(normalizeHostname(base)) || productFeePolicy?.status === "unknown"
+    ? []
+    : sampleItems) {
     const listedPrice = numberOrNull(item.price ?? item.real_price);
     if (listedPrice === null) continue;
     const effectivePrice = await resolveShopApiEffectivePrice({
@@ -743,9 +748,13 @@ async function createShopApiSampledPriceResolver({ base, token, sourceUrl, items
     sampleResults.push({ item, listedPrice, effectivePrice });
   }
 
-  const model = channel.rate !== null && channel.rate >= 0
-    ? shopApiFeeModelFromChannelRate(channel.rate)
-    : inferShopApiFeeModel(sampleResults);
+  const model = SHOP_API_PRODUCT_LEVEL_FEE_HOSTS.has(normalizeHostname(base))
+    ? channel.rate !== null && channel.rate >= 0
+      ? shopApiFeeModelFromChannelRate(channel.rate)
+      : inferShopApiFeeModel(sampleResults)
+    : productFeePolicy?.status === "confirmed"
+      ? productFeePolicy.model
+      : null;
   const summary = {
     sampleSize: sampleItems.length,
     resolvedSampleSize: sampleResults.length,
@@ -754,7 +763,12 @@ async function createShopApiSampledPriceResolver({ base, token, sourceUrl, items
     rate: model?.rate ?? null,
     channelId,
     channelRate: channel.rate,
-    policySource: channel.rate !== null ? "channel_config" : "sampled_probe",
+    policySource: SHOP_API_PRODUCT_LEVEL_FEE_HOSTS.has(normalizeHostname(base))
+      ? channel.rate !== null ? "channel_config" : "sampled_probe"
+      : productFeePolicy?.source || "product_detail_probe",
+    feePolicy: productFeePolicy || (model
+      ? { status: "confirmed", hasFee: model.rate > 0, rate: model.rate, source: "channel_config" }
+      : { status: "unknown", hasFee: null, rate: null, source: "product_detail_probe" }),
     probes: sampleResults.map(shopApiPriceProbeSummary),
   };
 
@@ -772,6 +786,50 @@ async function createShopApiSampledPriceResolver({ base, token, sourceUrl, items
       };
     },
   };
+}
+
+async function probeShopApiProductFeePolicy({ base, token, sourceUrl, item }) {
+  if (!item?.goods_key) return { status: "unknown", hasFee: null, rate: null, source: "product_detail_probe" };
+  await delay(config.pageDelayMs);
+  const payload = await postJson(
+    `${base}/shopApi/Shop/goodsInfo`,
+    { goods_key: String(item.goods_key), trade_no: "", token },
+    item.link || sourceUrl || `${base}/item/${item.goods_key}`,
+  ).catch((error) => {
+    if (isWindControlError(error)) throw error;
+    return null;
+  });
+  const data = payload?.data?.goods || payload?.data?.item || payload?.data;
+  const explicitHasFee = firstBoolean(data?.has_fee, data?.hasFee, data?.fee_enabled, data?.feeEnabled);
+  const explicitRate = firstNumber(data?.fee_rate, data?.feeRate, data?.service_fee_rate, data?.serviceFeeRate);
+  if (explicitHasFee === null && explicitRate === null) {
+    return { status: "unknown", hasFee: null, rate: null, source: "product_detail_probe", goodsKey: String(item.goods_key) };
+  }
+  const rate = explicitRate !== null ? explicitRate / (explicitRate > 1 ? 100 : 1) : (explicitHasFee ? SHOP_API_FIXED_FEE_RATE : 0);
+  return {
+    status: "confirmed",
+    hasFee: explicitHasFee !== null ? explicitHasFee : rate > 0,
+    rate,
+    source: "product_detail_probe",
+    goodsKey: String(item.goods_key),
+    model: rate > 0 ? { kind: "fixed_3pct", rate: SHOP_API_FIXED_FEE_RATE } : { kind: "no_fee", rate: 0 },
+  };
+}
+
+function firstBoolean(...values) {
+  for (const value of values) {
+    if (typeof value === "boolean") return value;
+    if (value === 0 || value === 1 || value === "0" || value === "1") return Number(value) === 1;
+  }
+  return null;
+}
+
+function firstNumber(...values) {
+  for (const value of values) {
+    const number = numberOrNull(value);
+    if (number !== null) return number;
+  }
+  return null;
 }
 
 function shopApiFeeModelFromChannelRate(rate) {
