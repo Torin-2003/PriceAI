@@ -716,7 +716,7 @@ async function createShopApiSampledPriceResolver({ base, token, sourceUrl, items
     : await probeShopApiProductFeePolicy({ base, token, sourceUrl, item: sampleItems[0] || items[0] });
 
   if (SHOP_API_PRODUCT_LEVEL_FEE_HOSTS.has(normalizeHostname(base))) {
-    for (const item of items) {
+    for (const item of sampleItems) {
       const listedPrice = numberOrNull(item.price ?? item.real_price);
       if (listedPrice === null || !item.goods_key) continue;
       const effectivePrice = await resolveShopApiEffectivePrice({
@@ -728,6 +728,7 @@ async function createShopApiSampledPriceResolver({ base, token, sourceUrl, items
         normalizePriceWithFee: true,
       });
       sampledPrices.set(String(item.goods_key), effectivePrice);
+      sampleResults.push({ item, listedPrice, effectivePrice });
     }
   }
 
@@ -749,14 +750,12 @@ async function createShopApiSampledPriceResolver({ base, token, sourceUrl, items
   }
 
   const model = SHOP_API_PRODUCT_LEVEL_FEE_HOSTS.has(normalizeHostname(base))
-    ? channel.rate !== null && channel.rate >= 0
-      ? shopApiFeeModelFromChannelRate(channel.rate)
-      : inferShopApiFeeModel(sampleResults)
+    ? shopApiProductLevelFeeModel(channel.rate, sampleResults)
     : productFeePolicy?.status === "confirmed"
       ? productFeePolicy.model
       : null;
   const summary = {
-    sampleSize: sampleItems.length,
+    sampleSize: SHOP_API_PRODUCT_LEVEL_FEE_HOSTS.has(normalizeHostname(base)) ? sampleResults.length : sampleItems.length,
     resolvedSampleSize: sampleResults.length,
     sampleSelection: sampleSize > 0 ? "high_price_probe" : "disabled",
     strategy: model ? model.kind : "listed_fallback",
@@ -764,7 +763,7 @@ async function createShopApiSampledPriceResolver({ base, token, sourceUrl, items
     channelId,
     channelRate: channel.rate,
     policySource: SHOP_API_PRODUCT_LEVEL_FEE_HOSTS.has(normalizeHostname(base))
-      ? channel.rate !== null ? "channel_config" : "sampled_probe"
+      ? inferShopApiFeeModel(sampleResults)?.rate > 0 ? "sampled_probe" : channel.rate !== null ? "channel_config" : "sampled_probe"
       : productFeePolicy?.source || "product_detail_probe",
     feePolicy: productFeePolicy || (model
       ? { status: "confirmed", hasFee: model.rate > 0, rate: model.rate, source: "channel_config" }
@@ -776,6 +775,7 @@ async function createShopApiSampledPriceResolver({ base, token, sourceUrl, items
     summary,
     priceFor(item, listedPrice) {
       const sampled = item.goods_key ? sampledPrices.get(String(item.goods_key)) : null;
+      if (SHOP_API_PRODUCT_LEVEL_FEE_HOSTS.has(normalizeHostname(base)) && model) return applyShopApiFeeModel(listedPrice, model);
       if (sampled) return sampled;
       if (model) return applyShopApiFeeModel(listedPrice, model);
       return {
@@ -943,6 +943,15 @@ function inferShopApiFeeModel(sampleResults) {
 
   const medianRate = observedRates[Math.floor(observedRates.length / 2)];
   return { kind: "observed_rate", rate: Math.round(medianRate * 10_000) / 10_000 };
+}
+
+function shopApiProductLevelFeeModel(channelRate, sampleResults) {
+  const inferred = inferShopApiFeeModel(sampleResults);
+  if (inferred?.rate > 0) return inferred;
+  if (channelRate !== null && channelRate !== undefined && Number(channelRate) >= 0) {
+    return shopApiFeeModelFromChannelRate(channelRate);
+  }
+  return inferred;
 }
 
 function applyShopApiFeeModel(listedPrice, model) {

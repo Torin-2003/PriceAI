@@ -11,6 +11,7 @@ import {
   isShopApiExitErrorMessage,
   isShopApiProxyTransportErrorMessage,
   shopApiFeeModelFromChannelRate,
+  shopApiProductLevelFeeModel,
   shopApiProxyParallelismFor,
   shopApiStoredFeePolicy,
 } from "./collect-prices.mjs";
@@ -37,6 +38,19 @@ assert.equal(shopApiProxyParallelismFor({ shopApiProxyParallelism: "auto" }, 9),
 assert.equal(shopApiProxyParallelismFor({ shopApiProxyParallelism: "auto" }, 30), 1);
 assert.equal(shopApiProxyParallelismFor({ shopApiProxyParallelism: "auto" }, 31), 2);
 assert.equal(shopApiProxyParallelismFor({ shopApiProxyParallelism: "auto" }, 90), 2);
+
+const mixedYunmaoFeeModel = shopApiProductLevelFeeModel(0, [
+  { listedPrice: 100, effectivePrice: { listedPrice: 100, feeAmount: 0, priceBasis: "settled" } },
+  { listedPrice: 10, effectivePrice: { listedPrice: 10, feeAmount: 0.18, priceBasis: "settled" } },
+  { listedPrice: 1, effectivePrice: { listedPrice: 1, feeAmount: 0, priceBasis: "settled" } },
+]);
+assert.deepEqual(mixedYunmaoFeeModel, { kind: "observed_rate", rate: 0.018 });
+assert.deepEqual(
+  shopApiProductLevelFeeModel(0, [
+    { listedPrice: 100, effectivePrice: { listedPrice: 100, feeAmount: 0, priceBasis: "settled" } },
+  ]),
+  { kind: "no_fee", rate: 0 },
+);
 
 const proxyLease = extractProxyLeaseFromPayload(
   JSON.stringify({ data: [{ ip: "203.0.113.10:54103", expireTimeMillis: Date.now() + 600_000 }] }),

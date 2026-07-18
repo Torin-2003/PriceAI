@@ -627,6 +627,7 @@ export {
   isShopApiDirectExitBlockedForTarget,
   isShopApiExitErrorMessage,
   isShopApiProxyTransportErrorMessage,
+  shopApiProductLevelFeeModel,
   loadTargets,
   selectTargets,
   shopApiFeeModelFromChannelRate,
@@ -1206,7 +1207,7 @@ async function createShopApiSampledPriceResolver({ target, base, token, sourceUr
       }));
 
   if (shopApiNeedsProductLevelFee(base)) {
-    for (const item of items) {
+    for (const item of sampleItems) {
       const listedPrice = numberOrNull(item.price ?? item.real_price);
       if (listedPrice === null || !item.goods_key) continue;
       const effectivePrice = await resolveShopApiEffectivePrice({
@@ -1220,6 +1221,7 @@ async function createShopApiSampledPriceResolver({ target, base, token, sourceUr
         normalizePriceWithFee: true,
       });
       sampledPrices.set(String(item.goods_key), effectivePrice);
+      sampleResults.push({ item, listedPrice, effectivePrice });
     }
   }
 
@@ -1243,15 +1245,13 @@ async function createShopApiSampledPriceResolver({ target, base, token, sourceUr
   }
 
   const model = shopApiNeedsProductLevelFee(base)
-    ? channel.rate !== null && channel.rate >= 0
-      ? shopApiFeeModelFromChannelRate(channel.rate)
-      : inferShopApiFeeModel(sampleResults)
+    ? shopApiProductLevelFeeModel(channel.rate, sampleResults)
     : productFeePolicy?.status === "confirmed"
       ? productFeePolicy.model
       : null;
   const productPolicyResolved = !shopApiNeedsProductLevelFee(base) && !storedFeePolicy && productFeePolicy?.status === "confirmed";
   const summary = {
-    sampleSize: shopApiNeedsProductLevelFee(base) ? sampleItems.length : (productFeePolicy?.goodsKey ? 1 : 0),
+    sampleSize: shopApiNeedsProductLevelFee(base) ? sampleResults.length : (productFeePolicy?.goodsKey ? 1 : 0),
     resolvedSampleSize: shopApiNeedsProductLevelFee(base) ? sampleResults.length : (productPolicyResolved ? 1 : 0),
     sampleSelection: storedFeePolicy
       ? "cached_policy"
@@ -1263,7 +1263,7 @@ async function createShopApiSampledPriceResolver({ target, base, token, sourceUr
     channelId,
     channelRate: channel.rate,
     policySource: shopApiNeedsProductLevelFee(base)
-      ? channel.rate !== null ? "channel_config" : "sampled_probe"
+      ? inferShopApiFeeModel(sampleResults)?.rate > 0 ? "sampled_probe" : channel.rate !== null ? "channel_config" : "sampled_probe"
       : productFeePolicy?.source || "product_detail_probe",
     feePolicy: productFeePolicy || (model
       ? { status: "confirmed", hasFee: model.rate > 0, rate: model.rate, source: "channel_config" }
@@ -1275,6 +1275,7 @@ async function createShopApiSampledPriceResolver({ target, base, token, sourceUr
     summary,
     priceFor(item, listedPrice) {
       const sampled = item.goods_key ? sampledPrices.get(String(item.goods_key)) : null;
+      if (shopApiNeedsProductLevelFee(base) && model) return applyShopApiFeeModel(listedPrice, model);
       if (sampled) return sampled;
       if (model) return applyShopApiFeeModel(listedPrice, model);
       return {
@@ -1478,6 +1479,15 @@ function inferShopApiFeeModel(sampleResults) {
 
   const medianRate = observedRates[Math.floor(observedRates.length / 2)];
   return { kind: "observed_rate", rate: Math.round(medianRate * 10_000) / 10_000 };
+}
+
+function shopApiProductLevelFeeModel(channelRate, sampleResults) {
+  const inferred = inferShopApiFeeModel(sampleResults);
+  if (inferred?.rate > 0) return inferred;
+  if (channelRate !== null && channelRate !== undefined && Number(channelRate) >= 0) {
+    return shopApiFeeModelFromChannelRate(channelRate);
+  }
+  return inferred;
 }
 
 function applyShopApiFeeModel(listedPrice, model) {
