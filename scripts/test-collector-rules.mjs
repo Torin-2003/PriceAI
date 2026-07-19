@@ -13,6 +13,8 @@ import {
   isShopApiExitErrorMessage,
   isShopApiProxyTransportErrorMessage,
   selectTargets,
+  shopApiFullSnapshotEvidenceReliable,
+  shopApiSnapshotReportedGoodsCount,
   shopApiFeeModelFromChannelRate,
   shopApiProductLevelFeeModel,
   shopApiProxyParallelismFor,
@@ -58,6 +60,35 @@ assert.equal(isShopApiProxyTransportErrorMessage("fetch failed: ECONNRESET: sock
 assert.equal(isShopApiProxyTransportErrorMessage("fetch failed: UND_ERR_CONNECT_TIMEOUT"), true);
 assert.equal(isShopApiProxyTransportErrorMessage("fetch failed"), false);
 assert.equal(isShopApiProxyTransportErrorMessage("Shop info unavailable for token shop"), false);
+assert.equal(shopApiSnapshotReportedGoodsCount(78, 79), 78);
+assert.equal(shopApiSnapshotReportedGoodsCount(null, 79), 79);
+assert.equal(
+  shopApiFullSnapshotEvidenceReliable(Array(80), {
+    reportedGoodsCount: 100,
+    fetchedItemCount: 80,
+    rawSeenOfferCount: 80,
+    publishedItemCount: 80,
+  }),
+  true,
+);
+assert.equal(
+  shopApiFullSnapshotEvidenceReliable(Array(79), {
+    reportedGoodsCount: 100,
+    fetchedItemCount: 79,
+    rawSeenOfferCount: 79,
+    publishedItemCount: 79,
+  }),
+  false,
+);
+assert.equal(
+  shopApiFullSnapshotEvidenceReliable(Array(80), {
+    reportedGoodsCount: 100,
+    fetchedItemCount: 80,
+    rawSeenOfferCount: 81,
+    publishedItemCount: 80,
+  }),
+  false,
+);
 assert.equal(shopApiProxyParallelismFor({ shopApiProxyParallelism: "auto" }, 9), 1);
 assert.equal(shopApiProxyParallelismFor({ shopApiProxyParallelism: "auto" }, 30), 1);
 assert.equal(shopApiProxyParallelismFor({ shopApiProxyParallelism: "auto" }, 31), 2);

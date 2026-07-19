@@ -40,6 +40,7 @@ const SHOP_API_FEE_PROBE_MAX_LISTED_PRICE = 10_000;
 const SHOP_API_FIXED_FEE_RATE = 0.03;
 const SHOP_API_CENT_TOLERANCE = 0.011;
 const SHOP_API_PRODUCT_LEVEL_FEE_HOSTS = new Set(["catfk.com"]);
+const SHOP_API_FULL_SNAPSHOT_MIN_COVERAGE = 0.8;
 const OBSERVATION_PROBE_FAILURE_THRESHOLD = 3;
 const DAILY_PROBE_INTERVAL_MINUTES = 24 * 60;
 const WEEKLY_PROBE_INTERVAL_MINUTES = 7 * DAILY_PROBE_INTERVAL_MINUTES;
@@ -631,6 +632,8 @@ export {
   isShopApiDirectExitBlockedForTarget,
   isShopApiExitErrorMessage,
   isShopApiProxyTransportErrorMessage,
+  shopApiFullSnapshotEvidenceReliable,
+  shopApiSnapshotReportedGoodsCount,
   shopApiProductLevelFeeModel,
   loadTargets,
   selectTargets,
@@ -898,11 +901,7 @@ async function collectShopApi(target, options = {}) {
       const pricingSummaries = [];
 
       if (useAllGoodsList) {
-        const reportedGoods = shopApiReportedGoodsCount(shopInfo.data);
-        if (reportedGoods !== null) {
-          reportedGoodsCount += reportedGoods;
-          hasReportedGoodsCount = true;
-        }
+        const shopReportedGoods = shopApiReportedGoodsCount(shopInfo.data);
 
         const listResult = await fetchShopApiGoodsListPages({
           base,
@@ -914,6 +913,11 @@ async function collectShopApi(target, options = {}) {
         });
         partialReasons.push(...listResult.partialReasons);
         fetchedItemCount += listResult.items.length;
+        const reportedGoods = shopApiSnapshotReportedGoodsCount(listResult.reportedTotal, shopReportedGoods);
+        if (reportedGoods !== null) {
+          reportedGoodsCount += reportedGoods;
+          hasReportedGoodsCount = true;
+        }
 
         const priceResolver = await createShopApiSampledPriceResolver({
           target,
@@ -1145,6 +1149,7 @@ function makeShopApiOfferFromItem({
 async function fetchShopApiGoodsListPages({ base, token, sourceUrl, categoryId, options = {}, requestOptions = null }) {
   const items = [];
   const partialReasons = [];
+  let reportedTotal = null;
 
   for (let page = 1; page <= SHOP_API_MAX_CATEGORY_PAGES; page += 1) {
     await waitBetweenPages(options);
@@ -1166,6 +1171,17 @@ async function fetchShopApiGoodsListPages({ base, token, sourceUrl, categoryId, 
       break;
     }
 
+    const pageReportedTotal = nonNegativeInteger(listPayload.data?.total);
+    if (pageReportedTotal !== null) {
+      if (reportedTotal === null) {
+        reportedTotal = pageReportedTotal;
+      } else if (reportedTotal !== pageReportedTotal) {
+        partialReasons.push(
+          `Goods list total changed from ${reportedTotal} to ${pageReportedTotal} on category ${categoryId} page ${page}.`,
+        );
+      }
+    }
+
     const pageItems = listPayload.data.list;
     if (!pageItems.length) break;
     items.push(...pageItems);
@@ -1175,7 +1191,7 @@ async function fetchShopApiGoodsListPages({ base, token, sourceUrl, categoryId, 
     if (pageItems.length < SHOP_API_LIST_PAGE_SIZE) break;
   }
 
-  return { items, partialReasons };
+  return { items, partialReasons, reportedTotal };
 }
 
 async function createShopApiSampledPriceResolver({ target, base, token, sourceUrl, items, options = {}, requestOptions = null }) {
@@ -2725,7 +2741,7 @@ function crawlLogPayloadFor(target, offers, status, message, options = {}, detai
 }
 
 function crawlLogPayloadsFor(target, offers, status, message, options = {}, details = {}) {
-  const fullSnapshot = details.fullSnapshot !== false && shouldIncludeFullSnapshot(target, offers, status, options, details);
+  const fullSnapshot = shouldIncludeFullSnapshot(target, offers, status, options, details);
   const seenOfferIds = fullSnapshot ? seenOfferIdsForSnapshot(offers, details) : undefined;
 
   if (status !== "success" || offers.length <= postBatchSizeFor(options)) {
@@ -3247,6 +3263,7 @@ function shouldIncludeFullSnapshot(target, offers, status, options = {}, details
     return fullSnapshotEvidenceItemCount(offers, details) <= fullSnapshotOfferLimitFor(target, options);
   }
 
+  if (details.fullSnapshot === false) return false;
   return offers.length <= fullSnapshotOfferLimitFor(target, options);
 }
 
@@ -3266,11 +3283,20 @@ function shopApiFullSnapshotEvidenceReliable(offers, details = {}) {
   }
 
   return (
-    reportedGoodsCount === fetchedItemCount &&
+    shopApiSnapshotCoverageIsSufficient(reportedGoodsCount, fetchedItemCount) &&
     fetchedItemCount >= rawSeenOfferCount &&
     rawSeenOfferCount >= publishedItemCount &&
     publishedItemCount >= offers.length
   );
+}
+
+function shopApiSnapshotCoverageIsSufficient(reportedGoodsCount, fetchedItemCount) {
+  if (reportedGoodsCount === 0) return fetchedItemCount === 0;
+  return fetchedItemCount / reportedGoodsCount >= SHOP_API_FULL_SNAPSHOT_MIN_COVERAGE;
+}
+
+function shopApiSnapshotReportedGoodsCount(listReportedTotal, shopReportedGoods) {
+  return nonNegativeInteger(listReportedTotal) ?? nonNegativeInteger(shopReportedGoods);
 }
 
 function fullSnapshotEvidenceItemCount(offers, details = {}) {
@@ -3284,6 +3310,7 @@ function fullSnapshotEvidenceItemCount(offers, details = {}) {
 }
 
 function nonNegativeInteger(value) {
+  if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   if (!Number.isInteger(number) || number < 0) return null;
   return number;

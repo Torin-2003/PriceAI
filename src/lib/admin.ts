@@ -82,11 +82,12 @@ const RAW_OFFER_WRITE_CHUNK_SIZE = 25;
 const RAW_OFFER_CONFIRMATION_WRITE_CHUNK_SIZE = 100;
 const MISSING_OFFER_HIDE_CHUNK_SIZE = 25;
 const MAX_MISSING_OFFERS_TO_HIDE_PER_COLLECTION = 100;
-const MISSING_OFFER_SYSTEM_HIDE_REASON = "完整采集未再返回该商品，疑似已下架；如源站后续重新返回会自动恢复展示。";
-const MISSING_OFFER_CONFIRMED_SYSTEM_HIDE_REASON = "连续两次完整采集未再返回该商品，疑似已下架；如源站后续重新返回会自动恢复展示。";
-const MISSING_OFFER_CANDIDATE_REASON = "完整采集首次未再返回该商品，等待下一次完整采集确认。";
+const MISSING_OFFER_SYSTEM_HIDE_REASON = "高覆盖采集未再返回该商品，疑似已下架；如源站后续重新返回会自动恢复展示。";
+const MISSING_OFFER_CONFIRMED_SYSTEM_HIDE_REASON = "连续两次高覆盖采集未再返回该商品，疑似已下架；如源站后续重新返回会自动恢复展示。";
+const MISSING_OFFER_CANDIDATE_REASON = "高覆盖采集首次未再返回该商品，暂时退出有货列表并等待下一次确认。";
 const STALE_OFFER_FAILURE_THRESHOLD = 3;
-const STALE_OFFER_FAILURE_AGE_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_STALE_OFFER_FAILURE_AGE_MS = 24 * 60 * 60 * 1000;
+const SHOP_API_STALE_OFFER_FAILURE_AGE_MS = 6 * 60 * 60 * 1000;
 const MAX_STALE_OFFERS_TO_EXPIRE_PER_FAILURE = 50;
 
 function stripAdminSourceDisableNotes(notes: string | null | undefined): string | null {
@@ -1077,7 +1078,7 @@ export async function recordSourceCollectionResult(input: {
 
   const { data: existing } = await supabase
     .from("sources")
-    .select("consecutive_failures,last_success_at")
+    .select("collector_kind,consecutive_failures,last_success_at")
     .eq("id", input.sourceId)
     .maybeSingle();
 
@@ -1125,6 +1126,9 @@ export async function recordSourceCollectionResult(input: {
       input.checkedAt,
       input.message || null,
       consecutiveFailures,
+      existing?.collector_kind === "shopApi"
+        ? SHOP_API_STALE_OFFER_FAILURE_AGE_MS
+        : DEFAULT_STALE_OFFER_FAILURE_AGE_MS,
     );
     return { changedOfferCount };
   }
@@ -1164,13 +1168,14 @@ async function expireStaleOffersAfterRepeatedFailures(
   failedAt: string,
   message: string | null,
   consecutiveFailures: number,
+  staleAgeMs: number,
 ): Promise<number> {
   const supabase = getSupabaseServerClient();
   if (!supabase) return 0;
   if (consecutiveFailures < STALE_OFFER_FAILURE_THRESHOLD) return 0;
 
   const failureReason = message || "本次采集失败，旧报价暂不更新。";
-  const staleBefore = new Date(new Date(failedAt).getTime() - STALE_OFFER_FAILURE_AGE_MS).toISOString();
+  const staleBefore = new Date(new Date(failedAt).getTime() - staleAgeMs).toISOString();
   const ids = await selectStaleOfferIdsAfterFailures(supabase, sourceId, staleBefore);
   if (!ids.length) return 0;
 
@@ -1303,12 +1308,16 @@ async function reconcileMissingOffersFromFullSnapshot(
     }
   }
 
+  let changedCount = 0;
   if (idsToStage.length) {
     const staged = await stageMissingOfferCandidates(sourceId, idsToStage, checkedAt);
     if (!staged && !idsToHide.length) return 0;
+    if (staged) {
+      changedCount += await markMissingOfferRowsUnavailable(sourceId, idsToStage, checkedAt);
+    }
   }
 
-  const changedCount = await hideMissingOfferRows(
+  changedCount += await hideMissingOfferRows(
     sourceId,
     idsToHide,
     checkedAt,
@@ -1317,6 +1326,38 @@ async function reconcileMissingOffersFromFullSnapshot(
 
   if (idsToHide.length) {
     await markMissingOfferCandidatesHidden(sourceId, idsToHide, checkedAt, MISSING_OFFER_CONFIRMED_SYSTEM_HIDE_REASON);
+  }
+
+  return changedCount;
+}
+
+async function markMissingOfferRowsUnavailable(
+  sourceId: string,
+  rawOfferIds: string[],
+  checkedAt: string,
+): Promise<number> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase || !rawOfferIds.length) return 0;
+
+  let changedCount = 0;
+  for (const ids of chunks(rawOfferIds, MISSING_OFFER_HIDE_CHUNK_SIZE)) {
+    const { count, error } = await supabase
+      .from("raw_offers")
+      .update({
+        effective_status: "unavailable",
+        freshness_status: "aging",
+        last_failed_at: null,
+        failure_reason: MISSING_OFFER_CANDIDATE_REASON,
+        updated_at: checkedAt,
+      }, { count: "exact" })
+      .eq("source_id", sourceId)
+      .eq("hidden", false)
+      .neq("effective_status", "unavailable")
+      .in("id", ids)
+      .or(`failure_reason.is.null,failure_reason.not.ilike.${ADMIN_MANUAL_HIDE_REASON_PREFIX}%`);
+
+    if (error) throw error;
+    changedCount += count || 0;
   }
 
   return changedCount;

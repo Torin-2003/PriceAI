@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const VERSION = "0.1.6";
+const VERSION = "0.1.7";
 const DEFAULT_ENDPOINT = "https://priceai.cc";
 const DEFAULT_KIND = "shopApi";
 const DEFAULT_FAMILY = "shopApi";
@@ -30,6 +30,7 @@ const SHOP_API_FEE_PROBE_MAX_LISTED_PRICE = 10_000;
 const SHOP_API_FIXED_FEE_RATE = 0.03;
 const SHOP_API_CENT_TOLERANCE = 0.011;
 const SHOP_API_PRODUCT_LEVEL_FEE_HOSTS = new Set(["catfk.com"]);
+const SHOP_API_FULL_SNAPSHOT_MIN_COVERAGE = 0.8;
 
 const args = parseArgs(process.argv.slice(2));
 const explicitMaxCycles = args.maxCycles || args["max-cycles"] || process.env.PRICEAI_AGENT_MAX_CYCLES;
@@ -478,11 +479,7 @@ async function collectShopApi(target) {
     const useAllGoodsList = shopApiAllGoodsListEnabled();
 
     if (useAllGoodsList) {
-      const reportedGoods = shopApiReportedGoodsCount(shopInfo.data);
-      if (reportedGoods !== null) {
-        reportedGoodsCount += reportedGoods;
-        hasReportedGoodsCount = true;
-      }
+      const shopReportedGoods = shopApiReportedGoodsCount(shopInfo.data);
 
       const listResult = await fetchShopApiGoodsListPages({
         base,
@@ -492,6 +489,11 @@ async function collectShopApi(target) {
       });
       partialReasons.push(...listResult.partialReasons);
       fetchedItemCount += listResult.items.length;
+      const reportedGoods = shopApiSnapshotReportedGoodsCount(listResult.reportedTotal, shopReportedGoods);
+      if (reportedGoods !== null) {
+        reportedGoodsCount += reportedGoods;
+        hasReportedGoodsCount = true;
+      }
 
       const priceResolver = await createShopApiSampledPriceResolver({
         base,
@@ -670,6 +672,7 @@ function makeShopApiOfferFromItem({
 async function fetchShopApiGoodsListPages({ base, token, sourceUrl, categoryId }) {
   const items = [];
   const partialReasons = [];
+  let reportedTotal = null;
 
   for (let page = 1; page <= MAX_CATEGORY_PAGES; page += 1) {
     await delay(config.pageDelayMs);
@@ -690,6 +693,17 @@ async function fetchShopApiGoodsListPages({ base, token, sourceUrl, categoryId }
       break;
     }
 
+    const pageReportedTotal = nonNegativeInteger(listPayload.data?.total);
+    if (pageReportedTotal !== null) {
+      if (reportedTotal === null) {
+        reportedTotal = pageReportedTotal;
+      } else if (reportedTotal !== pageReportedTotal) {
+        partialReasons.push(
+          `Goods list total changed from ${reportedTotal} to ${pageReportedTotal} on category ${categoryId} page ${page}.`,
+        );
+      }
+    }
+
     const pageItems = listPayload.data.list;
     if (!pageItems.length) break;
     items.push(...pageItems);
@@ -699,7 +713,7 @@ async function fetchShopApiGoodsListPages({ base, token, sourceUrl, categoryId }
     if (pageItems.length < SHOP_API_LIST_PAGE_SIZE) break;
   }
 
-  return { items, partialReasons };
+  return { items, partialReasons, reportedTotal };
 }
 
 async function createShopApiSampledPriceResolver({ base, token, sourceUrl, items }) {
@@ -1124,7 +1138,7 @@ function crawlRunPayloads(target, status, message, offers, extraDetails = {}) {
 }
 
 function shouldIncludeFullSnapshot(status, offers, extraDetails = {}) {
-  if (status !== "success" || !extraDetails.fullSnapshot) return false;
+  if (status !== "success") return false;
   if (!shopApiFullSnapshotEvidenceReliable(offers, extraDetails)) return false;
   return fullSnapshotEvidenceItemCount(offers, extraDetails) <= config.fullSnapshotOfferLimit;
 }
@@ -1145,11 +1159,20 @@ function shopApiFullSnapshotEvidenceReliable(offers, details = {}) {
   }
 
   return (
-    reportedGoodsCount === fetchedItemCount &&
+    shopApiSnapshotCoverageIsSufficient(reportedGoodsCount, fetchedItemCount) &&
     fetchedItemCount >= rawSeenOfferCount &&
     rawSeenOfferCount >= publishedItemCount &&
     publishedItemCount >= offers.length
   );
+}
+
+function shopApiSnapshotCoverageIsSufficient(reportedGoodsCount, fetchedItemCount) {
+  if (reportedGoodsCount === 0) return fetchedItemCount === 0;
+  return fetchedItemCount / reportedGoodsCount >= SHOP_API_FULL_SNAPSHOT_MIN_COVERAGE;
+}
+
+function shopApiSnapshotReportedGoodsCount(listReportedTotal, shopReportedGoods) {
+  return nonNegativeInteger(listReportedTotal) ?? nonNegativeInteger(shopReportedGoods);
 }
 
 function fullSnapshotEvidenceItemCount(offers, details = {}) {
@@ -1163,6 +1186,7 @@ function fullSnapshotEvidenceItemCount(offers, details = {}) {
 }
 
 function nonNegativeInteger(value) {
+  if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   if (!Number.isInteger(number) || number < 0) return null;
   return number;
