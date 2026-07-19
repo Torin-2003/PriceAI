@@ -69,6 +69,8 @@ const DEFAULT_SHOP_API_EXIT_ERROR_FAMILY_PAUSE = false;
 const SHOP_COLLECTION_SCHEDULER_CRAWL_RUN_SELECT =
   "id,source_id,source_name,mode,status,started_at,finished_at,success_count,failure_count,message,details";
 const SHOP_COLLECTION_SCHEDULER_SOURCE_SELECT =
+  "id,name,base_url,entry_url,collection_method,collector_kind,enabled,notes,health_status,last_success_at,last_checked_at,consecutive_failures,last_error,created_at,shop_created_at,updated_at,buyer_fee_rate,buyer_fee_payment_method,buyer_fee_strategy,collection_group";
+const SHOP_COLLECTION_SCHEDULER_SOURCE_NO_GROUP_SELECT =
   "id,name,base_url,entry_url,collection_method,collector_kind,enabled,notes,health_status,last_success_at,last_checked_at,consecutive_failures,last_error,created_at,shop_created_at,updated_at,buyer_fee_rate,buyer_fee_payment_method,buyer_fee_strategy";
 const SHOP_COLLECTION_SCHEDULER_SOURCE_LEGACY_SELECT =
   "id,name,base_url,entry_url,collection_method,collector_kind,enabled,notes,health_status,last_success_at,last_checked_at,consecutive_failures,last_error,created_at,updated_at,buyer_fee_rate,buyer_fee_payment_method,buyer_fee_strategy";
@@ -84,6 +86,7 @@ const HOT_SHOP_COLLECTION_PRODUCT_IDS = new Set([
   "chatgpt-free-account",
 ]);
 const SHOP_COLLECTION_TIER_DEFINITIONS = [
+  { tier: "vip_15m", label: "VIP 15分钟", intervalMinutes: 15, requestWeight: 8 },
   { tier: "new_source_bootstrap", label: "新店初始化", intervalMinutes: 30, requestWeight: 8 },
   { tier: "core_30m", label: "30m 核心", intervalMinutes: 30, requestWeight: 6 },
   { tier: "watch_1h", label: "1h 观察", intervalMinutes: 60, requestWeight: 3 },
@@ -632,7 +635,9 @@ function probeSuccessResponse(target, offers, startedAt, limit, extra = {}) {
 
 export {
   applySourceBuyerFeePolicy,
+  applyShopCollectionScheduler,
   assignShopCollectionSchedulerShard,
+  classifyShopCollectionScheduleTier,
   blackcatWholesaleActionIdFromChunk,
   blockShopApiDirectExitForTarget,
   calculateShopApiBuyerAdjustment,
@@ -646,6 +651,7 @@ export {
   isLdxpFailoverErrorMessage,
   normalizeLdxpRuntimeSettings,
   normalizeShopApiItemOfferUrl,
+  latestShopCollectionCrawlRunBySource,
   rewriteLdxpUrlHost,
   resolveShopApiFeeModel,
   alternateLdxpHost,
@@ -657,6 +663,7 @@ export {
   shopApiFeeModelFromChannelRate,
   shopApiProxyParallelismFor,
   shopApiStoredFeePolicy,
+  shopCollectionSchedulerGroupMatches,
   selectShopApiPreferredChannel,
 };
 
@@ -2814,7 +2821,16 @@ async function selectCollectorSourceRows(supabase) {
     .from("sources")
     .select(SHOP_COLLECTION_SCHEDULER_SOURCE_SELECT)
     .eq("enabled", true);
-  if (!isMissingColumnError(result.error, "shop_created_at")) return result;
+  if (!result.error) return result;
+  if (!isMissingColumnError(result.error, "collection_group") && !isMissingColumnError(result.error, "shop_created_at")) {
+    return result;
+  }
+
+  const noGroupResult = await supabase
+    .from("sources")
+    .select(SHOP_COLLECTION_SCHEDULER_SOURCE_NO_GROUP_SELECT)
+    .eq("enabled", true);
+  if (!noGroupResult.error || !isMissingColumnError(noGroupResult.error, "shop_created_at")) return noGroupResult;
 
   return supabase
     .from("sources")
@@ -2857,6 +2873,7 @@ function buildTarget(source, rawOffers) {
     buyerFeeRate: numberOrNull(source.buyer_fee_rate),
     buyerFeePaymentMethod: source.buyer_fee_payment_method || null,
     buyerFeeStrategy: source.buyer_fee_strategy || null,
+    collectionGroup: source.collection_group === "vip_15m" ? "vip_15m" : "automatic",
     shopApiFeePolicies: Array.isArray(source.shopApiFeePolicies) ? source.shopApiFeePolicies : [],
     rawOffers,
   };
@@ -4011,11 +4028,19 @@ function matchesTargetKinds(target, options = {}) {
 async function applyShopCollectionScheduler(targets, options = {}, logger = null) {
   const passthroughTargets = [];
   const shopTargets = [];
+  const schedulerGroup = shopCollectionSchedulerGroupFor(options);
 
   for (const target of targets) {
-    if (shouldScheduleShopCollectionTarget(target)) shopTargets.push(target);
-    else passthroughTargets.push(target);
+    if (target.kind === "shopApi" && !shopCollectionSchedulerGroupMatches(target, options)) continue;
+    if (target.kind === "shopApi" && schedulerGroup === "vip_15m" && !collectionFamilyForTarget(target)) continue;
+    if (shouldScheduleShopCollectionTarget(target)) {
+      shopTargets.push(target);
+      continue;
+    }
+    passthroughTargets.push(target);
   }
+  const eligibleTargets = [...passthroughTargets, ...shopTargets];
+  const vipOnly = schedulerGroup === "vip_15m";
 
   const disabledSummary = (reason, extra = {}) => ({
     enabled: false,
@@ -4034,20 +4059,31 @@ async function applyShopCollectionScheduler(targets, options = {}, logger = null
   });
 
   if (!shopTargets.length) {
-    return { targets, summary: disabledSummary("no-shop-api-targets") };
+    return {
+      targets: passthroughTargets,
+      summary: disabledSummary("no-shop-api-targets", {
+        readyCount: 0,
+        dueCount: 0,
+        effectiveTargetCount: passthroughTargets.length,
+      }),
+    };
   }
 
   if (!shouldUseShopCollectionScheduler(options)) {
-    return { targets, summary: disabledSummary("disabled") };
+    return { targets: eligibleTargets, summary: disabledSummary("disabled", { effectiveTargetCount: eligibleTargets.length }) };
   }
 
   const supabase = getSupabaseClient();
   if (!supabase) {
-    return { targets, summary: disabledSummary("supabase-unconfigured") };
+    const fallbackTargets = vipOnly ? passthroughTargets : eligibleTargets;
+    return { targets: fallbackTargets, summary: disabledSummary("supabase-unconfigured", { effectiveTargetCount: fallbackTargets.length }) };
   }
 
   try {
-    const context = await loadShopCollectionSchedulerContext(supabase, shopTargets);
+    const contextLoader = typeof options.shopSchedulerContextLoader === "function"
+      ? options.shopSchedulerContextLoader
+      : loadShopCollectionSchedulerContext;
+    const context = await contextLoader(supabase, shopTargets);
     const nowMs = Date.now();
     const schedulerOptions = shopCollectionSchedulerOptionsFor(options);
     const shardConfig = shopCollectionSchedulerShardConfig(options);
@@ -4120,15 +4156,34 @@ async function applyShopCollectionScheduler(targets, options = {}, logger = null
     return { targets: scheduledTargets, summary };
   } catch (error) {
     logger?.error(`Shop scheduler fell back to existing cooldowns: ${errorMessage(error)}`);
+    const fallbackTargets = vipOnly ? passthroughTargets : eligibleTargets;
     return {
-      targets,
-      summary: disabledSummary("scheduler-context-failed", { message: errorMessage(error) }),
+      targets: fallbackTargets,
+      summary: disabledSummary("scheduler-context-failed", {
+        effectiveTargetCount: fallbackTargets.length,
+        message: errorMessage(error),
+      }),
     };
   }
 }
 
 function shouldScheduleShopCollectionTarget(target) {
   return target.kind === "shopApi" && Boolean(collectionFamilyForTarget(target));
+}
+
+function shopCollectionSchedulerGroupMatches(target, options = {}) {
+  const group = shopCollectionSchedulerGroupFor(options);
+  if (!group || group === "all") return true;
+  if (group === "vip_15m") return target.collectionGroup === "vip_15m";
+  return target.collectionGroup !== "vip_15m";
+}
+
+function shopCollectionSchedulerGroupFor(options = {}) {
+  return String(
+    optionValue(options, "shopSchedulerGroup", "shop-scheduler-group") ||
+    runtimeEnvValue("PRICEAI_SHOP_SCHEDULER_GROUP") ||
+    "automatic",
+  ).trim().toLowerCase();
 }
 
 function shouldUseShopCollectionScheduler(options = {}) {
@@ -4198,6 +4253,13 @@ async function listShopCollectionSourceOfferStats(supabase) {
 }
 
 async function listShopCollectionPriceStats(supabase) {
+  const refreshResult = await supabase.rpc("refresh_source_quality_price_benchmarks_if_stale", {
+    p_max_age_minutes: 15,
+  });
+  if (refreshResult.error && !/refresh_source_quality_price_benchmarks_if_stale|schema cache|does not exist/i.test(refreshResult.error.message || "")) {
+    throw refreshResult.error;
+  }
+
   const { data, error } = await supabase.rpc("list_source_quality_price_benchmarks");
   if (error) throw error;
 
@@ -4245,14 +4307,47 @@ function mapShopCollectionCrawlRun(row) {
 }
 
 function latestShopCollectionCrawlRunBySource(runs) {
-  const latest = new Map();
+  const latestGroups = new Map();
   for (const run of runs) {
     if (!run.sourceId) continue;
     const observedAt = shopCollectionCrawlRunObservedAt(run);
-    const current = latest.get(run.sourceId);
-    if (!current || observedAt > shopCollectionCrawlRunObservedAt(current)) latest.set(run.sourceId, run);
+    const current = latestGroups.get(run.sourceId);
+    if (!current || observedAt > current.observedAt) {
+      latestGroups.set(run.sourceId, { observedAt, startedAt: run.startedAt, runs: [run] });
+      continue;
+    }
+    if (observedAt === current.observedAt && run.startedAt === current.startedAt) current.runs.push(run);
   }
-  return latest;
+  return new Map(
+    Array.from(latestGroups, ([sourceId, group]) => [sourceId, aggregateShopCollectionCrawlRunGroup(group.runs)]),
+  );
+}
+
+function aggregateShopCollectionCrawlRunGroup(runs) {
+  if (runs.length <= 1) return runs[0];
+  const ordered = [...runs].sort((left, right) => String(left.id).localeCompare(String(right.id)));
+  const statuses = new Set(ordered.map((run) => run.status));
+  const writeStats = ordered.map(shopCollectionCrawlWriteStats);
+  const sumNullable = (values) => values.every((value) => value === null)
+    ? null
+    : values.reduce((total, value) => total + Number(value || 0), 0);
+  const first = ordered[0];
+  return {
+    ...first,
+    id: ordered.map((run) => run.id).join("+"),
+    status: statuses.size === 1 ? first.status : statuses.has("failed") ? "partial" : "success",
+    successCount: ordered.reduce((total, run) => total + Number(run.successCount || 0), 0),
+    failureCount: ordered.reduce((total, run) => total + Number(run.failureCount || 0), 0),
+    details: {
+      ...asPlainRecord(first.details),
+      batchRunIds: ordered.map((run) => run.id),
+      writeStats: {
+        receivedCount: sumNullable(writeStats.map((stats) => stats.receivedCount)),
+        writtenCount: sumNullable(writeStats.map((stats) => stats.writtenCount)),
+        refreshedCount: sumNullable(writeStats.map((stats) => stats.refreshedCount)),
+      },
+    },
+  };
 }
 
 function evaluateShopCollectionScheduleTarget(target, context, nowMs, schedulerOptions = shopCollectionSchedulerOptionsFor()) {
@@ -4364,6 +4459,11 @@ function classifyShopCollectionScheduleTier(input) {
     }
     reasons.push("价值信号较弱，先延长冷却");
     return { tier: "retry_cooldown", reasons };
+  }
+
+  if (input.target.collectionGroup === "vip_15m") {
+    reasons.push("后台指定 VIP 15分钟监测");
+    return { tier: "vip_15m", reasons };
   }
 
   if ((input.changeBand === "high" && strongLowPrice) || (hotLowPrice && strongLowPrice && input.changeBand !== "low")) {

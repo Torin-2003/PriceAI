@@ -280,10 +280,37 @@ export async function updateSourceState(input: {
   enabled?: boolean;
   collectionMethod?: CollectionMethod;
   collectorKind?: CollectorKind | null;
+  collectionGroup?: Source["collectionGroup"];
   notes?: string | null;
 }): Promise<Source> {
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase 尚未配置，无法更新来源。");
+
+  if (input.collectionGroup !== undefined || input.collectionMethod !== undefined || input.collectorKind !== undefined) {
+    const { data: existing, error: existingError } = await supabase
+      .from("sources")
+      .select("id,base_url,entry_url,collector_kind,collection_method,collection_group")
+      .eq("id", input.id)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (!existing) throw new Error("来源不存在。");
+    const sourceUrl = String(existing.entry_url || existing.base_url || "");
+    let sourceHost = "";
+    try {
+      sourceHost = new URL(sourceUrl).hostname;
+    } catch {
+      sourceHost = "";
+    }
+    const nextGroup = input.collectionGroup || (existing.collection_group === "vip_15m" ? "vip_15m" : "automatic");
+    const nextCollectorKind = input.collectorKind !== undefined
+      ? input.collectorKind
+      : normalizeCollectorKind(existing.collector_kind) || inferCollectorKindFromHost(sourceHost);
+    const nextCollectionMethod = input.collectionMethod || String(existing.collection_method || "");
+    const supportedHost = ["www.ldxp.cn", "pay.ldxp.cn", "ldxp.cn", "pay.qxvx.cn", "catfk.com"].includes(sourceHost);
+    if (nextGroup === "vip_15m" && (nextCollectorKind !== "shopApi" || nextCollectionMethod !== "http" || !supportedHost)) {
+      throw new Error("VIP 15分钟监测组目前只支持 LDXP、QXVX 和云猫 ShopApi 渠道。");
+    }
+  }
 
   const row: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
@@ -291,6 +318,7 @@ export async function updateSourceState(input: {
   if (typeof input.enabled === "boolean") row.enabled = input.enabled;
   if (input.collectionMethod) row.collection_method = input.collectionMethod;
   if (input.collectorKind !== undefined) row.collector_kind = input.collectorKind || null;
+  if (input.collectionGroup !== undefined) row.collection_group = input.collectionGroup;
   if (input.notes !== undefined) row.notes = input.notes;
 
   const { data, error } = await supabase
@@ -1945,6 +1973,7 @@ function mapSourceRow(row: Record<string, unknown>): Source {
     entryUrl: String(row.entry_url || row.base_url || ""),
     collectionMethod: String(row.collection_method || "http") as CollectionMethod,
     collectorKind: normalizeCollectorKind(row.collector_kind),
+    collectionGroup: row.collection_group === "vip_15m" ? "vip_15m" : "automatic",
     enabled: Boolean(row.enabled),
     notes: row.notes ? String(row.notes) : null,
     healthStatus: row.health_status ? String(row.health_status) as Source["healthStatus"] : null,

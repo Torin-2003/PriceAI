@@ -23,6 +23,7 @@ const patchSchema = z.object({
   enabled: z.boolean().optional(),
   collectionMethod: z.enum(["public_json", "browser", "http", "manual"]).optional(),
   collectorKind: collectorKindSchema.nullable().optional(),
+  collectionGroup: z.enum(["automatic", "vip_15m"]).optional(),
   notes: z.string().nullable().optional(),
   offersHidden: z.boolean().optional(),
   offersHiddenMode: z.enum(["manual", "temporary"]).optional(),
@@ -78,6 +79,7 @@ export async function PATCH(request: Request) {
       enabled: payload.enabled,
       collectionMethod: payload.collectionMethod,
       collectorKind: payload.collectorKind,
+      collectionGroup: payload.collectionGroup,
       notes: payload.notes,
     });
     clearPublicDataCache();

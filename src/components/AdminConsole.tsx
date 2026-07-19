@@ -28,6 +28,7 @@ import {
   Search,
   Server,
   Store,
+  Star,
   ArrowDown,
   ArrowRight,
   ArrowUp,
@@ -376,6 +377,7 @@ type SourceGroup = {
 };
 
 type SourceStatusFilter = "all" | "normal" | "issue" | "disabled" | "needs_collector";
+type SourceCollectionGroupFilter = "all" | "automatic" | "vip_15m";
 type SourceOfferFilter = "all" | "zero" | "small" | "medium" | "large";
 type SourceQualityFilter = "all" | SourceQualityQueueKind;
 type SourceSortMode = "offers_desc" | "quality_action" | "issue_first" | "stale_first" | "hidden_desc" | "name";
@@ -385,6 +387,7 @@ type SourceFilters = {
   query: string;
   quality: SourceQualityFilter;
   status: SourceStatusFilter;
+  collectionGroup: SourceCollectionGroupFilter;
   offerBand: SourceOfferFilter;
   sort: SourceSortMode;
   riskOnly: boolean;
@@ -584,6 +587,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     query: "",
     quality: "all",
     status: "all",
+    collectionGroup: "all",
     offerBand: "all",
     sort: "offers_desc",
     riskOnly: false,
@@ -1738,6 +1742,58 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     setGlobalMessage({
       type: success === selectedSources.length ? "success" : "info",
       text: `${enabled ? "启用" : "停用"}完成：${success}/${selectedSources.length} 个渠道成功。`,
+    });
+    router.refresh();
+  }
+
+  async function setSourceCollectionGroup(source: Source, collectionGroup: NonNullable<Source["collectionGroup"]>) {
+    setLoadingAction(`collection-group-${source.id}`);
+    const result = await requestWithMethod("/api/admin/sources", "PATCH", password, {
+      id: source.id,
+      collectionGroup,
+    });
+    setLoadingAction(null);
+
+    if (result.ok && result.source) {
+      setSourcePatches((prev) => ({ ...prev, [source.id]: result.source as Source }));
+      showRowFeedback(
+        source.id,
+        "success",
+        collectionGroup === "vip_15m" ? "已加入 VIP 15分钟监测组。" : "已移出 VIP，恢复自动分层。",
+      );
+    } else {
+      showRowFeedback(source.id, "error", result.message || "更新监测组失败。");
+    }
+  }
+
+  async function batchSetSelectedSourceCollectionGroup(collectionGroup: NonNullable<Source["collectionGroup"]>) {
+    if (!selectedSources.length) return;
+    const targets = collectionGroup === "vip_15m" ? selectedSources.filter(sourceSupportsVipCollection) : selectedSources;
+    if (!targets.length) {
+      setGlobalMessage({ type: "error", text: "已选渠道中没有可加入 VIP 的 ShopApi 自动采集来源。" });
+      return;
+    }
+    const action = collectionGroup === "vip_15m" ? "batch-add-vip-sources" : "batch-remove-vip-sources";
+    setLoadingAction(action);
+    let success = 0;
+    const updates: Record<string, Source> = {};
+
+    for (const source of targets) {
+      const result = await requestWithMethod("/api/admin/sources", "PATCH", password, {
+        id: source.id,
+        collectionGroup,
+      });
+      if (result.ok && result.source) {
+        success++;
+        updates[source.id] = result.source as Source;
+      }
+    }
+
+    setSourcePatches((prev) => ({ ...prev, ...updates }));
+    setLoadingAction(null);
+    setGlobalMessage({
+      type: success === targets.length ? "success" : "info",
+      text: `${collectionGroup === "vip_15m" ? "加入 VIP" : "移出 VIP"}完成：${success}/${targets.length} 个符合条件的渠道成功。`,
     });
     router.refresh();
   }
@@ -4019,6 +4075,24 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                     </button>
                     <button
                       type="button"
+                      onClick={() => batchSetSelectedSourceCollectionGroup("vip_15m")}
+                      disabled={!selectedSourceIds.size || loadingAction === "batch-add-vip-sources"}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#2f7a4b]/20 bg-[#e8f3ec] px-3 text-xs font-medium text-[#2f7a4b] transition-colors hover:bg-[#dbece1] disabled:opacity-50"
+                    >
+                      {loadingAction === "batch-add-vip-sources" ? <Loader2 size={14} className="animate-spin" /> : <Star size={14} />}
+                      加入 VIP
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => batchSetSelectedSourceCollectionGroup("automatic")}
+                      disabled={!selectedSourceIds.size || loadingAction === "batch-remove-vip-sources"}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-xs font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4] disabled:opacity-50"
+                    >
+                      {loadingAction === "batch-remove-vip-sources" ? <Loader2 size={14} className="animate-spin" /> : null}
+                      移出 VIP
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => batchToggleSelectedSourceOffers(true)}
                       disabled={!selectedSourceIds.size || loadingAction === "batch-hide-source-offers"}
                       className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#9b3328]/20 bg-white px-3 text-xs font-medium text-[#9b3328] transition-colors hover:bg-[#fbe9e7] disabled:opacity-50"
@@ -4069,6 +4143,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                     onCopyBrowserCommand={copyBrowserCommand}
                     onCopyCollectorContext={copySourceCollectorContext}
                     onToggleEnabled={toggleSourceEnabled}
+                    onSetCollectionGroup={setSourceCollectionGroup}
                     onToggleOffersVisibility={toggleSourceOffersVisibility}
                     onDeleteSource={deleteSourceRow}
                   />
@@ -7111,6 +7186,7 @@ function SourceTable({
   onCopyBrowserCommand,
   onCopyCollectorContext,
   onToggleEnabled,
+  onSetCollectionGroup,
   onToggleOffersVisibility,
   onDeleteSource,
 }: {
@@ -7133,6 +7209,7 @@ function SourceTable({
   onCopyBrowserCommand: (source: Source) => void;
   onCopyCollectorContext: (source: Source) => void;
   onToggleEnabled: (source: Source, enabled?: boolean) => void;
+  onSetCollectionGroup: (source: Source, collectionGroup: NonNullable<Source["collectionGroup"]>) => void;
   onToggleOffersVisibility: (source: Source, hidden: boolean, mode?: AdminOfferHideMode) => void;
   onDeleteSource: (source: Source) => void;
 }) {
@@ -7238,8 +7315,8 @@ function SourceTable({
             ))}
         </div>
 
-        <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(220px,1fr)_150px_150px_150px_170px_auto_auto] lg:items-center">
-          <label className="flex h-10 min-w-0 items-center gap-2 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-sm">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label className="flex h-10 min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-sm">
             <Search size={15} className="shrink-0 text-[#adb3b4]" />
             <input
               value={filters.query}
@@ -7251,7 +7328,7 @@ function SourceTable({
           <select
             value={filters.quality}
             onChange={(event) => onFiltersChange((prev) => ({ ...prev, quality: event.target.value as SourceQualityFilter }))}
-            className="h-10 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-sm text-[#2d3435] outline-none"
+            className="h-10 w-[140px] rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-sm text-[#2d3435] outline-none"
           >
             <option value="all">全部分队</option>
             {sourceQuality.segments.map((segment) => (
@@ -7261,7 +7338,7 @@ function SourceTable({
           <select
             value={filters.status}
             onChange={(event) => onFiltersChange((prev) => ({ ...prev, status: event.target.value as SourceStatusFilter }))}
-            className="h-10 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-sm text-[#2d3435] outline-none"
+            className="h-10 w-[140px] rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-sm text-[#2d3435] outline-none"
           >
             <option value="all">全部状态</option>
             <option value="normal">正常</option>
@@ -7270,9 +7347,19 @@ function SourceTable({
             <option value="needs_collector">需补采集器</option>
           </select>
           <select
+            value={filters.collectionGroup}
+            onChange={(event) => onFiltersChange((prev) => ({ ...prev, collectionGroup: event.target.value as SourceCollectionGroupFilter }))}
+            aria-label="监测组"
+            className="h-10 w-[140px] rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-sm text-[#2d3435] outline-none"
+          >
+            <option value="all">全部监测组</option>
+            <option value="vip_15m">VIP 15分钟</option>
+            <option value="automatic">自动分层</option>
+          </select>
+          <select
             value={filters.offerBand}
             onChange={(event) => onFiltersChange((prev) => ({ ...prev, offerBand: event.target.value as SourceOfferFilter }))}
-            className="h-10 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-sm text-[#2d3435] outline-none"
+            className="h-10 w-[140px] rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-sm text-[#2d3435] outline-none"
           >
             <option value="all">全部报价量</option>
             <option value="zero">0 条</option>
@@ -7283,7 +7370,7 @@ function SourceTable({
           <select
             value={filters.sort}
             onChange={(event) => onFiltersChange((prev) => ({ ...prev, sort: event.target.value as SourceSortMode }))}
-            className="h-10 rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-sm text-[#2d3435] outline-none"
+            className="h-10 w-[160px] rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-sm text-[#2d3435] outline-none"
           >
             <option value="offers_desc">报价数从高到低</option>
             <option value="quality_action">分队处理优先</option>
@@ -7305,7 +7392,7 @@ function SourceTable({
           </button>
           <button
             type="button"
-            onClick={() => onFiltersChange({ query: "", quality: "all", status: "all", offerBand: "all", sort: "offers_desc", riskOnly: false })}
+            onClick={() => onFiltersChange({ query: "", quality: "all", status: "all", collectionGroup: "all", offerBand: "all", sort: "offers_desc", riskOnly: false })}
             className="inline-flex h-10 items-center justify-center rounded-lg border border-[#adb3b4]/30 bg-white px-3 text-sm font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4]"
           >
             重置
@@ -7333,6 +7420,7 @@ function SourceTable({
             riskLabels={sourceRiskFlags(source, sourceStatsById, offerCountBySource).map(sourceRiskFlagLabel)}
             loading={loadingAction === `collect-source-${source.id}` || loadingAction === "batch-collect-sources"}
             toggleLoading={loadingAction === `toggle-source-${source.id}`}
+            collectionGroupLoading={loadingAction === `collection-group-${source.id}`}
             tempHideLoading={loadingAction === `temp-hide-source-offers-${source.id}`}
             hideLoading={loadingAction === `hide-source-offers-${source.id}`}
             restoreLoading={loadingAction === `restore-source-offers-${source.id}`}
@@ -7344,6 +7432,7 @@ function SourceTable({
             onCopyBrowserCommand={onCopyBrowserCommand}
             onCopyCollectorContext={onCopyCollectorContext}
             onToggleEnabled={onToggleEnabled}
+            onSetCollectionGroup={onSetCollectionGroup}
             onToggleOffersVisibility={onToggleOffersVisibility}
             onDeleteSource={onDeleteSource}
           />
@@ -7364,6 +7453,7 @@ function SourceTableRow({
   riskLabels,
   loading,
   toggleLoading,
+  collectionGroupLoading,
   tempHideLoading,
   hideLoading,
   restoreLoading,
@@ -7375,6 +7465,7 @@ function SourceTableRow({
   onCopyBrowserCommand,
   onCopyCollectorContext,
   onToggleEnabled,
+  onSetCollectionGroup,
   onToggleOffersVisibility,
   onDeleteSource,
 }: {
@@ -7385,6 +7476,7 @@ function SourceTableRow({
   riskLabels: string[];
   loading: boolean;
   toggleLoading: boolean;
+  collectionGroupLoading: boolean;
   tempHideLoading: boolean;
   hideLoading: boolean;
   restoreLoading: boolean;
@@ -7396,6 +7488,7 @@ function SourceTableRow({
   onCopyBrowserCommand: (source: Source) => void;
   onCopyCollectorContext: (source: Source) => void;
   onToggleEnabled: (source: Source, enabled?: boolean) => void;
+  onSetCollectionGroup: (source: Source, collectionGroup: NonNullable<Source["collectionGroup"]>) => void;
   onToggleOffersVisibility: (source: Source, hidden: boolean, mode?: AdminOfferHideMode) => void;
   onDeleteSource: (source: Source) => void;
 }) {
@@ -7408,6 +7501,7 @@ function SourceTableRow({
   const disabledReason = sourceDisableReasonText(source);
   const qualityEvidence = sourceQualityEvidenceText(quality);
   const priceEvidence = quality?.evidence.price;
+  const canJoinVip = sourceSupportsVipCollection(source);
 
   return (
     <div className={`px-3 py-3 transition-colors ${selected ? "bg-[#e8f3ec]/30" : "bg-white"}`}>
@@ -7429,6 +7523,12 @@ function SourceTableRow({
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <p className="font-medium text-[#2d3435]">{source.name}</p>
+            {source.collectionGroup === "vip_15m" ? (
+              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${hasIssue ? "bg-[#fff7e8] text-[#7a541b]" : "bg-[#e8f3ec] text-[#2f7a4b]"}`}>
+                <Star size={11} />
+                {hasIssue ? "VIP 降级" : "VIP 15分钟"}
+              </span>
+            ) : null}
             {quality ? <Badge tone={quality.tone}>{quality.label}</Badge> : null}
           </div>
           <a
@@ -7555,6 +7655,21 @@ function SourceTableRow({
             {toggleLoading ? <Loader2 size={14} className="animate-spin" /> : null}
             {source.enabled ? "停用" : "启用"}
           </button>
+          {source.collectionGroup === "vip_15m" || canJoinVip ? (
+            <button
+              type="button"
+              disabled={collectionGroupLoading}
+              onClick={() => onSetCollectionGroup(source, source.collectionGroup === "vip_15m" ? "automatic" : "vip_15m")}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors disabled:opacity-60 ${
+                source.collectionGroup === "vip_15m"
+                  ? "border-[#adb3b4]/30 bg-white text-[#5a6061] hover:bg-[#f2f4f4]"
+                  : "border-[#2f7a4b]/20 bg-[#e8f3ec] text-[#2f7a4b] hover:bg-[#dbece1]"
+              }`}
+            >
+              {collectionGroupLoading ? <Loader2 size={14} className="animate-spin" /> : source.collectionGroup === "vip_15m" ? null : <Star size={14} />}
+              {source.collectionGroup === "vip_15m" ? "移出 VIP" : "加入 VIP"}
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={tempHideLoading || (stats?.visibleCount ?? offerCount) <= 0}
@@ -11938,6 +12053,13 @@ function sourceSortKey(source: Source): string {
   return `${source.name} ${sourceHost(source)} ${source.id}`;
 }
 
+function sourceSupportsVipCollection(source: Source): boolean {
+  const host = sourceHost(source);
+  return resolvedCollectionMethod(source) === "http" &&
+    resolvedCollectorKind(source) === "shopApi" &&
+    ["ldxp.cn", "pay.ldxp.cn", "pay.qxvx.cn", "catfk.com"].includes(host);
+}
+
 function compareSourcesForOps(a: Source, b: Source): number {
   const issueDelta = Number(sourceHasIssue(b)) - Number(sourceHasIssue(a));
   if (issueDelta) return issueDelta;
@@ -12071,6 +12193,7 @@ function filterAndSortSources(
       }
       if (filters.quality !== "all" && sourceQualityById.get(source.id)?.kind !== filters.quality) return false;
       if (!sourceMatchesStatusFilter(source, filters.status)) return false;
+      if (filters.collectionGroup !== "all" && (source.collectionGroup || "automatic") !== filters.collectionGroup) return false;
       if (!sourceMatchesOfferFilter(sourceVisibleOfferCount(source, sourceStatsById, offerCountBySource), filters.offerBand)) return false;
       if (filters.riskOnly && !sourceRiskFlags(source, sourceStatsById, offerCountBySource).length) return false;
       return true;

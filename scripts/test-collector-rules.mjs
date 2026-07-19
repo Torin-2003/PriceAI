@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 
 import {
   applySourceBuyerFeePolicy,
+  applyShopCollectionScheduler,
   assignShopCollectionSchedulerShard,
   blackcatWholesaleActionIdFromChunk,
   blockShopApiDirectExitForTarget,
   calculateShopApiBuyerAdjustment,
+  classifyShopCollectionScheduleTier,
   createShopApiProxyReusePool,
   extractProxyLeaseFromPayload,
   isDailyProbeFailure,
@@ -14,6 +16,7 @@ import {
   isShopApiExitErrorMessage,
   isShopApiProxyTransportErrorMessage,
   isLdxpFailoverErrorMessage,
+  latestShopCollectionCrawlRunBySource,
   normalizeLdxpRuntimeSettings,
   normalizeShopApiItemOfferUrl,
   rewriteLdxpUrlHost,
@@ -26,6 +29,7 @@ import {
   shopApiProductLevelFeeModel,
   shopApiProxyParallelismFor,
   shopApiStoredFeePolicy,
+  shopCollectionSchedulerGroupMatches,
   selectShopApiPreferredChannel,
 } from "./collect-prices.mjs";
 
@@ -216,6 +220,96 @@ const shardZero = assignShopCollectionSchedulerShard(
   assignment,
 );
 assert.equal(shardZero.shardMatches, false);
+assert.equal(shopCollectionSchedulerGroupMatches({ collectionGroup: "vip_15m" }, { "shop-scheduler-group": "vip_15m" }), true);
+assert.equal(shopCollectionSchedulerGroupMatches({ collectionGroup: "automatic" }, { "shop-scheduler-group": "vip_15m" }), false);
+assert.equal(shopCollectionSchedulerGroupMatches({ collectionGroup: "vip_15m" }, {}), false);
+assert.equal(shopCollectionSchedulerGroupMatches({ collectionGroup: "automatic" }, {}), true);
+
+const emptyVipSchedule = await applyShopCollectionScheduler(
+  [{ sourceId: "source-a", sourceName: "A", kind: "shopApi", baseUrl: "https://pay.ldxp.cn", collectionGroup: "automatic" }],
+  { "shop-scheduler-group": "vip_15m" },
+);
+assert.equal(emptyVipSchedule.targets.length, 0);
+assert.equal(emptyVipSchedule.summary.effectiveTargetCount, 0);
+
+const nonFamilyVipSchedule = await applyShopCollectionScheduler(
+  [
+    { sourceId: "auto-unknown", sourceName: "Unknown auto", kind: "shopApi", baseUrl: "https://shop.example.com", collectionGroup: "automatic" },
+    { sourceId: "vip-unknown", sourceName: "Unknown VIP", kind: "shopApi", baseUrl: "https://shop.example.com", collectionGroup: "vip_15m" },
+  ],
+  { "shop-scheduler-group": "vip_15m" },
+);
+assert.equal(nonFamilyVipSchedule.targets.length, 0);
+
+const failedVipContextSchedule = await applyShopCollectionScheduler(
+  [
+    { sourceId: "vip-source", sourceName: "VIP", kind: "shopApi", baseUrl: "https://pay.ldxp.cn", collectionGroup: "vip_15m" },
+    { sourceId: "auto-source", sourceName: "Auto", kind: "shopApi", baseUrl: "https://pay.ldxp.cn", collectionGroup: "automatic" },
+  ],
+  {
+    "shop-scheduler-group": "vip_15m",
+    shopSchedulerContextLoader: async () => { throw new Error("context unavailable"); },
+  },
+);
+assert.deepEqual(failedVipContextSchedule.targets.map((target) => target.sourceId), []);
+assert.equal(failedVipContextSchedule.summary.effectiveTargetCount, 0);
+assert.equal(failedVipContextSchedule.summary.reason, "scheduler-context-failed");
+
+const aggregatedRuns = latestShopCollectionCrawlRunBySource([
+  {
+    id: "batch-b",
+    sourceId: "ldxp-youzhi",
+    status: "success",
+    startedAt: "2026-07-19T18:18:21.050Z",
+    finishedAt: "2026-07-19T18:18:26.137Z",
+    successCount: 3,
+    failureCount: 0,
+    details: { writeStats: { receivedCount: 3, writtenCount: 0, refreshedCount: 3 } },
+  },
+  {
+    id: "batch-a",
+    sourceId: "ldxp-youzhi",
+    status: "success",
+    startedAt: "2026-07-19T18:18:21.050Z",
+    finishedAt: "2026-07-19T18:18:26.137Z",
+    successCount: 25,
+    failureCount: 0,
+    details: { writeStats: { receivedCount: 25, writtenCount: 5, refreshedCount: 20 } },
+  },
+]);
+assert.equal(aggregatedRuns.get("ldxp-youzhi")?.successCount, 28);
+assert.deepEqual(aggregatedRuns.get("ldxp-youzhi")?.details.writeStats, {
+  receivedCount: 28,
+  writtenCount: 5,
+  refreshedCount: 23,
+});
+
+assert.equal(
+  classifyShopCollectionScheduleTier({
+    target: { collectionGroup: "vip_15m", healthStatus: "healthy", consecutiveFailures: 0, lastSuccessAt: "2026-07-19T18:18:26.137Z" },
+    latestRun: aggregatedRuns.get("ldxp-youzhi"),
+    scaleBand: "medium",
+    changeBand: "medium",
+    lowPriceBand: "unknown",
+    hotProductOfferCount: 0,
+    hotProductLowestHitCount: 0,
+    hotProductTop5HitCount: 0,
+  }).tier,
+  "vip_15m",
+);
+assert.equal(
+  classifyShopCollectionScheduleTier({
+    target: { collectionGroup: "vip_15m", healthStatus: "failing", consecutiveFailures: 1, lastSuccessAt: "2026-07-19T18:18:26.137Z", lastError: "fetch failed" },
+    latestRun: { ...aggregatedRuns.get("ldxp-youzhi"), status: "failed", message: "fetch failed" },
+    scaleBand: "medium",
+    changeBand: "medium",
+    lowPriceBand: "unknown",
+    hotProductOfferCount: 0,
+    hotProductLowestHitCount: 0,
+    hotProductTop5HitCount: 0,
+  }).tier,
+  "retry_cooldown",
+);
 
 const excludedSources = selectTargets(
   [

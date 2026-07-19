@@ -23,6 +23,11 @@ create table if not exists sources (
   buyer_fee_rate numeric check (buyer_fee_rate is null or (buyer_fee_rate >= 0 and buyer_fee_rate <= 0.2)),
   buyer_fee_payment_method text,
   buyer_fee_strategy text check (buyer_fee_strategy is null or buyer_fee_strategy = 'manual_verified'),
+  collection_group text not null default 'automatic' check (collection_group in ('automatic', 'vip_15m')),
+  constraint sources_vip_collection_contract_check check (
+    collection_group <> 'vip_15m'
+    or (collector_kind = 'shopApi' and collection_method = 'http')
+  ),
   enabled boolean not null default true,
   notes text,
   health_status text not null default 'unknown',
@@ -48,10 +53,15 @@ alter table sources add column if not exists runtime_region text not null defaul
 alter table sources add column if not exists buyer_fee_rate numeric;
 alter table sources add column if not exists buyer_fee_payment_method text;
 alter table sources add column if not exists buyer_fee_strategy text;
+alter table sources add column if not exists collection_group text not null default 'automatic';
 alter table sources add column if not exists collector_lock_until timestamptz;
 alter table sources add column if not exists collector_lock_owner text;
 alter table sources add column if not exists collector_lock_started_at timestamptz;
 alter table sources add column if not exists shop_created_at timestamptz;
+
+create index if not exists sources_collection_group_enabled_idx
+  on sources (collection_group, id)
+  where enabled = true;
 
 create table if not exists raw_offers (
   id text primary key,
@@ -2729,6 +2739,46 @@ $$;
 
 revoke execute on function refresh_source_quality_price_benchmarks() from anon, authenticated, public;
 grant execute on function refresh_source_quality_price_benchmarks() to service_role;
+
+create or replace function refresh_source_quality_price_benchmarks_if_stale(
+  p_max_age_minutes integer default 15
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  latest_computed_at timestamptz;
+  max_age interval := make_interval(mins => greatest(5, least(coalesce(p_max_age_minutes, 15), 180)));
+begin
+  select max(computed_at)
+  into latest_computed_at
+  from source_quality_price_benchmarks;
+
+  if latest_computed_at is not null and latest_computed_at >= now() - max_age then
+    return false;
+  end if;
+
+  if not pg_try_advisory_xact_lock(19370015) then
+    return false;
+  end if;
+
+  select max(computed_at)
+  into latest_computed_at
+  from source_quality_price_benchmarks;
+
+  if latest_computed_at is not null and latest_computed_at >= now() - max_age then
+    return false;
+  end if;
+
+  refresh materialized view source_quality_price_benchmarks;
+  return true;
+end;
+$$;
+
+revoke execute on function refresh_source_quality_price_benchmarks_if_stale(integer) from anon, authenticated, public;
+grant execute on function refresh_source_quality_price_benchmarks_if_stale(integer) to service_role;
 
 create or replace function list_source_quality_price_benchmarks()
 returns table (

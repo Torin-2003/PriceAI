@@ -159,8 +159,10 @@ const UMAMI_MONITORING_PROPERTY_KEYS = new Set<UmamiPropertyKey>([
 const PRIMARY_COLLECTOR_NODE_IDS = new Set([
   "huoshan2-nonshop",
   "huoshan2-nonshop-dujiao",
-  "aliyun6-hangzhou-priceai",
-  "aliyun7-new-47-121-priceai",
+  "aliyun6-hangzhou-shop-scheduler",
+  "aliyun6-hangzhou-shop-vip-scheduler",
+  "aliyun7-heyuan-shop-scheduler-lane-1",
+  "aliyun7-heyuan-shop-vip-scheduler-lane-1",
   "aliyun7-new-47-121-priceai-qxvx",
   "aliyun7-new-47-121-priceai-yunmao",
 ]);
@@ -6550,6 +6552,7 @@ export function mapSource(row: Record<string, unknown>): Source {
     entryUrl: String(row.entry_url || row.base_url || ""),
     collectionMethod: String(row.collection_method || "manual") as Source["collectionMethod"],
     collectorKind: normalizeSourceCollectorKind(row.collector_kind),
+    collectionGroup: row.collection_group === "vip_15m" ? "vip_15m" : "automatic",
     enabled: Boolean(row.enabled),
     notes: row.notes ? String(row.notes) : null,
     healthStatus: row.health_status ? String(row.health_status) as Source["healthStatus"] : null,

@@ -31,6 +31,7 @@
     "typecheck": "node_modules/node/bin/node node_modules/next/dist/bin/next typegen && node_modules/node/bin/node node_modules/typescript/bin/tsc --noEmit",
     "test": "npm run test:auth-security && npm run test:feedback && npm run test:wholesale && npm run test:channel-submissions && npm run test:api-transit && npm run test:product-offer-pagination && npm run test:catalog && npm run test:api-models && npm run test:official-parser",
     "collect:prices": "node scripts/collect-prices.mjs",
+    "collect:shop-vip": "node scripts/collect-prices.mjs --all --kind shopApi --shop-scheduler --shop-scheduler-group vip_15m --post",
     "rebalance:source-shards": "node scripts/rebalance-source-shards.mjs",
     "refresh:snapshots": "node scripts/refresh-public-api-snapshots.mjs",
     "collect:performance": "node scripts/analyze-collector-performance.mjs",

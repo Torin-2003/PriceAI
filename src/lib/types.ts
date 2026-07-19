@@ -39,6 +39,8 @@ export type CollectorKind =
   | "browser"
   | "unsupported";
 
+export type SourceCollectionGroup = "automatic" | "vip_15m";
+
 export type Source = {
   id: string;
   name: string;
@@ -49,6 +51,7 @@ export type Source = {
   buyerFeeRate?: number | null;
   buyerFeePaymentMethod?: string | null;
   buyerFeeStrategy?: "manual_verified" | null;
+  collectionGroup?: SourceCollectionGroup;
   enabled: boolean;
   notes?: string | null;
   healthStatus?: "unknown" | "healthy" | "retrying" | "failing" | "partial" | null;
