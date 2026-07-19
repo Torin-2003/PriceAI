@@ -154,3 +154,36 @@ Production release succeeded via GitHub Actions 29680199103 on Cloudflare/OpenNe
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: LDXP 双域名自动切换与后台开关
+
+**Date**: 2026-07-19
+**Task**: LDXP 双域名自动切换与后台开关
+**Branch**: `main`
+
+### Summary
+
+Cloudflare Actions 29692031230 发布成功；生产 versionTag 与 Huoshan2 runtime manifest 均为 24bff0a；生产后台为 auto/www.ldxp.cn；ChatGPT Plus 页 29 个 www 链动链接、0 个 pay 链动链接。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `24bff0a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 4
+- **Total Sessions**: 5
 - **Last Active**: 2026-07-19
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~151 | Active |
+| `journal-1.md` | ~189 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | 日期 | 标题 | 提交数 | 分支 |
 |---|------|-------|---------|--------|
+| 5 | 2026-07-19 | LDXP 双域名自动切换与后台开关 | `24bff0a` | `main` |
 | 4 | 2026-07-19 | standard product market keyword subtitles | `81286eb8c681f744ce4b4e0cdcdc6345157c4b6e` | `main` |
 | 3 | 2026-07-12 | Deploy API transit public monitor fallback | `749a5ae7117e7ea2d9d276c1cb13bbdfc2704d40` | `main` |
 | 2 | 2026-07-11 | api-transit-model-detection-ui-polish | `0edd044`, `84562ab`, `98b5e35`, `48a3592`, `080cf61`, `dcc1bc5`, `7e4ebc6` | `main` |
