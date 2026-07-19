@@ -20,6 +20,7 @@ exec /usr/bin/node scripts/collect-prices.mjs \
   --post \
   --endpoint https://priceai.cc \
   --exclude-kind shopApi,dujiao \
+  --exclude-source nodebits-f29bd25cc843c467,nodebits-05b3a4700ccf9e8a \
   --concurrency "1" \
   --post-batch-size 25 \
   --post-request-offer-limit 25 \

@@ -1,0 +1,14 @@
+[Unit]
+Description=PriceAI domestic non-shop collector
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/priceai-worker
+ExecStart=/opt/priceai-worker/run-domestic-nonshop.sh
+TimeoutStartSec=900
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6

@@ -1,0 +1,12 @@
+[Unit]
+Description=Run PriceAI domestic non-shop collector hourly
+
+[Timer]
+OnCalendar=*-*-* *:25:00
+Persistent=false
+AccuracySec=30s
+RandomizedDelaySec=60s
+Unit=priceai-domestic-nonshop.service
+
+[Install]
+WantedBy=timers.target

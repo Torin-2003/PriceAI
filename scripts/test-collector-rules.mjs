@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   assignShopCollectionSchedulerShard,
+  blackcatWholesaleActionIdFromChunk,
   blockShopApiDirectExitForTarget,
   calculateShopApiBuyerAdjustment,
   createShopApiProxyReusePool,
@@ -10,6 +11,7 @@ import {
   isShopApiDirectExitBlockedForTarget,
   isShopApiExitErrorMessage,
   isShopApiProxyTransportErrorMessage,
+  selectTargets,
   shopApiFeeModelFromChannelRate,
   shopApiProductLevelFeeModel,
   shopApiProxyParallelismFor,
@@ -26,8 +28,19 @@ assert.equal(calculateShopApiBuyerAdjustment(99, 100), 0);
 
 assert.equal(isDailyProbeFailure("HTTP 404 from source", 3), true);
 assert.equal(isDailyProbeFailure("采集结果为空", 4), true);
+assert.equal(isDailyProbeFailure("fetch failed", 3), true);
+assert.equal(isDailyProbeFailure("HTTP 403 challenge", 3), true);
+assert.equal(isDailyProbeFailure("HTTP 468", 3), true);
+assert.equal(isDailyProbeFailure("商家已被关闭交易", 3), true);
 assert.equal(isDailyProbeFailure("HTTP 404 from source", 2), false);
-assert.equal(isDailyProbeFailure("403 challenge", 5), false);
+assert.equal(isDailyProbeFailure("HTTP 500", 5), false);
+assert.equal(
+  blackcatWholesaleActionIdFromChunk(
+    'createServerReference)("00fc36c4f4551a0ad0887d0946a6c93bc94960dfaf",callServer,void 0,findSourceMapURL,"fetchWholesaleProductsAction")',
+  ),
+  "00fc36c4f4551a0ad0887d0946a6c93bc94960dfaf",
+);
+assert.equal(blackcatWholesaleActionIdFromChunk("unrelated chunk"), null);
 assert.equal(isShopApiExitErrorMessage("HTTP 520 from upstream"), true);
 assert.equal(isShopApiExitErrorMessage("HTTP 403 from upstream"), true);
 assert.equal(isShopApiProxyTransportErrorMessage("fetch failed: ECONNRESET: socket closed"), true);
@@ -92,5 +105,14 @@ const shardZero = assignShopCollectionSchedulerShard(
   assignment,
 );
 assert.equal(shardZero.shardMatches, false);
+
+const excludedSources = selectTargets(
+  [
+    { sourceId: "source-a", sourceName: "A", sourceUrl: "https://a.example", kind: "kami" },
+    { sourceId: "source-b", sourceName: "B", sourceUrl: "https://b.example", kind: "kami" },
+  ],
+  { all: true, excludeSource: "source-a" },
+);
+assert.deepEqual(excludedSources.map((target) => target.sourceId), ["source-b"]);
 
 console.log("collector rules: ok");

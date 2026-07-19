@@ -30,6 +30,7 @@ export const COLLECTOR_RUNTIME_WORKFLOW_FILES = [
 
 export const COLLECTOR_RUNTIME_LAUNCHER_FILES = [
   "ops/collector-runtime/run-api-transit-public.sh",
+  "ops/collector-runtime/run-domestic-nonshop.sh",
   "ops/collector-runtime/run-dujiao.sh",
   "ops/collector-runtime/run-generic-html-canary.sh",
   "ops/collector-runtime/run-main.sh",

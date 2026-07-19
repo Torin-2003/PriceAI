@@ -619,6 +619,7 @@ function probeSuccessResponse(target, offers, startedAt, limit, extra = {}) {
 
 export {
   assignShopCollectionSchedulerShard,
+  blackcatWholesaleActionIdFromChunk,
   blockShopApiDirectExitForTarget,
   calculateShopApiBuyerAdjustment,
   createShopApiProxyReusePool,
@@ -2087,20 +2088,15 @@ async function collectBlackcatWholesale(target) {
 }
 
 async function fetchBlackcatWholesaleProducts(target) {
-  const actionId = "00a331b1067730509e93f1d2510d15a4c140650760";
-  const response = await safeFetch(target.sourceUrl, {
-    method: "POST",
-    headers: {
-      ...defaultHeaders(target.sourceUrl),
-      accept: "text/x-component",
-      "content-type": "text/plain;charset=UTF-8",
-      "next-action": actionId,
-      origin: target.baseUrl,
-      referer: target.sourceUrl,
-    },
-    body: "[]",
-    signal: AbortSignal.timeout(20_000),
-  });
+  const defaultActionId = "00fc36c4f4551a0ad0887d0946a6c93bc94960dfaf";
+  let response = await fetchBlackcatWholesaleAction(target, defaultActionId);
+
+  if (response.status === 404) {
+    const discoveredActionId = await discoverBlackcatWholesaleActionId(target);
+    if (discoveredActionId && discoveredActionId !== defaultActionId) {
+      response = await fetchBlackcatWholesaleAction(target, discoveredActionId);
+    }
+  }
 
   if (!response.ok) throw new Error(`${target.sourceUrl} returned HTTP ${response.status}`);
 
@@ -2114,6 +2110,46 @@ async function fetchBlackcatWholesaleProducts(target) {
   }
 
   return payload.data;
+}
+
+async function fetchBlackcatWholesaleAction(target, actionId) {
+  return safeFetch(target.sourceUrl, {
+    method: "POST",
+    headers: {
+      ...defaultHeaders(target.sourceUrl),
+      accept: "text/x-component",
+      "content-type": "text/plain;charset=UTF-8",
+      "next-action": actionId,
+      origin: target.baseUrl,
+      referer: target.sourceUrl,
+    },
+    body: "[]",
+    signal: AbortSignal.timeout(20_000),
+  });
+}
+
+async function discoverBlackcatWholesaleActionId(target) {
+  const html = await fetchText(target.sourceUrl);
+  const scriptUrls = Array.from(html.matchAll(/<script[^>]+src=["']([^"']+\.js)["']/gi))
+    .map((match) => absolutize(match[1], target.baseUrl))
+    .filter(Boolean)
+    .slice(0, 24);
+
+  for (const scriptUrl of scriptUrls) {
+    const chunk = await fetchText(scriptUrl).catch(() => "");
+    const actionId = blackcatWholesaleActionIdFromChunk(chunk);
+    if (actionId) return actionId;
+  }
+
+  return null;
+}
+
+function blackcatWholesaleActionIdFromChunk(chunk) {
+  const markerIndex = String(chunk || "").indexOf("fetchWholesaleProductsAction");
+  if (markerIndex < 0) return null;
+
+  const nearby = String(chunk).slice(Math.max(0, markerIndex - 500), markerIndex + 100);
+  return nearby.match(/["']([a-f\d]{40,64})["']/i)?.[1] || null;
 }
 
 function parseNextActionData(text) {
@@ -2769,6 +2805,7 @@ async function postCollectorHeartbeat(status, options = {}, input = {}) {
         kind: options.kind || options.kinds || options["collector-kind"] || options["collector-kinds"] || null,
         excludeKind: options.excludeKind || options["exclude-kind"] || options.excludeKinds || options["exclude-kinds"] || null,
         excludeFamily: options.excludeFamily || options["exclude-family"] || options.excludeFamilies || options["exclude-families"] || null,
+        excludeSource: options.excludeSource || options["exclude-source"] || options.excludeSources || options["exclude-sources"] || null,
         shopApiListMode: shopApiAllGoodsListEnabled(options) ? "all_goods" : "category",
         shopApiPriceSampleSize: shopApiPriceSampleSizeFor(options),
         shopApiPriceSampleSelection: shopApiPriceSampleSizeFor(options) > 0 ? "high_price_probe" : "disabled",
@@ -3699,7 +3736,11 @@ function hasTargetFilters(options = {}) {
       options.excludeFamily ||
       options["exclude-family"] ||
       options.excludeFamilies ||
-      options["exclude-families"],
+      options["exclude-families"] ||
+      options.excludeSource ||
+      options["exclude-source"] ||
+      options.excludeSources ||
+      options["exclude-sources"],
   );
 }
 
@@ -3714,6 +3755,9 @@ function shouldExcludeTarget(target, options = {}) {
 
   const families = optionList(options.excludeFamily || options["exclude-family"] || options.excludeFamilies || options["exclude-families"]);
   if (families.includes("liandong-shop") && isLiandongShopTarget(target)) return true;
+
+  const sourceIds = optionList(options.excludeSource || options["exclude-source"] || options.excludeSources || options["exclude-sources"]);
+  if (sourceIds.includes(String(target.sourceId || "").toLowerCase())) return true;
   return false;
 }
 
@@ -4068,7 +4112,7 @@ function classifyShopCollectionScheduleTier(input) {
   if (hasFailure) {
     reasons.push(runtimeIssue ? `最近失败：${runtimeIssue}` : consecutiveFailures ? `连续失败 ${consecutiveFailures} 次` : "最近采集失败");
     if (isDailyProbeFailure(input.target.lastError, consecutiveFailures)) {
-      reasons.push("连续 404 或空结果，降为每日复检");
+      reasons.push("连续站点错误，降为每日复检");
       return { tier: "daily_probe", reasons };
     }
     if (strongLowPrice || hotLowPrice || hasHotProduct) {
@@ -4108,7 +4152,7 @@ function classifyShopCollectionScheduleTier(input) {
 
 function isDailyProbeFailure(lastError, consecutiveFailures) {
   if (Number(consecutiveFailures || 0) < DAILY_PROBE_FAILURE_THRESHOLD) return false;
-  return /(?:\bHTTP\s*404\b|\b404\b|采集结果为空|empty result|no offers|found no offers)/i.test(String(lastError || ""));
+  return /(?:\bHTTP\s*(?:403|404|410|451|468)\b|\b(?:403|404|410|451|468)\b|采集结果为空|empty result|no offers|found no offers|fetch failed|ECONNRESET|ETIMEDOUT|连接(?:失败|超时|重置)|店铺.*(?:关闭|打烊)|商家已被关闭交易|website has been stopped)/i.test(String(lastError || ""));
 }
 
 function shopCollectionScheduleReferenceAt(target, latestRun, tier) {
@@ -4448,7 +4492,7 @@ function cooldownSkipReason(target, options = {}) {
     const dailyProbeMs = DAILY_PROBE_INTERVAL_MINUTES * 60_000;
     if (Number.isFinite(lastCheckedMs) && ageMs >= 0 && ageMs < dailyProbeMs) {
       const remainingMinutes = Math.max(1, Math.ceil((dailyProbeMs - ageMs) / 60_000));
-      return { message: `连续 404 或空结果，进入每日复检；约 ${remainingMinutes} 分钟后重试。` };
+      return { message: `连续站点错误，进入每日复检；约 ${remainingMinutes} 分钟后重试。` };
     }
   }
 
