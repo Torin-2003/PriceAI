@@ -52,7 +52,9 @@
 
 ### Main Changes
 
-(Add details)
+- Renamed the low-cost ChatGPT Plus bucket to `ChatGPT Plus 试用订阅` and exposed market terms in its subtitle.
+- Added market-keyword subtitles for ChatGPT Team / Business and ChatGPT Plus 正价代充.
+- Applied the matching `canonical_products` migration and refreshed public product snapshots.
 
 ### Git Commits
 
@@ -68,7 +70,10 @@
 
 ### Testing
 
-- [OK] (Add test results)
+- [OK] `npm run test:catalog`, `npm run lint`, and `npm run build` passed locally.
+- [OK] GitHub Actions run `29680199103` completed build, staged candidate smoke, promotion, and production smoke.
+- [OK] Supabase check succeeded and production rows contain the new display names, subtitles, and aliases.
+- [OK] `/api/deployment` reports commit `81286eb`; `/api/explorer` returns the new product copy through Cloudflare/OpenNext.
 
 ### Status
 
@@ -108,6 +113,39 @@ Pushed API transit public monitor group fallback to main, deployed via Cloudflar
 - [OK] Cloudflare smoke passed in the deploy workflow.
 - [OK] Revalidate: `/api/cron/api-transit-revalidate` returned `snapshotWritten: true`, `stationCount: 10`.
 - [OK] Live checks: `/api-transit`, `/api-transit/models?family=gpt&q=GPT%205.5`, `/api-transit/wawazz-xyz`, `/api-transit/sub-callai-one` returned 200 with `server: cloudflare` and `x-opennext: 1`.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 4: standard product market keyword subtitles
+
+**Date**: 2026-07-19
+**Task**: standard product market keyword subtitles
+**Branch**: `main`
+
+### Summary
+
+Production release succeeded via GitHub Actions 29680199103 on Cloudflare/OpenNext. Supabase check succeeded; production canonical_products and /api/explorer expose the new ChatGPT Plus, recharge, and Team market-keyword subtitles. /api/deployment reports versionTag 81286eb8c681f744ce4b4e0cdcdc6345157c4b6e.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `81286eb8c681f744ce4b4e0cdcdc6345157c4b6e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
 
 ### Status
 
