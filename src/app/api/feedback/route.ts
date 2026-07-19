@@ -5,6 +5,11 @@ import { getCurrentUser } from "@/lib/auth";
 import { noStoreCacheHeaders } from "@/lib/cache-headers";
 import { clearPublicDataCache, markPublicApiSnapshotsDirty } from "@/lib/data";
 import {
+  OFFER_CLASSIFICATION_VERSION,
+  classifyOffer,
+  findCanonicalCatalogProduct,
+} from "@/lib/catalog";
+import {
   closePendingTransientOfferFeedback,
   runOfferFeedbackAutoVerification,
   runOfferFeedbackMultiFeedbackEscalation,
@@ -28,6 +33,7 @@ const PUBLIC_OFFER_FEEDBACK_RATE_LIMIT_PER_HOUR = 20;
 const reasonSchema = z.enum(offerFeedbackReasonValues);
 const userExpectedActionSchema = z.enum(["recheck", "hide_offer", "hide_source", "unsure"]);
 const feedbackScopeSchema = z.enum(["offer", "merchant"]);
+const issueDimensionSchema = z.enum(["product_category", "filter_tag", "source_placement", "unsure"]);
 
 const schema = z.object({
   feedbackScope: feedbackScopeSchema.default("offer"),
@@ -46,7 +52,10 @@ const schema = z.object({
   offerCapturedAt: z.string().max(100).nullable().optional(),
   offerSourceUpdatedAt: z.string().max(100).nullable().optional(),
   offerLastSeenAt: z.string().max(100).nullable().optional(),
+  offerTags: z.array(z.string().max(200)).max(50).nullable().optional(),
   reason: reasonSchema,
+  issueDimension: issueDimensionSchema.nullable().optional(),
+  expectedProductId: z.string().trim().max(200).nullable().optional(),
   userExpectedAction: userExpectedActionSchema.nullable().optional(),
   evidenceText: z.string().trim().max(1000).nullable().optional(),
   evidenceUrls: z.array(
@@ -55,6 +64,15 @@ const schema = z.object({
   notes: z.string().trim().max(500).nullable().optional(),
   contact: z.string().trim().max(200).nullable().optional(),
   website: z.string().max(200).nullable().optional(),
+}).superRefine((value, context) => {
+  if (value.reason !== "wrong_category") return;
+  if (!value.issueDimension) {
+    context.addIssue({ code: "custom", path: ["issueDimension"], message: "请选择具体是哪一类分类问题。" });
+    return;
+  }
+  if (value.issueDimension === "product_category" && !value.expectedProductId && (value.notes?.trim().length || 0) < 4) {
+    context.addIssue({ code: "custom", path: ["expectedProductId"], message: "请选择正确分类，或在补充说明中写明应该如何归类。" });
+  }
 });
 
 function isAllowedEvidenceUrl(value: string): boolean {
@@ -126,6 +144,18 @@ export async function POST(request: Request) {
     }
 
     const feedbackId = crypto.randomUUID();
+    const classifiedProduct = payload.reason === "wrong_category"
+      ? classifyOffer(payload.sourceTitle || "", {
+        tags: payload.offerTags || [],
+        price: payload.offerPrice ?? null,
+      })
+      : null;
+    const expectedProduct = payload.expectedProductId
+      ? findCanonicalCatalogProduct(payload.expectedProductId)
+      : null;
+    if (payload.expectedProductId && !expectedProduct) {
+      return Response.json({ ok: false, message: "期望分类不存在，请刷新页面后重试。" }, { status: 400 });
+    }
     const result = await createOfferFeedback({
       id: feedbackId,
       feedbackScope,
@@ -145,6 +175,16 @@ export async function POST(request: Request) {
       offerSourceUpdatedAt: payload.offerSourceUpdatedAt || null,
       offerLastSeenAt: payload.offerLastSeenAt || null,
       reason: payload.reason,
+      issueDimension: payload.reason === "wrong_category" ? payload.issueDimension || "unsure" : null,
+      expectedProductId: payload.issueDimension === "product_category" ? expectedProduct?.id || null : null,
+      classificationVersion: classifiedProduct ? OFFER_CLASSIFICATION_VERSION : null,
+      classificationResult: classifiedProduct ? {
+        productId: classifiedProduct.id,
+        platform: classifiedProduct.platform,
+        productType: classifiedProduct.productType,
+        sourceTitle: payload.sourceTitle || null,
+        tags: payload.offerTags || [],
+      } : null,
       userExpectedAction: payload.userExpectedAction || "unsure",
       evidenceText: payload.evidenceText || null,
       evidenceUrls,

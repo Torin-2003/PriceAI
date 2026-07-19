@@ -1,8 +1,9 @@
-import { canonicalCatalog, classifyOffer } from "@/lib/catalog";
+import { OFFER_CLASSIFICATION_VERSION, canonicalCatalog, classifyOffer } from "@/lib/catalog";
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { clearPublicDataCache, markPublicApiSnapshotsDirty } from "@/lib/data";
 import { requireAdminRequest } from "@/lib/env";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { categoryFeedbackMatchesCurrentClassification } from "@/lib/trust-risk";
 
 export async function POST(request: Request) {
   try {
@@ -51,15 +52,16 @@ export async function POST(request: Request) {
     const distribution = new Map<string, number>();
 
     const groupedOfferIds = new Map<string, { canonicalProductId: string; categorySlug: string; ids: string[] }>();
+    const classifiedProductByOfferId = new Map<string, string>();
 
     await forEachRawOfferPage(supabase, (rows) => {
       scannedCount += rows.length;
       for (const row of rows) {
         const canonical = classifyOffer(String(row.source_title || ""), {
           tags: Array.isArray(row.tags) ? row.tags.map(String) : [],
-          categorySlug: row.category_slug ? String(row.category_slug) : null,
           price: typeof row.price === "number" ? row.price : null,
         });
+        classifiedProductByOfferId.set(String(row.id), canonical.id);
         distribution.set(canonical.id, (distribution.get(canonical.id) || 0) + 1);
         if (String(row.canonical_product_id || "") === canonical.id && String(row.category_slug || "") === canonical.platform) {
           continue;
@@ -91,6 +93,12 @@ export async function POST(request: Request) {
       }
     }
 
+    const reconciledFeedbackCount = await reconcilePendingCategoryFeedback(
+      supabase,
+      classifiedProductByOfferId,
+      now,
+    );
+
     clearPublicDataCache();
     const snapshotRefreshQueued = await markPublicApiSnapshotsDirty("admin reclassify", { full: true });
 
@@ -99,6 +107,7 @@ export async function POST(request: Request) {
       productCount: canonicalCatalog.length,
       scannedCount,
       updatedCount,
+      reconciledFeedbackCount,
       inactiveProductCount: inactiveIds.length,
       snapshotRefreshQueued,
       distribution: Object.fromEntries(distribution.entries()),
@@ -110,6 +119,48 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+}
+
+async function reconcilePendingCategoryFeedback(
+  supabase: SupabaseClient,
+  classifiedProductByOfferId: Map<string, string>,
+  reviewedAt: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("offer_feedback")
+    .select("id,offer_id,product_id,product_slug,issue_dimension,expected_product_id")
+    .eq("status", "pending")
+    .eq("reason", "wrong_category")
+    .limit(1000);
+  if (error) throw error;
+
+  const resolvedIds = (data || []).flatMap((row) => {
+    const currentProductId = classifiedProductByOfferId.get(String(row.offer_id || ""));
+    const expectedProductId = row.expected_product_id ? String(row.expected_product_id) : null;
+    const snapshotProductId = row.product_id ? String(row.product_id) : row.product_slug ? String(row.product_slug) : null;
+    return categoryFeedbackMatchesCurrentClassification({
+      issueDimension: row.issue_dimension ? String(row.issue_dimension) : null,
+      expectedProductId,
+      snapshotProductId,
+      currentProductId,
+    }) ? [String(row.id)] : [];
+  });
+
+  for (const ids of chunks(resolvedIds, 100)) {
+    const { error: updateError } = await supabase
+      .from("offer_feedback")
+      .update({
+        status: "resolved",
+        reviewed_at: reviewedAt,
+        reviewer_note: `分类规则 ${OFFER_CLASSIFICATION_VERSION} 重建后已自动修正。`,
+        verification_status: "auto_fixed",
+        verification_message: "当前标准商品分类已与用户期望或反馈快照修正方向一致。",
+      })
+      .in("id", ids);
+    if (updateError) throw updateError;
+  }
+
+  return resolvedIds.length;
 }
 
 function chunks<T>(items: T[], size: number): T[][] {

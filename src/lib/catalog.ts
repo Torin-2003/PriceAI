@@ -2,6 +2,8 @@ import type { CanonicalProduct, ProductGroup, RawOffer } from "./types";
 import { offerMatchesFilterTags } from "./offer-filter-tags";
 import { API_CDK_PLATFORM, isPublicCatalogProduct } from "./trust-risk";
 
+export const OFFER_CLASSIFICATION_VERSION = "2026-07-19.feedback-contract-v1";
+
 export const allPlatformOptions = [
   "ChatGPT",
   "Claude",
@@ -811,7 +813,8 @@ function classifyOfferByTitle(
       return getCanonicalProduct("super-grok-heavy");
     }
 
-    if (matches(value, ["super", "supergrok", "月卡", "年卡", "激活码", "卡密", "直充", "充值"])) {
+    const hasPositiveSuperSignal = matches(value, ["super", "supergrok"]) && !hasNearbyNegation(value, "super(?:\\s*grok)?");
+    if (hasPositiveSuperSignal || matches(value, ["月卡", "年卡", "激活码", "卡密", "直充", "充值"])) {
       return getCanonicalProduct("super-grok");
     }
 
@@ -1130,6 +1133,12 @@ function latestDate(values: Array<string | null | undefined>): string | null {
 
 function matches(value: string, needles: string[]): boolean {
   return needles.some((needle) => value.includes(needle.toLowerCase()));
+}
+
+function hasNearbyNegation(value: string, signalPattern: string): boolean {
+  const scopedChineseNegation = new RegExp(`(?:非|不是|不含)\\s*(?:[^\\s]{1,8}\\s+)?${signalPattern}`, "i");
+  const directNegation = new RegExp(`(?:无\\s*|not\\s+)${signalPattern}`, "i");
+  return scopedChineseNegation.test(value) || directNegation.test(value);
 }
 
 function isExpired(value: string | null | undefined): boolean {
@@ -1485,6 +1494,8 @@ function hasEmailSignal(value: string): boolean {
     "学校邮箱",
     "域名邮箱",
     "企业邮箱",
+    "子邮箱",
+    "oauth2",
   ]);
 }
 
@@ -1515,6 +1526,8 @@ function isEmailAccountWithVerificationNote(value: string): boolean {
     "会接码的买",
     "登陆需要接码验证",
     "登录需要接码验证",
+    "只收验证码",
+    "接收验证码",
   ]);
 }
 
@@ -1599,6 +1612,7 @@ function isDreaminaProduct(value: string): boolean {
 
 function isTelegramProduct(value: string, contextValue = ""): boolean {
   if (matches(value, ["飞机大厨", "airplane chefs"])) return false;
+  if (isLikelyChatGptFreeAccountTitle(value)) return false;
   if (isTelegramContactOnly(value)) return false;
   if (isTelegramLanguagePack(value)) return false;
   if (isNonTelegramAccountProduct(value)) return false;
@@ -1843,6 +1857,7 @@ function isApiProduct(value: string): boolean {
 }
 
 function hasExplicitApiProductSignal(value: string): boolean {
+  if (/(^|[^a-z])api([^a-z]|$).{0,12}\d+\s*(?:刀|美元|美金|\$)/.test(value)) return true;
   if (matches(value, ["apikey", "api key", "api-key"])) return true;
   if (matches(value, ["claude/gpt/gemini中转站", "中转余额", "中转 gpt", "api中转", "api 中转"])) return true;
   if (
@@ -2043,6 +2058,8 @@ function isPureEmail(value: string): boolean {
     "域名邮箱",
     "企业邮箱",
     "邮箱账号",
+    "子邮箱",
+    "oauth2",
     ".edu",
   ]);
   if (!explicitEmail) return false;
@@ -2196,6 +2213,7 @@ function classifyPureEmail(value: string): string {
   if (matches(value, ["教育邮箱", "edu 邮箱", "学校邮箱", ".edu"])) return "education-email";
   if (matches(value, ["outlook", "hotmail", "微软邮箱", "microsoft 邮箱", "oauth2", "graph"])) return "outlook-account";
   if (matches(value, ["gmail", "谷歌邮箱", "google 邮箱", "google邮箱", "google个人邮箱", "google 个人邮箱", "谷歌账号", "google 账号"])) return "gmail-account";
+  if (hasEmailSignal(value) && matches(value, ["谷歌", "google"])) return "gmail-account";
   if (isICloudPureEmailProduct(value)) return "icloud-email";
 
   return "email-account";
@@ -2262,6 +2280,7 @@ function isChatGptPeripheralService(value: string): boolean {
   if (!hasPaymentLinkExtractionSignal && !matches(value, ["codex", "chatgpt", "gpt", "openai", "plus"])) return false;
   if (hasPaymentLinkExtractionSignal) {
     if (isCodexPhoneVerification(value)) return false;
+    if (matches(value, ["代付代扫", "代付服务", "代扫服务"])) return true;
     if (matches(value, ["成品号", "账号", "账户", "账密", "月卡", "会员", "直充", "代充"])) return false;
 
     return true;
@@ -2297,6 +2316,9 @@ function isChatGptPaymentLinkExtractionService(value: string): boolean {
     "二维码生成率",
     "支付链接",
     "提链服务",
+    "代付代扫",
+    "代付服务",
+    "代扫服务",
   ]);
 }
 
@@ -2487,7 +2509,7 @@ function isGrokProduct(value: string): boolean {
 
 function isGrokHeavyProduct(value: string): boolean {
   if (!isGrokProduct(value)) return false;
-  if (matches(value, ["非heavy", "非 heavy", "不是heavy", "不是 heavy", "不含heavy", "不含 heavy", "not heavy"])) return false;
+  if (hasNearbyNegation(value, "heavy")) return false;
 
   return matches(value, ["heavy", "grok heavy", "heavy grok", "grok super heavy", "super grok heavy", "supergrok heavy"]);
 }
@@ -2495,7 +2517,7 @@ function isGrokHeavyProduct(value: string): boolean {
 function isSuperGrokBundleProduct(value: string): boolean {
   if (!isGrokProduct(value)) return false;
   if (isGrokHeavyProduct(value)) return false;
-  if (matches(value, ["非 super grok", "非supergrok", "不是 super grok", "不是supergrok", "不含 super grok", "不含supergrok"])) return false;
+  if (hasNearbyNegation(value, "super(?:\\s*grok)?")) return false;
 
   return matches(value, [
     "super grok",
@@ -2940,6 +2962,11 @@ function isChatGptTeamDominant(value: string): boolean {
   if (isChatGptTeamExclusion(value)) return false;
   if (isChatGptPlusCarpool(value)) return false;
   if (isChatGptPlusAccountWithParentEmail(value)) return false;
+  if (
+    hasEmailSignal(value) &&
+    matches(value, ["母号"]) &&
+    !matches(value, ["team", "business", "k12", "团队", "席位", "邀请", "自动拉", "直拉"])
+  ) return false;
 
   return matches(value, [
     "gpt team",

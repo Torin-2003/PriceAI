@@ -42,6 +42,7 @@ import type {
   CollectorKind,
   OfferInput,
   OfferFeedback,
+  OfferFeedbackIssueDimension,
   OfferFeedbackPublicStatus,
   OfferFeedbackReason,
   OfferFeedbackRiskPrecheck,
@@ -1692,6 +1693,10 @@ function mapOfferFeedbackRow(row: Record<string, unknown>): OfferFeedback {
     offerSourceUpdatedAt: row.offer_source_updated_at ? String(row.offer_source_updated_at) : null,
     offerLastSeenAt: row.offer_last_seen_at ? String(row.offer_last_seen_at) : null,
     reason,
+    issueDimension: normalizeOfferFeedbackIssueDimension(row.issue_dimension),
+    expectedProductId: row.expected_product_id ? String(row.expected_product_id) : null,
+    classificationVersion: row.classification_version ? String(row.classification_version) : null,
+    classificationResult: row.classification_result && typeof row.classification_result === "object" ? row.classification_result as Record<string, unknown> : null,
     userExpectedAction: normalizeOfferFeedbackUserExpectedAction(row.user_expected_action),
     suggestedAction: normalizeOfferFeedbackSuggestedAction(row.suggested_action, reason),
     evidenceText: row.evidence_text ? String(row.evidence_text) : null,
@@ -1721,6 +1726,11 @@ function mapOfferFeedbackRow(row: Record<string, unknown>): OfferFeedback {
 
 function normalizeOfferFeedbackScope(value: unknown): OfferFeedbackScope {
   return value === "merchant" ? "merchant" : "offer";
+}
+
+function normalizeOfferFeedbackIssueDimension(value: unknown): OfferFeedbackIssueDimension | null {
+  if (value === "product_category" || value === "filter_tag" || value === "source_placement" || value === "unsure") return value;
+  return null;
 }
 
 function normalizeOfferFeedbackPublicStatus(value: unknown): OfferFeedbackPublicStatus {
@@ -3228,6 +3238,10 @@ export async function createOfferFeedback(input: {
   offerSourceUpdatedAt?: string | null;
   offerLastSeenAt?: string | null;
   reason: OfferFeedbackReason;
+  issueDimension?: OfferFeedbackIssueDimension | null;
+  expectedProductId?: string | null;
+  classificationVersion?: string | null;
+  classificationResult?: Record<string, unknown> | null;
   userExpectedAction?: OfferFeedbackUserExpectedAction | null;
   suggestedAction?: OfferFeedbackSuggestedAction | null;
   evidenceText?: string | null;
@@ -3339,6 +3353,10 @@ export async function createOfferFeedback(input: {
     offer_source_updated_at: input.offerSourceUpdatedAt || null,
     offer_last_seen_at: input.offerLastSeenAt || null,
     reason: input.reason,
+    issue_dimension: input.reason === "wrong_category" ? input.issueDimension || "product_category" : null,
+    expected_product_id: input.reason === "wrong_category" ? input.expectedProductId || null : null,
+    classification_version: input.classificationVersion || null,
+    classification_result: input.classificationResult || null,
     user_expected_action: userExpectedAction,
     suggested_action: suggestedAction,
     evidence_text: evidenceText,

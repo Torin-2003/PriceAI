@@ -1054,6 +1054,11 @@ export const offerFeedbackReasonValues = [
   "other",
 ] as const;
 export type OfferFeedbackReason = (typeof offerFeedbackReasonValues)[number];
+export type OfferFeedbackIssueDimension =
+  | "product_category"
+  | "filter_tag"
+  | "source_placement"
+  | "unsure";
 export type OfferFeedbackUserExpectedAction =
   | "recheck"
   | "hide_offer"
@@ -1129,6 +1134,10 @@ export type OfferFeedback = {
   offerSourceUpdatedAt: string | null;
   offerLastSeenAt: string | null;
   reason: OfferFeedbackReason;
+  issueDimension: OfferFeedbackIssueDimension | null;
+  expectedProductId: string | null;
+  classificationVersion: string | null;
+  classificationResult: Record<string, unknown> | null;
   userExpectedAction: OfferFeedbackUserExpectedAction;
   suggestedAction: OfferFeedbackSuggestedAction;
   evidenceText: string | null;

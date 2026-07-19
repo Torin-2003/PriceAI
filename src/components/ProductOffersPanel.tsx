@@ -9,7 +9,7 @@ import { MobileFilterSheet } from "@/components/ComparisonUi";
 import { CollectorSourceLogo } from "@/components/MerchantCollectorSource";
 import { buildGoogleAuthHref } from "@/lib/auth-paths";
 import { useAccountUser } from "@/lib/account-client";
-import { isAvailable, isSharedAccessOffer } from "@/lib/catalog";
+import { canonicalCatalog, compareProductDisplayOrder, isAvailable, isSharedAccessOffer } from "@/lib/catalog";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { readSessionCache, writeSessionCache } from "@/lib/client-cache";
 import { useMediaQuery } from "@/lib/client-hooks";
@@ -56,7 +56,7 @@ import { PUBLIC_OFFER_DEFAULT_LIMIT } from "@/lib/public-offer-query";
 import { hasMoreProductOfferPage, mergeProductOfferPages } from "@/lib/product-offer-pagination";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { useFeedbackEvidenceUpload } from "@/lib/use-feedback-evidence-upload";
-import type { MerchantCollectorFilter, OfferFeedbackReason, OfferFeedbackUserExpectedAction, PublicMerchantSummary, RawOffer } from "@/lib/types";
+import type { MerchantCollectorFilter, OfferFeedbackIssueDimension, OfferFeedbackReason, OfferFeedbackUserExpectedAction, PublicMerchantSummary, RawOffer } from "@/lib/types";
 import { formatCurrency, formatDateMinute, formatRelativeTime } from "@/lib/utils";
 
 type ProductOffersResponse = {
@@ -2059,6 +2059,8 @@ export function OfferFeedbackDialog({
   onClose: () => void;
 }) {
   const [reason, setReason] = useState<OfferFeedbackReason | "">("");
+  const [issueDimension, setIssueDimension] = useState<OfferFeedbackIssueDimension | "">("");
+  const [expectedProductId, setExpectedProductId] = useState("");
   const [userExpectedAction, setUserExpectedAction] = useState<OfferFeedbackUserExpectedAction>("unsure");
   const [notes, setNotes] = useState("");
   const [evidenceText, setEvidenceText] = useState("");
@@ -2129,6 +2131,16 @@ export function OfferFeedbackDialog({
       setLoading(false);
       return;
     }
+    if (reason === "wrong_category" && !issueDimension) {
+      setMessage({ type: "error", text: "请选择具体是哪一类分类问题。" });
+      setLoading(false);
+      return;
+    }
+    if (reason === "wrong_category" && issueDimension === "product_category" && !expectedProductId && notes.trim().length < 4) {
+      setMessage({ type: "error", text: "请选择正确分类，或在补充说明中写明应该如何归类。" });
+      setLoading(false);
+      return;
+    }
     if (requiresLogin && !accountUser) {
       persistOfferDraft();
       setAuthRequired(true);
@@ -2175,7 +2187,10 @@ export function OfferFeedbackDialog({
           offerCapturedAt: offer.capturedAt || null,
           offerSourceUpdatedAt: offer.sourceUpdatedAt || null,
           offerLastSeenAt: offer.lastSeenAt || null,
+          offerTags: offer.tags,
           reason,
+          issueDimension: reason === "wrong_category" ? issueDimension : null,
+          expectedProductId: reason === "wrong_category" && issueDimension === "product_category" ? expectedProductId || null : null,
           userExpectedAction,
           evidenceText: evidenceText || null,
           evidenceUrls,
@@ -2237,7 +2252,14 @@ export function OfferFeedbackDialog({
             <span className="mb-1 block text-xs font-medium text-[#5a6061]">问题类型（必选）</span>
             <select
               value={reason}
-              onChange={(event) => setReason(event.target.value as OfferFeedbackReason | "")}
+              onChange={(event) => {
+                const nextReason = event.target.value as OfferFeedbackReason | "";
+                setReason(nextReason);
+                if (nextReason !== "wrong_category") {
+                  setIssueDimension("");
+                  setExpectedProductId("");
+                }
+              }}
               required
               className="h-10 w-full rounded-lg border border-[#adb3b4]/40 bg-white px-3 text-sm outline-none transition focus:border-[#2d3435]"
             >
@@ -2247,6 +2269,43 @@ export function OfferFeedbackDialog({
               ))}
             </select>
           </label>
+          {reason === "wrong_category" ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-[#5a6061]">分类问题类型（必选）</span>
+                <select
+                  value={issueDimension}
+                  onChange={(event) => {
+                    const nextDimension = event.target.value as OfferFeedbackIssueDimension | "";
+                    setIssueDimension(nextDimension);
+                    if (nextDimension !== "product_category") setExpectedProductId("");
+                  }}
+                  required
+                  className="h-10 w-full rounded-lg border border-[#adb3b4]/40 bg-white px-3 text-sm outline-none transition focus:border-[#2d3435]"
+                >
+                  <option value="" disabled>请选择</option>
+                  {categoryIssueDimensionOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              {issueDimension === "product_category" ? (
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-[#5a6061]">应该归入</span>
+                  <select
+                    value={expectedProductId}
+                    onChange={(event) => setExpectedProductId(event.target.value)}
+                    className="h-10 w-full rounded-lg border border-[#adb3b4]/40 bg-white px-3 text-sm outline-none transition focus:border-[#2d3435]"
+                  >
+                    <option value="">不确定，在说明中填写</option>
+                    {feedbackExpectedProductOptions.map((option) => (
+                      <option key={option.id} value={option.id}>{option.platform} · {option.displayName}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+            </div>
+          ) : null}
           {requiresLogin && accountLoaded && !accountUser ? (
             <div className="rounded-lg border border-[#f1d6a8] bg-[#fff7e8] px-3 py-2 text-xs leading-5 text-[#7a541b]">
               <p>这类反馈需要登录后提交。登录后会回到当前页面并恢复问题类型、处理方式和补充说明。</p>
@@ -2703,6 +2762,15 @@ const feedbackReasonOptions = [
   { value: "bad_source", label: "渠道不可信" },
   { value: "other", label: "其他问题（以上都不符合）" },
 ];
+
+const categoryIssueDimensionOptions: Array<{ value: OfferFeedbackIssueDimension; label: string }> = [
+  { value: "product_category", label: "标准商品归错" },
+  { value: "filter_tag", label: "筛选标签错误" },
+  { value: "source_placement", label: "商家放错专区" },
+  { value: "unsure", label: "不确定，交给后台判断" },
+];
+
+const feedbackExpectedProductOptions = [...canonicalCatalog].sort(compareProductDisplayOrder);
 
 const merchantFeedbackReasonOptions = [
   { value: AFTERSALES_FEEDBACK_REASON, label: "售后/发货问题" },

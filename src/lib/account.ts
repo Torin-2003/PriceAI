@@ -8,7 +8,7 @@ import type { FeedbackFollowup, OfferFeedback, TransitDetectorJob, TransitDetect
 
 type SupabaseClient = NonNullable<ReturnType<typeof getSupabaseServerClient>>;
 
-export const ACCOUNT_FEEDBACK_FIELDS = "id,feedback_scope,product_id,product_slug,product_name,offer_id,source_id,source_name,source_title,offer_url,offer_price,offer_currency,offer_status,offer_captured_at,offer_source_updated_at,offer_last_seen_at,reason,user_expected_action,suggested_action,evidence_text,evidence_urls,ai_review_result,verification_status,verification_result,verification_checked_at,verification_message,created_collection_job_id,notes,contact,status,public_status,withdrawn_at,withdraw_reason,reviewer_note,user_id,user_email,user_display_name,created_at,reviewed_at";
+export const ACCOUNT_FEEDBACK_FIELDS = "id,feedback_scope,product_id,product_slug,product_name,offer_id,source_id,source_name,source_title,offer_url,offer_price,offer_currency,offer_status,offer_captured_at,offer_source_updated_at,offer_last_seen_at,reason,issue_dimension,expected_product_id,classification_version,classification_result,user_expected_action,suggested_action,evidence_text,evidence_urls,ai_review_result,verification_status,verification_result,verification_checked_at,verification_message,created_collection_job_id,notes,contact,status,public_status,withdrawn_at,withdraw_reason,reviewer_note,user_id,user_email,user_display_name,created_at,reviewed_at";
 
 export const ACCOUNT_DETECTOR_JOB_FIELDS = "id,user_id,user_email,protocol,base_url,target_model,intensity,include_long_context,upstream_type,status,detector_job_id,status_url,result_url,json_url,image_url,error_message,lease_expires_at,last_heartbeat_at,attempt_count,submitted_at,completed_at,updated_at";
 
@@ -277,6 +277,10 @@ export function mapAccountOfferFeedbackRow(row: Record<string, unknown>): OfferF
     offerSourceUpdatedAt: row.offer_source_updated_at ? String(row.offer_source_updated_at) : null,
     offerLastSeenAt: row.offer_last_seen_at ? String(row.offer_last_seen_at) : null,
     reason: String(row.reason || "other") as OfferFeedback["reason"],
+    issueDimension: row.issue_dimension ? String(row.issue_dimension) as OfferFeedback["issueDimension"] : null,
+    expectedProductId: row.expected_product_id ? String(row.expected_product_id) : null,
+    classificationVersion: row.classification_version ? String(row.classification_version) : null,
+    classificationResult: row.classification_result && typeof row.classification_result === "object" ? row.classification_result as Record<string, unknown> : null,
     userExpectedAction: String(row.user_expected_action || "recheck") as OfferFeedback["userExpectedAction"],
     suggestedAction: String(row.suggested_action || "todo") as OfferFeedback["suggestedAction"],
     evidenceText: row.evidence_text ? String(row.evidence_text) : null,

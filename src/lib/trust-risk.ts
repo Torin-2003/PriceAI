@@ -126,6 +126,18 @@ export function inferSuggestedActionForFeedback(reason: OfferFeedbackReason): Of
   return "todo";
 }
 
+export function categoryFeedbackMatchesCurrentClassification(input: {
+  issueDimension?: string | null;
+  expectedProductId?: string | null;
+  snapshotProductId?: string | null;
+  currentProductId?: string | null;
+}): boolean {
+  if ((input.issueDimension || "product_category") !== "product_category") return false;
+  if (!input.currentProductId) return false;
+  if (input.expectedProductId) return input.currentProductId === input.expectedProductId;
+  return Boolean(input.snapshotProductId && input.currentProductId !== input.snapshotProductId);
+}
+
 export function shouldCreateFeedbackVerification(
   reason: OfferFeedbackReason,
   notes?: string | null,

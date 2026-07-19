@@ -104,6 +104,10 @@ const cases = [
   ["X Premium+SuperGrok Heavy 一个月会员", "super-grok-heavy"],
   ["Grok 普号 体验号", "grok-account"],
   ["Grok白号账号密码Token", "grok-account"],
+  ["【Grok普号·体验】Free账密｜非Super｜仅基础体验｜质保短", "grok-account"],
+  ["【Grok普号·体验】非Super｜账密+SSO｜仅基础体验｜质保短", "grok-account"],
+  ["【SuperGrok·福利月卡】天数不定｜库存薄随时下架｜不是7天｜不是代充/Heavy", "super-grok"],
+  ["无质保 Super Grok 月卡", "super-grok"],
   ["【普号 SSO】 Grok AI > 长效微软邮箱 > 账号 SSO > 适合Super(30刀)，API等各类业务 > 取邮件API", "grok-account"],
   ["Claude Pro 月卡 直充", "claude-pro-month"],
   ["Claude Team 1.25x 30天质保订阅", "claude-team-standard"],
@@ -131,6 +135,8 @@ const cases = [
   ["Google AI Ultra 250美元 Flow 积分", "gemini-ultra"],
   ["Gmail 老号 Google 账号", "gmail-account"],
   ["Outlook OAuth2 微软邮箱", "outlook-account"],
+  ["【微软子邮箱·OAuth2】只收验证码｜不能网页登主号", "outlook-account"],
+  ["GPT注册专用谷歌Gmai邮箱母号api可裂变!", "gmail-account"],
   ["教育邮箱 .edu", "education-email"],
   ["域名邮箱 企业邮箱", "email-account"],
   ["iCloud邮箱---iCloud隐私邮箱，发货形式为邮箱----取码url---plus源头", "icloud-email"],
@@ -180,6 +186,7 @@ const cases = [
   ["成品｜Pro12个月｜支持GCP/CLI｜美区20-24年高权重老邮箱", "gemini-pro-year"],
   ["美区 2-4 年谷歌邮箱 跑gemini pro 失败的号（85%带gcp）", "gmail-account"],
   ["余额充值：100刀【不限时间,可用claude、gemini、gpt】", "openai-api-cdk"],
+  ["GPT/Claude api 30刀", "openai-api-cdk"],
   ["AI 平台 直充 10000美元额度 -Claude Opus 4.7 / Codex / Gemini", "openai-api-cdk"],
   ["直供实验室庞大稳定 Claude Max / Pro 池", "openai-api-cdk"],
   ["codex重置额度服务plus pro可用", "chatgpt-codex-service"],
@@ -204,6 +211,7 @@ const cases = [
   ["【印尼upi渠道】提链服务", "chatgpt-codex-service"],
   ["GPT-Plus印度UPI扫码对接（CDK）保持高二维码生成率", "chatgpt-codex-service"],
   ["GPT-Plus印度UPI扫码对接（CDK）10次", "chatgpt-codex-service"],
+  ["巴西PIX PLUS 代付代扫 1次，包含提链服务（建议买成品号，售后麻烦，即买即用，不能囤）", "chatgpt-codex-service"],
   ["印度 upi 渠道 成品号 短效码 质保首登", "other-product"],
   ["Gemini pro 一年CDK充值订阅 10次卡（一张卡10次额度）", "gemini-pro-recharge"],
   ["Gemini 3.1pro 12个月pixel成品号带长效接码链接（包反重力）", "gemini-pro-year"],
@@ -280,6 +288,11 @@ for (const [title, expected] of cases) {
 }
 
 const contextCases = [
+  [
+    "GPT Free 成品号全格式 Outlook 邮箱｜已接码｜可刷新 RT｜支持 sub / cpa / JSON",
+    { tags: ["C接码/邮箱/tg/其他", "卡密", "自动发货"] },
+    "chatgpt-free-account",
+  ],
   [
     "【美国+1】 1~2年 精养老号 | 高权重 | 抗风控强",
     { tags: ["TG/电报/飞机/ Telegram 账号", "卡密", "自动发货"] },

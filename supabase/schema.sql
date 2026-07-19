@@ -1812,6 +1812,10 @@ create table if not exists offer_feedback (
   offer_source_updated_at timestamptz,
   offer_last_seen_at timestamptz,
   reason text not null,
+  issue_dimension text,
+  expected_product_id text,
+  classification_version text,
+  classification_result jsonb,
   user_expected_action text not null default 'recheck',
   suggested_action text not null default 'recollect',
   evidence_text text,
@@ -1833,6 +1837,10 @@ create table if not exists offer_feedback (
 );
 
 alter table offer_feedback
+  add column if not exists issue_dimension text,
+  add column if not exists expected_product_id text,
+  add column if not exists classification_version text,
+  add column if not exists classification_result jsonb,
   add column if not exists verification_status text not null default 'not_needed',
   add column if not exists verification_result text,
   add column if not exists verification_message text,
@@ -1845,6 +1853,19 @@ alter table offer_feedback
 
 do $$
 begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'offer_feedback_issue_dimension_check'
+  ) then
+    alter table offer_feedback
+      add constraint offer_feedback_issue_dimension_check
+      check (
+        issue_dimension is null or
+        issue_dimension in ('product_category', 'filter_tag', 'source_placement', 'unsure')
+      );
+  end if;
+
   if not exists (
     select 1
     from pg_constraint
@@ -1912,6 +1933,9 @@ create index if not exists offer_feedback_created_at_idx on offer_feedback(creat
 create index if not exists offer_feedback_offer_id_idx on offer_feedback(offer_id);
 create index if not exists offer_feedback_source_id_idx on offer_feedback(source_id);
 create index if not exists offer_feedback_suggested_action_idx on offer_feedback(suggested_action);
+create index if not exists offer_feedback_pending_category_idx
+  on offer_feedback(offer_id, created_at desc)
+  where reason = 'wrong_category' and status = 'pending';
 create index if not exists offer_feedback_verification_status_idx
   on offer_feedback(verification_status, created_at desc);
 create index if not exists offer_feedback_created_collection_job_id_idx

@@ -1,4 +1,5 @@
 import {
+  categoryFeedbackMatchesCurrentClassification,
   AFTERSALES_FEEDBACK_REASON,
   buildInitialFeedbackVerificationResult,
   countFeedbackImageEvidenceReferences,
@@ -34,6 +35,21 @@ assertEqual(feedbackRequiresContact("description_mismatch"), false, "description
 assertEqual(inferSuggestedActionForFeedback("description_mismatch"), "todo", "description_mismatch should go to manual review");
 assertEqual(shouldCreateFeedbackVerification("description_mismatch", "标题党", "商品页截图"), false, "description_mismatch should not enter transient verification");
 assertEqual(MODEL_PRECHECK_FEEDBACK_REASONS.has("description_mismatch"), true, "description_mismatch should support risk precheck");
+
+assertEqual(categoryFeedbackMatchesCurrentClassification({
+  snapshotProductId: "chatgpt-plus",
+  currentProductId: "openai-phone-verification",
+}), true, "legacy category feedback should close when classification changes");
+assertEqual(categoryFeedbackMatchesCurrentClassification({
+  expectedProductId: "grok-account",
+  snapshotProductId: "super-grok",
+  currentProductId: "grok-account",
+}), true, "category feedback should close when the expected product matches");
+assertEqual(categoryFeedbackMatchesCurrentClassification({
+  issueDimension: "filter_tag",
+  snapshotProductId: "chatgpt-plus",
+  currentProductId: "openai-phone-verification",
+}), false, "filter-tag feedback should not close from product reclassification");
 assertEqual(
   buildInitialFeedbackVerificationResult({ reason: "description_mismatch", evidenceText: "商品标题和实际权益不一致" }),
   null,

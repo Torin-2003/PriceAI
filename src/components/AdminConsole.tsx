@@ -1276,7 +1276,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
     if (result.ok) {
       setGlobalMessage({
         type: "success",
-        text: `重分类完成：同步 ${result.productCount || 0} 个标准商品，更新 ${result.updatedCount || 0} 条报价。刷新页面后可查看结果。`,
+        text: `重分类完成：同步 ${result.productCount || 0} 个标准商品，更新 ${result.updatedCount || 0} 条报价，自动收口 ${result.reconciledFeedbackCount || 0} 条分类反馈。刷新页面后可查看结果。`,
       });
     } else {
       setGlobalMessage({ type: "error", text: result.message || "重分类失败。" });
@@ -5050,6 +5050,7 @@ function OfferFeedbackList({
           (item.productSlug ? productByKey.get(item.productSlug) : null) ||
           (item.productName ? productByKey.get(item.productName) : null);
         const currentProduct = matchedOffer?.canonicalProductId ? productByKey.get(matchedOffer.canonicalProductId) : null;
+        const expectedProduct = item.expectedProductId ? productByKey.get(item.expectedProductId) : null;
         const sourceName = offerSourceLabel(matchedOffer, item);
         const sourceTitle = item.sourceTitle || matchedOffer?.sourceTitle || "未记录原始商品名";
         const offerUrl = item.offerUrl || matchedOffer?.url || null;
@@ -5119,6 +5120,11 @@ function OfferFeedbackList({
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${feedbackReasonClass(item.reason)}`}>
                     {feedbackReasonLabel(item.reason)}
                   </span>
+                  {item.reason === "wrong_category" && item.issueDimension ? (
+                    <span className="rounded-full bg-[#f2f4f4] px-2 py-0.5 text-xs font-semibold text-[#5a6061]">
+                      {feedbackIssueDimensionLabel(item.issueDimension)}
+                    </span>
+                  ) : null}
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${feedbackActionClass(item.suggestedAction)}`}>
                     建议：{feedbackSuggestedActionLabel(item.suggestedAction)}
                   </span>
@@ -5265,7 +5271,8 @@ function OfferFeedbackList({
                 ) : null}
                 {isCategoryFeedback ? (
                   <p className="mt-2 rounded-lg bg-[#eef3f8] px-3 py-2 text-xs leading-5 text-[#47657a]">
-                    分类问题优先用于修正归类；如果确认这条报价或整个渠道暂时不该展示，也可以先临时下架报价或渠道。
+                    {expectedProduct ? `用户期望：${expectedProduct.displayName}。` : "用户未指定期望标准商品。"}
+                    {item.classificationVersion ? ` 提交规则：${item.classificationVersion}。` : ""}
                   </p>
                 ) : null}
                 {item.contact ? (
@@ -10582,6 +10589,13 @@ function feedbackReasonLabel(value: OfferFeedback["reason"]): string {
     other: "其他问题",
   };
   return labels[value] || "其他问题";
+}
+
+function feedbackIssueDimensionLabel(value: NonNullable<OfferFeedback["issueDimension"]>): string {
+  if (value === "filter_tag") return "筛选标签错误";
+  if (value === "source_placement") return "商家放错专区";
+  if (value === "unsure") return "分类问题待判断";
+  return "标准商品归错";
 }
 
 function feedbackReasonClass(value: OfferFeedback["reason"]): string {
