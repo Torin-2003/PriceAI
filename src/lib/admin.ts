@@ -306,9 +306,9 @@ export async function updateSourceState(input: {
       ? input.collectorKind
       : normalizeCollectorKind(existing.collector_kind) || inferCollectorKindFromHost(sourceHost);
     const nextCollectionMethod = input.collectionMethod || String(existing.collection_method || "");
-    const supportedHost = ["www.ldxp.cn", "pay.ldxp.cn", "ldxp.cn", "pay.qxvx.cn", "catfk.com"].includes(sourceHost);
+    const supportedHost = ["www.ldxp.cn", "pay.ldxp.cn", "ldxp.cn"].includes(sourceHost);
     if (nextGroup === "vip_15m" && (nextCollectorKind !== "shopApi" || nextCollectionMethod !== "http" || !supportedHost)) {
-      throw new Error("VIP 15分钟监测组目前只支持 LDXP、QXVX 和云猫 ShopApi 渠道。");
+      throw new Error("VIP 15分钟监测组目前只支持 LDXP ShopApi 渠道。");
     }
   }
 

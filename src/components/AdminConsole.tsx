@@ -12057,7 +12057,7 @@ function sourceSupportsVipCollection(source: Source): boolean {
   const host = sourceHost(source);
   return resolvedCollectionMethod(source) === "http" &&
     resolvedCollectorKind(source) === "shopApi" &&
-    ["ldxp.cn", "pay.ldxp.cn", "pay.qxvx.cn", "catfk.com"].includes(host);
+    ["ldxp.cn", "pay.ldxp.cn"].includes(host);
 }
 
 function compareSourcesForOps(a: Source, b: Source): number {
