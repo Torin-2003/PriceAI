@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 5
-- **Last Active**: 2026-07-19
+- **Total Sessions**: 6
+- **Last Active**: 2026-07-20
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~189 | Active |
+| `journal-1.md` | ~222 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | 日期 | 标题 | 提交数 | 分支 |
 |---|------|-------|---------|--------|
+| 6 | 2026-07-20 | fix-source-and-ldxp-fee-pricing | `b4079e7` | `main` |
 | 5 | 2026-07-19 | LDXP 双域名自动切换与后台开关 | `24bff0a` | `main` |
 | 4 | 2026-07-19 | standard product market keyword subtitles | `81286eb8c681f744ce4b4e0cdcdc6345157c4b6e` | `main` |
 | 3 | 2026-07-12 | Deploy API transit public monitor fallback | `749a5ae7117e7ea2d9d276c1cb13bbdfc2704d40` | `main` |

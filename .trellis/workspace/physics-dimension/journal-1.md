@@ -187,3 +187,36 @@ Cloudflare Actions 29692031230 发布成功；生产 versionTag 与 Huoshan2 run
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: fix-source-and-ldxp-fee-pricing
+
+**Date**: 2026-07-20
+**Task**: fix-source-and-ldxp-fee-pricing
+**Branch**: `main`
+
+### Summary
+
+为 fk.10886.xyz 固定支付宝买家手续费 4%，统一输出到手价；修复 LDxP 已持久化手续费策略读取与结算采样优先级。测试、类型检查、构建、数据库迁移、Cloudflare 发布、Huoshan2/杭州采集运行时同步均通过；线上 10886 ¥117.90 -> ¥122.62，LDxP cao ¥288.40 -> ¥297.05。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b4079e7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
