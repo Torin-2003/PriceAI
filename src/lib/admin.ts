@@ -2597,7 +2597,7 @@ function inferCollectorKindFromSubmissionFingerprint(parsed: URL, html: string):
 
 function inferSubmittedSourceName(host: string, parsedTitle: string | null, shopToken: string | null): string {
   if (host === "ai666.dnxb.cc") return "T佬的gmail批发渠道";
-  if (host === "pay.ldxp.cn" && shopToken) return `链动小铺 / ${shopToken}`;
+  if ((host === "www.ldxp.cn" || host === "pay.ldxp.cn") && shopToken) return `链动小铺 / ${shopToken}`;
   if (host === "pay.qxvx.cn" && shopToken) return `QXVX Pay / ${shopToken}`;
   if (host === "catfk.com" && shopToken) return `云猫寄售 / ${shopToken}`;
   if (host === "kapay.shop") return "Auto Subscribe / kapay.shop";
@@ -2625,7 +2625,7 @@ function getSubmittedUrlType(parsed: URL): "source" | "product" | "unknown" {
 
 function inferSubmittedSourceId(host: string, sourceName: string, shopToken: string | null): string {
   if (host === "ai666.dnxb.cc") return "ai666-gmail-wholesale";
-  if (host === "pay.ldxp.cn") return `ldxp-${slugify(shopToken || sourceName) || stableId(host, sourceName)}`;
+  if (host === "www.ldxp.cn" || host === "pay.ldxp.cn") return `ldxp-${slugify(shopToken || sourceName) || stableId("ldxp", sourceName)}`;
   if (host === "pay.qxvx.cn") return `qxvx-${slugify(shopToken || sourceName) || stableId(host, sourceName)}`;
   if (host === "catfk.com") return `catfk-${slugify(shopToken || sourceName) || stableId(host, sourceName)}`;
   if (host === "shop.auto-subscribe.com") return "auto-subscribe";
@@ -3017,7 +3017,7 @@ function normalizeHostname(value: string): string {
 }
 
 function isSharedShopApiPlatformHost(host: string): boolean {
-  return host === "pay.ldxp.cn" || host === "pay.qxvx.cn" || host === "ldxp.cn" || host === "catfk.com";
+  return host === "www.ldxp.cn" || host === "pay.ldxp.cn" || host === "pay.qxvx.cn" || host === "ldxp.cn" || host === "catfk.com";
 }
 
 function normalizeCollectorKind(value: unknown): CollectorKind | null {

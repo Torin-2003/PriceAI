@@ -12,6 +12,11 @@ import {
   isShopApiDirectExitBlockedForTarget,
   isShopApiExitErrorMessage,
   isShopApiProxyTransportErrorMessage,
+  isLdxpFailoverErrorMessage,
+  normalizeLdxpRuntimeSettings,
+  normalizeShopApiItemOfferUrl,
+  rewriteLdxpUrlHost,
+  alternateLdxpHost,
   selectTargets,
   shopApiFullSnapshotEvidenceReliable,
   shopApiSnapshotReportedGoodsCount,
@@ -60,6 +65,24 @@ assert.equal(isShopApiProxyTransportErrorMessage("fetch failed: ECONNRESET: sock
 assert.equal(isShopApiProxyTransportErrorMessage("fetch failed: UND_ERR_CONNECT_TIMEOUT"), true);
 assert.equal(isShopApiProxyTransportErrorMessage("fetch failed"), false);
 assert.equal(isShopApiProxyTransportErrorMessage("Shop info unavailable for token shop"), false);
+assert.deepEqual(normalizeLdxpRuntimeSettings(null), {
+  mode: "auto",
+  activeHost: "www.ldxp.cn",
+  lastSwitchedAt: null,
+  lastSwitchReason: null,
+});
+assert.equal(normalizeLdxpRuntimeSettings({ mode: "pay", activeHost: "www.ldxp.cn" }).activeHost, "pay.ldxp.cn");
+assert.equal(alternateLdxpHost("www.ldxp.cn"), "pay.ldxp.cn");
+assert.equal(alternateLdxpHost("pay.ldxp.cn"), "www.ldxp.cn");
+assert.equal(
+  rewriteLdxpUrlHost("https://pay.ldxp.cn/item/abc123?channel=9#buy", "www.ldxp.cn"),
+  "https://www.ldxp.cn/item/abc123?channel=9#buy",
+);
+assert.equal(normalizeShopApiItemOfferUrl("https://www.ldxp.cn/item/abc123"), "https://pay.ldxp.cn/item/abc123");
+assert.equal(isLdxpFailoverErrorMessage("returned HTTP 520"), true);
+assert.equal(isLdxpFailoverErrorMessage("fetch failed: UND_ERR_CONNECT_TIMEOUT"), true);
+assert.equal(isLdxpFailoverErrorMessage("returned HTTP 403 (denied by http_ratelimit)"), false);
+assert.equal(isLdxpFailoverErrorMessage("returned HTTP 429"), false);
 assert.equal(shopApiSnapshotReportedGoodsCount(78, 79), 78);
 assert.equal(shopApiSnapshotReportedGoodsCount(null, 79), 79);
 assert.equal(

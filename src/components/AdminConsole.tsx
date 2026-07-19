@@ -44,6 +44,7 @@ import { AdminShell, type AdminNavSection } from "@/components/admin/AdminShell"
 import { AdminPasswordPanel, type AdminPasswordDraft, type AdminPasswordStatus } from "@/components/admin/AdminPasswordPanel";
 import { AdminUsersPanel } from "@/components/admin/AdminUsersPanel";
 import { InfrastructureOverviewPanel } from "@/components/admin/InfrastructureOverviewPanel";
+import { LdxpDomainSettingsPanel } from "@/components/admin/LdxpDomainSettingsPanel";
 import { apiProviderTypeLabels } from "@/lib/api-models";
 import { formatBeijingDateTimeLocalValue, parseBeijingDateTimeLocalValue } from "@/lib/beijing-time";
 import { classifyOffer } from "@/lib/catalog";
@@ -3891,6 +3892,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
             {/* Health tab */}
             {activeTab === "health" && (
               <div role="tabpanel" id="tabpanel-health">
+                <LdxpDomainSettingsPanel />
                 <div className="mb-5">
                   <CollectionMonitoringPanel monitoring={data.collectionMonitoring} />
                 </div>
@@ -11017,7 +11019,7 @@ function isMisleadingSharedShopApiPlatformUrl(
 
 function isSharedShopApiPlatformHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^www\./, "");
-  return host === "pay.ldxp.cn" || host === "pay.qxvx.cn" || host === "ldxp.cn" || host === "catfk.com";
+  return host === "www.ldxp.cn" || host === "pay.ldxp.cn" || host === "pay.qxvx.cn" || host === "ldxp.cn" || host === "catfk.com";
 }
 
 function safeUrl(value: string | null | undefined): URL | null {

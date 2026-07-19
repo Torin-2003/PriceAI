@@ -1,6 +1,8 @@
 import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { requireAdminOrCronRequest } from "@/lib/env";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { getLdxpDomainSettings } from "@/lib/ldxp-domain-settings";
+import { isLdxpHost, rewriteLdxpUrlHost, type LdxpDomainSettingsSummary } from "@/lib/ldxp-domain-settings-shared";
 import { z } from "zod";
 
 const DEFAULT_LIMIT = 3;
@@ -12,8 +14,8 @@ const DAILY_PROBE_INTERVAL_MINUTES = 24 * 60;
 const WEEKLY_PROBE_INTERVAL_MINUTES = 7 * DAILY_PROBE_INTERVAL_MINUTES;
 const FAMILY_SCOPED_FETCH_LIMIT = 1000;
 const FAMILY_HOSTS: Record<string, string[]> = {
-  "liandong-shop": ["pay.ldxp.cn", "ldxp.cn"],
-  ldxp: ["pay.ldxp.cn", "ldxp.cn"],
+  "liandong-shop": ["www.ldxp.cn", "pay.ldxp.cn", "ldxp.cn"],
+  ldxp: ["www.ldxp.cn", "pay.ldxp.cn", "ldxp.cn"],
   "yunmao-consignment": ["catfk.com"],
   yunmao: ["catfk.com"],
   catfk: ["catfk.com"],
@@ -22,6 +24,7 @@ const SHARD_FAMILY_ALIASES: Record<string, string> = {
   "liandong-shop": "ldxp",
   ldxp: "ldxp",
   "pay.ldxp.cn": "ldxp",
+  "www.ldxp.cn": "ldxp",
   "ldxp.cn": "ldxp",
   "yunmao-consignment": "yunmao",
   yunmao: "yunmao",
@@ -50,6 +53,7 @@ export async function GET(request: Request) {
 
     const supabase = getSupabaseServerClient();
     if (!supabase) throw new Error("Supabase 尚未配置，无法下发采集任务。");
+    const ldxpDomainSettings = await getLdxpDomainSettings();
 
     const url = new URL(request.url);
     const query = querySchema.parse(Object.fromEntries(url.searchParams.entries()));
@@ -100,7 +104,7 @@ export async function GET(request: Request) {
         shardIndex: query.shardIndex,
         staleBefore,
         source: "collection_jobs",
-        tasks: queuedTasks,
+        tasks: applyLdxpDomainSettingsToTasks(queuedTasks, ldxpDomainSettings),
       });
     }
 
@@ -175,7 +179,7 @@ export async function GET(request: Request) {
       shardCount: query.shardCount,
       shardIndex: query.shardIndex,
       staleBefore,
-      tasks,
+      tasks: applyLdxpDomainSettingsToTasks(tasks, ldxpDomainSettings),
     });
   } catch (error) {
     const status = error instanceof z.ZodError ? 400 : isUnauthorizedError(error) ? 401 : 500;
@@ -450,6 +454,25 @@ function sourceTaskFromRow(source: {
     rawOfferUrls,
     shopApiFeePolicies: feePolicies,
   };
+}
+
+function applyLdxpDomainSettingsToTasks<T extends ReturnType<typeof sourceTaskFromRow>>(
+  tasks: T[],
+  settings: LdxpDomainSettingsSummary,
+): Array<T & {
+  ldxpDomainMode?: LdxpDomainSettingsSummary["mode"];
+  ldxpActiveHost?: LdxpDomainSettingsSummary["activeHost"];
+}> {
+  return tasks.map((task) => {
+    if (!isLdxpHost(task.baseUrl || task.sourceUrl)) return task;
+    return {
+      ...task,
+      baseUrl: rewriteLdxpUrlHost(task.baseUrl, settings.activeHost) || task.baseUrl,
+      rawOfferUrls: task.rawOfferUrls.map((url) => rewriteLdxpUrlHost(url, settings.activeHost) || url),
+      ldxpDomainMode: settings.mode,
+      ldxpActiveHost: settings.activeHost,
+    };
+  });
 }
 
 function sourceTaskFromProbeJob(job: Record<string, unknown>) {

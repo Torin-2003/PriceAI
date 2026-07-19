@@ -85,7 +85,7 @@ export type SubmissionPreclassification = {
   classifiedAt?: string;
 };
 
-const SHARED_SHOP_HOSTS = new Set(["catfk.com", "pay.ldxp.cn", "ldxp.cn", "pay.qxvx.cn"]);
+const SHARED_SHOP_HOSTS = new Set(["catfk.com", "www.ldxp.cn", "pay.ldxp.cn", "ldxp.cn", "pay.qxvx.cn"]);
 
 export function normalizeSubmissionUrl(value: string | null | undefined): string | null {
   try {

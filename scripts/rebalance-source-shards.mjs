@@ -12,10 +12,11 @@ const PAGE_SIZE = 1000;
 const SOURCE_CHUNK_SIZE = 80;
 
 const FAMILY_HOSTS = {
-  "liandong-shop": ["pay.ldxp.cn", "ldxp.cn"],
-  ldxp: ["pay.ldxp.cn", "ldxp.cn"],
-  "pay.ldxp.cn": ["pay.ldxp.cn", "ldxp.cn"],
-  "ldxp.cn": ["pay.ldxp.cn", "ldxp.cn"],
+  "liandong-shop": ["www.ldxp.cn", "pay.ldxp.cn", "ldxp.cn"],
+  ldxp: ["www.ldxp.cn", "pay.ldxp.cn", "ldxp.cn"],
+  "www.ldxp.cn": ["www.ldxp.cn", "pay.ldxp.cn", "ldxp.cn"],
+  "pay.ldxp.cn": ["www.ldxp.cn", "pay.ldxp.cn", "ldxp.cn"],
+  "ldxp.cn": ["www.ldxp.cn", "pay.ldxp.cn", "ldxp.cn"],
   "yunmao-consignment": ["catfk.com"],
   yunmao: ["catfk.com"],
   catfk: ["catfk.com"],
@@ -25,6 +26,7 @@ const SHARD_FAMILY_ALIASES = {
   "liandong-shop": "ldxp",
   ldxp: "ldxp",
   "pay.ldxp.cn": "ldxp",
+  "www.ldxp.cn": "ldxp",
   "ldxp.cn": "ldxp",
   "yunmao-consignment": "yunmao",
   yunmao: "yunmao",

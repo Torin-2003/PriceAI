@@ -106,7 +106,7 @@ function isMisleadingSharedShopApiPlatformUrl(
 
 function isSharedShopApiPlatformHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^www\./, "");
-  return host === "pay.ldxp.cn" || host === "pay.qxvx.cn" || host === "ldxp.cn" || host === "catfk.com";
+  return host === "www.ldxp.cn" || host === "pay.ldxp.cn" || host === "pay.qxvx.cn" || host === "ldxp.cn" || host === "catfk.com";
 }
 
 function safeUrl(value: string | null | undefined): URL | null {

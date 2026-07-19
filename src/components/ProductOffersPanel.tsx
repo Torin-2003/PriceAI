@@ -14,6 +14,7 @@ import { trackAnalyticsEvent } from "@/lib/analytics";
 import { readSessionCache, writeSessionCache } from "@/lib/client-cache";
 import { useMediaQuery } from "@/lib/client-hooks";
 import { createTimeoutSignal, isGeneratedDatasetStale, newestUsableGeneratedDataset } from "@/lib/client-refresh";
+import { rewriteLdxpUrlHost } from "@/lib/ldxp-domain-settings-shared";
 import {
   MERCHANT_COLLECTOR_FILTERS,
   merchantCollectorFilterLogo,
@@ -1673,7 +1674,7 @@ function OfferExitNoticeDialog({ offer, onClose }: { offer: RawOffer; onClose: (
 
   function continueToOffer() {
     if (muteToday) muteOfferExitNoticeToday();
-    window.open(offer.url, "_blank", "noopener,noreferrer");
+    window.open(rewriteLdxpUrlHost(offer.url) || offer.url, "_blank", "noopener,noreferrer");
     onClose();
   }
 
@@ -1961,11 +1962,12 @@ export function OfferLink({
   onRequestPurchase?: (offer: RawOffer) => void;
 }) {
   const [localOutboundOffer, setLocalOutboundOffer] = useState<RawOffer | null>(null);
+  const outboundUrl = rewriteLdxpUrlHost(offer.url) || offer.url;
 
   return (
     <>
       <a
-        href={offer.url}
+        href={outboundUrl}
         target="_blank"
         rel="noopener noreferrer"
         onClick={(event) => {

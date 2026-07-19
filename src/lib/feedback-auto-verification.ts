@@ -1199,7 +1199,7 @@ async function readLimitedText(response: Response, maxBytes: number): Promise<st
 
 function isShopApiOfferUrl(parsed: URL): boolean {
   const host = normalizeHostname(parsed.hostname);
-  return ["catfk.com", "ldxp.cn", "pay.ldxp.cn", "pay.qxvx.cn"].includes(host) && Boolean(goodsKeyFromUrl(parsed));
+  return ["catfk.com", "ldxp.cn", "www.ldxp.cn", "pay.ldxp.cn", "pay.qxvx.cn"].includes(host) && Boolean(goodsKeyFromUrl(parsed));
 }
 
 function isKamiOfferUrl(parsed: URL): boolean {

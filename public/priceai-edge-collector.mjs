@@ -31,6 +31,8 @@ const SHOP_API_FIXED_FEE_RATE = 0.03;
 const SHOP_API_CENT_TOLERANCE = 0.011;
 const SHOP_API_PRODUCT_LEVEL_FEE_HOSTS = new Set(["catfk.com"]);
 const SHOP_API_FULL_SNAPSHOT_MIN_COVERAGE = 0.8;
+const LDXP_WWW_HOST = "www.ldxp.cn";
+const LDXP_PAY_HOST = "pay.ldxp.cn";
 
 const args = parseArgs(process.argv.slice(2));
 const explicitMaxCycles = args.maxCycles || args["max-cycles"] || process.env.PRICEAI_AGENT_MAX_CYCLES;
@@ -92,6 +94,7 @@ const config = {
 let lastControlEndpoint = config.endpoint;
 let directRetryAfter = 0;
 let cachedCollectorNode = null;
+let ldxpRuntimeHostOverride = null;
 
 if (!config.token) {
   console.error("Missing PRICEAI_AGENT_TOKEN. Pass it as env or --token.");
@@ -442,6 +445,28 @@ async function postSubmissionProbeResult(target, result) {
 }
 
 async function collectShopApi(target) {
+  if (!isLdxpTarget(target) || target.ldxpDomainMode !== "auto") {
+    return collectShopApiOnce(target);
+  }
+
+  try {
+    return await collectShopApiOnce(target);
+  } catch (error) {
+    if (!isLdxpFailoverErrorMessage(errorMessage(error))) throw error;
+    const fromHost = normalizeHostname(target.baseUrl || target.sourceUrl);
+    const toHost = alternateLdxpHost(fromHost);
+    if (!toHost) throw error;
+
+    const fallbackTarget = rewriteLdxpTargetHost(target, toHost);
+    const collection = await collectShopApiOnce(fallbackTarget);
+    ldxpRuntimeHostOverride = toHost;
+    await postLdxpAutomaticSwitch(fromHost, toHost, `采集 ${target.sourceId} 失败后备用域名成功：${errorMessage(error)}`)
+      .catch((postError) => console.error(`[priceai-edge] failed to persist LDXP host switch: ${errorMessage(postError)}`));
+    return collection;
+  }
+}
+
+async function collectShopApiOnce(target) {
   const base = target.baseUrl;
   const discovery = await discoverShopTokens(target);
   const tokens = discovery.tokens;
@@ -659,7 +684,7 @@ function makeShopApiOfferFromItem({
       stockCount,
       minOrderQuantity,
       bulkPricingTiers,
-      url: itemUrl,
+      url: normalizeShopApiItemOfferUrl(itemUrl) || itemUrl,
       tags: compact([
         categoryName,
         item.goods_type === "card" ? "卡密" : null,
@@ -1449,7 +1474,7 @@ async function postJson(url, body, referer) {
 function normalizeTask(task) {
   const sourceUrl = String(task.sourceUrl || "");
   const baseUrl = String(task.baseUrl || deriveBaseUrl(sourceUrl));
-  return {
+  const normalized = {
     sourceId: String(task.sourceId || ""),
     sourceName: String(task.sourceName || task.sourceId || sourceUrl),
     sourceUrl,
@@ -1462,7 +1487,62 @@ function normalizeTask(task) {
     collectionJobCreatedAt: task.collectionJobCreatedAt ? String(task.collectionJobCreatedAt) : null,
     taskMode: task.taskMode ? String(task.taskMode) : null,
     submissionId: task.submissionId ? String(task.submissionId) : null,
+    ldxpDomainMode: task.ldxpDomainMode ? String(task.ldxpDomainMode) : null,
+    ldxpActiveHost: task.ldxpActiveHost ? String(task.ldxpActiveHost) : null,
   };
+  return normalized.ldxpDomainMode === "auto" && ldxpRuntimeHostOverride
+    ? rewriteLdxpTargetHost(normalized, ldxpRuntimeHostOverride)
+    : normalized;
+}
+
+function isLdxpTarget(target) {
+  return [LDXP_WWW_HOST, LDXP_PAY_HOST, "ldxp.cn"].includes(normalizeHostname(target?.baseUrl || target?.sourceUrl));
+}
+
+function alternateLdxpHost(host) {
+  if (host === LDXP_WWW_HOST) return LDXP_PAY_HOST;
+  if (host === LDXP_PAY_HOST || host === "ldxp.cn") return LDXP_WWW_HOST;
+  return null;
+}
+
+function rewriteLdxpTargetHost(target, host) {
+  if (!isLdxpTarget(target)) return target;
+  return {
+    ...target,
+    baseUrl: rewriteLdxpUrlHost(target.baseUrl, host),
+    rawOfferUrls: Array.isArray(target.rawOfferUrls)
+      ? target.rawOfferUrls.map((url) => rewriteLdxpUrlHost(url, host))
+      : target.rawOfferUrls,
+    ldxpActiveHost: host,
+  };
+}
+
+function rewriteLdxpUrlHost(value, host) {
+  try {
+    const url = new URL(String(value || ""));
+    if (![LDXP_WWW_HOST, LDXP_PAY_HOST, "ldxp.cn"].includes(url.hostname.toLowerCase())) return value;
+    url.protocol = "https:";
+    url.hostname = host;
+    url.port = "";
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
+function isLdxpFailoverErrorMessage(message) {
+  if (/returned HTTP (?:520|522|523|524)\b/i.test(String(message || ""))) return true;
+  return /(?:ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT|UND_ERR_HEADERS_TIMEOUT|UND_ERR_BODY_TIMEOUT|AbortError|Connect Timeout|headers timeout|body timeout|fetch failed|DNS|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|TLS|socket hang up)/i.test(String(message || ""));
+}
+
+async function postLdxpAutomaticSwitch(fromHost, toHost, reason) {
+  const { body } = await fetchControlJson("/api/admin/collector-agent/ldxp-domain", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ fromHost, toHost, reason }),
+  }, "LDXP domain switch", 20_000);
+  if (!body.ok) throw new Error(body.message || "LDXP domain switch failed.");
+  return body;
 }
 
 async function getShopApiDefaultChannel(base, token, referer) {
@@ -1691,13 +1771,14 @@ function normalizeShopApiItemOfferUrl(value) {
   try {
     const parsed = new URL(String(value || ""));
     const host = normalizeHostname(parsed.hostname);
-    if (!["catfk.com", "ldxp.cn", "pay.ldxp.cn", "pay.qxvx.cn"].includes(host)) return null;
+    if (!["catfk.com", "ldxp.cn", "www.ldxp.cn", "pay.ldxp.cn", "pay.qxvx.cn"].includes(host)) return null;
 
     const pathGoodsKey = parsed.pathname.match(/^\/item\/([^/?#]+)/i)?.[1] || null;
     const goodsKey = pathGoodsKey || parsed.searchParams.get("commodity") || parsed.searchParams.get("id");
     if (!goodsKey) return null;
 
-    return `https://${host}/item/${encodeURIComponent(decodeURIComponent(goodsKey))}`;
+    const canonicalHost = [LDXP_WWW_HOST, LDXP_PAY_HOST, "ldxp.cn"].includes(host) ? LDXP_PAY_HOST : host;
+    return `https://${canonicalHost}/item/${encodeURIComponent(decodeURIComponent(goodsKey))}`;
   } catch {
     return null;
   }

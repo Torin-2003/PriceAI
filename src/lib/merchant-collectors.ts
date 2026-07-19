@@ -91,7 +91,7 @@ export function merchantSourcePlatform(input: {
       hasPlatformAftersalesMechanism: true,
     };
   }
-  if (host === "pay.ldxp.cn" || host === "ldxp.cn") {
+  if (host === "www.ldxp.cn" || host === "pay.ldxp.cn" || host === "ldxp.cn") {
     return {
       id: "liandongShop",
       label: "链动小铺",
@@ -126,7 +126,7 @@ export function merchantSourcePlatform(input: {
       hasPlatformAftersalesMechanism: true,
     };
   }
-  if (/pay\.ldxp\.cn|ldxp|链动|鏈動|liandong/.test(text)) {
+  if (/(?:www|pay)\.ldxp\.cn|ldxp|链动|鏈動|liandong/.test(text)) {
     return {
       id: "liandongShop",
       label: "链动小铺",

@@ -24,6 +24,7 @@ export function stableId(...parts: Array<string | number | null | undefined>): s
 const SHOP_API_OFFER_HOSTS = new Set([
   "catfk.com",
   "ldxp.cn",
+  "www.ldxp.cn",
   "pay.ldxp.cn",
   "pay.qxvx.cn",
 ]);
@@ -65,7 +66,8 @@ export function normalizeShopApiItemOfferUrl(value: string | null | undefined): 
   const goodsKey = pathGoodsKey || parsed.searchParams.get("commodity") || parsed.searchParams.get("id");
   if (!goodsKey) return null;
 
-  return `https://${host}/item/${encodeURIComponent(decodeURIComponent(goodsKey))}`;
+  const canonicalHost = host === "www.ldxp.cn" || host === "ldxp.cn" ? "pay.ldxp.cn" : host;
+  return `https://${canonicalHost}/item/${encodeURIComponent(decodeURIComponent(goodsKey))}`;
 }
 
 export function normalizeOfferUrlForDedupe(value: string | null | undefined): string {

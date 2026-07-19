@@ -223,7 +223,7 @@ export function isShopApiOffer(
     ...(Array.isArray(offer.tags) ? offer.tags : []),
   ].join(" ").toLowerCase();
 
-  return /shopapi|shop api|shop-api|liandong|链动|鏈動|ldxp|pay\.ldxp\.cn|pay\.qxvx\.cn|catfk\.com/.test(haystack);
+  return /shopapi|shop api|shop-api|liandong|链动|鏈動|ldxp|(?:www|pay)\.ldxp\.cn|pay\.qxvx\.cn|catfk\.com/.test(haystack);
 }
 
 export type OfferRiskHint = {

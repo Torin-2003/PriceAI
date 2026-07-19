@@ -6493,14 +6493,14 @@ function inferMerchantShopUrl({
     const token = (idMatch?.[1] || nameMatch?.[1] || "").trim();
     return token ? `https://pay.qxvx.cn/shop/${encodeURIComponent(token)}` : null;
   }
-  if (parsedHost !== "pay.ldxp.cn" && parsedHost !== "ldxp.cn") return null;
+  if (parsedHost !== "www.ldxp.cn" && parsedHost !== "pay.ldxp.cn" && parsedHost !== "ldxp.cn") return null;
 
   const idMatch = String(sourceId || "").match(/^ldxp-([^/]+)$/i);
   const nameMatch = String(sourceName || "").match(/(?:LDXP|链动小铺)\s*\/\s*([^/\s]+)/i);
   const token = (idMatch?.[1] || nameMatch?.[1] || "").trim();
   if (!token || token === "cn") return null;
 
-  return `https://pay.ldxp.cn/shop/${encodeURIComponent(token)}`;
+  return `https://www.ldxp.cn/shop/${encodeURIComponent(token)}`;
 }
 
 function dedupePublicOffers(offers: RawOffer[]): RawOffer[] {

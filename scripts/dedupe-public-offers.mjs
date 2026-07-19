@@ -222,7 +222,7 @@ function normalizeShopApiItemOfferUrl(value) {
   try {
     const parsed = new URL(value);
     const host = normalizeHostname(parsed.hostname);
-    if (!["catfk.com", "ldxp.cn", "pay.ldxp.cn", "pay.qxvx.cn"].includes(host)) return null;
+    if (!["catfk.com", "ldxp.cn", "www.ldxp.cn", "pay.ldxp.cn", "pay.qxvx.cn"].includes(host)) return null;
 
     const pathGoodsKey = parsed.pathname.match(/^\/item\/([^/?#]+)/i)?.[1] || null;
     const goodsKey = pathGoodsKey || parsed.searchParams.get("commodity") || parsed.searchParams.get("id");

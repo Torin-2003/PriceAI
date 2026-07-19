@@ -27,6 +27,7 @@ import { MerchantFeedbackDialog, OfferActions, OfferFeedbackButton, OfferFeedbac
 import { SiteHeader } from "@/components/SiteHeader";
 import { clearFeedbackResumeRequest, getFeedbackResumeRequest } from "@/lib/feedback-draft";
 import { listDetailNavigationHref, shouldHandleListDetailClick } from "@/lib/list-return";
+import { rewriteLdxpUrlHost } from "@/lib/ldxp-domain-settings-shared";
 import { saveCurrentListScrollPosition, useListScrollRestoration } from "@/lib/list-scroll-restoration";
 import {
   compareProductDisplayOrder,
@@ -1887,7 +1888,7 @@ function MobileMerchantMetric({ label, value }: { label: string; value: number }
 }
 
 function MerchantSourceLink({ merchant }: { merchant: PublicMerchantSummary }) {
-  const href = merchant.shopUrl || merchant.entryUrl;
+  const href = rewriteLdxpUrlHost(merchant.shopUrl || merchant.entryUrl) || merchant.shopUrl || merchant.entryUrl;
   const usableHref = isMerchantShopUrl(href) ? href : null;
 
   if (!usableHref) {
