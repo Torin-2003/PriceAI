@@ -550,9 +550,7 @@ function sourceObservationIntervalMinutes(lastError: unknown, consecutiveFailure
   const message = String(lastError || "");
   const isConfirmedEmptyShop = /(?:店铺接口正常[^。\n]*(?:完整)?商品快照为空|店铺正常[^。\n]*(?:没有商品|无商品|商品为空)|shop (?:api )?(?:reachable|healthy)[^\n]*(?:0 goods|empty (?:goods )?snapshot)|goods_count\s*[=:]\s*0)/i.test(message);
   if (isConfirmedEmptyShop) return DAILY_PROBE_INTERVAL_MINUTES;
-
-  const isSiteFailure = /(?:\bHTTP\s*(?:403|404|410|451|468|5\d\d)\b|\b(?:403|404|410|451|468)\b|采集结果为空|empty result|no offers|found no offers|fetch failed|ECONNRESET|ETIMEDOUT|连接(?:失败|超时|重置)|店铺.*(?:关闭|打烊)|商家已被关闭交易|website has been stopped)/i.test(message);
-  return isSiteFailure ? WEEKLY_PROBE_INTERVAL_MINUTES : null;
+  return WEEKLY_PROBE_INTERVAL_MINUTES;
 }
 
 function isTransientUpstreamError(value: unknown): boolean {

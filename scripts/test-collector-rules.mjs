@@ -40,6 +40,9 @@ assert.equal(isWeeklyProbeFailure("HTTP 468", 3), true);
 assert.equal(isWeeklyProbeFailure("HTTP 502", 3), true);
 assert.equal(isWeeklyProbeFailure("HTTP 522", 3), true);
 assert.equal(isWeeklyProbeFailure("商家已被关闭交易", 3), true);
+assert.equal(isWeeklyProbeFailure("域名跳转至运营商警告页", 3), true);
+assert.equal(isWeeklyProbeFailure("No shop token found", 3), true);
+assert.equal(isWeeklyProbeFailure("未知采集器错误", 3), true);
 assert.equal(isWeeklyProbeFailure("HTTP 404 from source", 2), false);
 assert.equal(isWeeklyProbeFailure("店铺接口正常，完整商品快照为空（goods_count=0）。", 3), false);
 assert.equal(
