@@ -7,6 +7,7 @@ import {
   blackcatWholesaleActionIdFromChunk,
   blockShopApiDirectExitForTarget,
   calculateShopApiBuyerAdjustment,
+  cooldownSkipReason,
   classifyShopCollectionScheduleTier,
   createShopApiProxyReusePool,
   extractProxyLeaseFromPayload,
@@ -275,6 +276,27 @@ console.warn = originalWarn;
 assert.equal(priceStatsAfterRefreshTimeout.length, 1);
 assert.equal(priceStatsAfterRefreshTimeout[0].sourceId, "ldxp-youzhi");
 assert.match(schedulerWarnings[0], /statement timeout/);
+
+const now = Date.now();
+assert.equal(
+  cooldownSkipReason(
+    {
+      lastSuccessAt: new Date(now - 16 * 60_000).toISOString(),
+      collectionSchedule: { intervalMinutes: 15 },
+    },
+    { all: true },
+  ),
+  null,
+);
+assert.match(
+  cooldownSkipReason(
+    {
+      lastSuccessAt: new Date(now - 16 * 60_000).toISOString(),
+    },
+    { all: true },
+  )?.message || "",
+  /最近 25 分钟/,
+);
 
 const aggregatedRuns = latestShopCollectionCrawlRunBySource([
   {

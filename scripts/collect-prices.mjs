@@ -641,6 +641,7 @@ export {
   blackcatWholesaleActionIdFromChunk,
   blockShopApiDirectExitForTarget,
   calculateShopApiBuyerAdjustment,
+  cooldownSkipReason,
   createShopApiProxyReusePool,
   extractProxyLeaseFromPayload,
   isDailyProbeFailure,
@@ -4867,7 +4868,10 @@ function cooldownSkipReason(target, options = {}) {
   const lastSuccessMs = target.lastSuccessAt ? new Date(target.lastSuccessAt).getTime() : NaN;
   if (!Number.isFinite(lastSuccessMs)) return null;
 
-  const cooldownMinutes = cooldownMinutesFor(options);
+  const scheduledIntervalMinutes = Number(target.collectionSchedule?.intervalMinutes);
+  const cooldownMinutes = Number.isFinite(scheduledIntervalMinutes) && scheduledIntervalMinutes > 0
+    ? Math.min(cooldownMinutesFor(options), Math.trunc(scheduledIntervalMinutes))
+    : cooldownMinutesFor(options);
   const cooldownMs = cooldownMinutes * 60 * 1000;
   const ageMs = Date.now() - lastSuccessMs;
   if (ageMs < 0 || ageMs >= cooldownMs) return null;
