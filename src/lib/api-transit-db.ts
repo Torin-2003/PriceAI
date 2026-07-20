@@ -2,6 +2,8 @@ import "server-only";
 
 import type {
   TransitAvailability,
+  TransitAvailabilityMatchLevel,
+  TransitAvailabilityScope,
   TransitAvailabilitySourceType,
   TransitModelFamily,
   TransitMultiplierHistoryPoint,
@@ -177,7 +179,15 @@ const OFFER_BASE_COLUMNS = [
   "availability_source_type",
   "availability_source_label",
   "availability_source_url",
+  "availability_scope",
+  "availability_match_level",
+  "monitoring_scope_id",
 ];
+const OFFER_AVAILABILITY_EVIDENCE_COLUMNS = [
+  "availability_scope",
+  "availability_match_level",
+  "monitoring_scope_id",
+] as const;
 const OFFER_FIXED_PRICE_COLUMNS = [
   "billing_mode",
   "fixed_price",
@@ -667,7 +677,7 @@ async function readPublicOfferRows(
     OFFER_COLUMNS_WITHOUT_CACHE_HIT_OR_AVAILABILITY_SOURCE,
     OFFER_COLUMNS_WITHOUT_LATENCY_CACHE_HIT_OR_AVAILABILITY_SOURCE,
   ];
-  const attempts = withOfferFixedPriceColumnFallbacks(baseAttempts);
+  const attempts = withOfferAvailabilityEvidenceFallbacks(withOfferFixedPriceColumnFallbacks(baseAttempts));
   let lastError: unknown = null;
   for (const columns of attempts) {
     try {
@@ -700,12 +710,12 @@ async function readPublicOfferRowsWithoutNewOptionalColumns(
     OFFER_COLUMNS_WITHOUT_FIRST_CHECKED_IMAGE_OUTPUT_OR_AVAILABILITY_SOURCE,
     withoutColumnsFromSelect(OFFER_COLUMNS_WITHOUT_FIRST_CHECKED_IMAGE_OUTPUT_OR_AVAILABILITY_SOURCE, "cache_hit_rate", "cache_hit_sample_tokens"),
   ];
-  const attempts = Array.from(new Set(baseAttempts.flatMap((columns) => [
+  const attempts = withOfferAvailabilityEvidenceFallbacks(Array.from(new Set(baseAttempts.flatMap((columns) => [
     columns,
     withoutColumnsFromSelect(columns, ...OFFER_FIXED_PRICE_COLUMNS),
     withoutColumnsFromSelect(columns, "availability_latest_latency_ms", "availability_avg_latency_7d_ms"),
     withoutColumnsFromSelect(columns, "availability_latest_latency_ms", "availability_avg_latency_7d_ms", ...OFFER_FIXED_PRICE_COLUMNS),
-  ])));
+  ]))));
   let lastError: unknown = previousError;
   for (const columns of attempts) {
     try {
@@ -722,6 +732,13 @@ function withOfferFixedPriceColumnFallbacks(columns: string[]): string[] {
   return Array.from(new Set(columns.flatMap((columnList) => [
     columnList,
     withoutColumnsFromSelect(columnList, ...OFFER_FIXED_PRICE_COLUMNS),
+  ])));
+}
+
+function withOfferAvailabilityEvidenceFallbacks(columns: string[]): string[] {
+  return Array.from(new Set(columns.flatMap((columnList) => [
+    columnList,
+    withoutColumnsFromSelect(columnList, ...OFFER_AVAILABILITY_EVIDENCE_COLUMNS),
   ])));
 }
 
@@ -1327,6 +1344,9 @@ function mapStationRow(
       sourceType: source.type,
       sourceLabel: source.label,
       sourceUrl: source.url,
+      scope: "station",
+      matchLevel: "exact",
+      monitoringScopeId: `station:${id}:${source.type}`,
     },
     prices: offerRows
       .map((offer) => mapOfferRow(offer, historyByOffer, recentSamplesByKey, { preferPublicStatusSamples }))
@@ -1359,6 +1379,7 @@ function mapOfferRow(
   const stationId = stringValue(row.station_id);
   const sevenDayRate = numberValue(row.availability_seven_day_rate);
   const sevenDaySamples = integerValue(row.availability_seven_day_samples) || 0;
+  const availabilityEvidence = availabilityEvidenceFromRow(row, source.type, family, standardModel, groupName);
   const recentSamples = sevenDaySamples > 0 && sevenDayRate !== null
     ? getRecentAvailabilitySamplesForScope(
         recentSamplesByKey,
@@ -1405,6 +1426,9 @@ function mapOfferRow(
       sourceType: source.type,
       sourceLabel: source.label,
       sourceUrl: source.url,
+      scope: availabilityEvidence.scope,
+      matchLevel: availabilityEvidence.matchLevel,
+      monitoringScopeId: availabilityEvidence.monitoringScopeId,
     },
     cacheUsage: transitCacheUsageFromRow(row),
     history: historyByOffer.get(historyKey({
@@ -1414,6 +1438,60 @@ function mapOfferRow(
       group_name: groupName,
     })) || [],
   };
+}
+
+function availabilityEvidenceFromRow(
+  row: DbRow,
+  sourceType: TransitAvailabilitySourceType,
+  family: TransitModelFamily,
+  standardModel: TransitModelPrice["standardModel"],
+  groupName: string,
+): {
+  scope: TransitAvailabilityScope;
+  matchLevel: TransitAvailabilityMatchLevel;
+  monitoringScopeId: string;
+} {
+  const note = stringValue(row.availability_note);
+  const storedScope = availabilityScope(row.availability_scope);
+  const storedMatchLevel = availabilityMatchLevel(row.availability_match_level);
+  const matchLevel = storedMatchLevel || inferAvailabilityMatchLevel(sourceType, note);
+  const scope = storedScope || inferAvailabilityScope(sourceType, matchLevel, note);
+  const scopeKey =
+    scope === "station" ? stringValue(row.station_id) :
+      scope === "group" ? groupName :
+        scope === "model" && matchLevel === "family" ? family :
+          scope === "model" ? standardModel :
+            `${groupName}|${standardModel}`;
+  return {
+    scope,
+    matchLevel,
+    monitoringScopeId:
+      nullableString(row.monitoring_scope_id) ||
+      ["legacy", row.station_id, sourceType, scope, scopeKey].map(stringValue).join(":"),
+  };
+}
+
+function inferAvailabilityMatchLevel(
+  sourceType: TransitAvailabilitySourceType,
+  note: string,
+): TransitAvailabilityMatchLevel {
+  if (/同模型族参考/.test(note)) return "family";
+  if (/同模型监测|performance summary|uptime14d/i.test(note)) return "model";
+  if (/同分组监测/.test(note)) return "group";
+  if (sourceType === "public_model_catalog") return "model";
+  if (sourceType === "public_status") return "group";
+  return "exact";
+}
+
+function inferAvailabilityScope(
+  sourceType: TransitAvailabilitySourceType,
+  matchLevel: TransitAvailabilityMatchLevel,
+  note: string,
+): TransitAvailabilityScope {
+  if (matchLevel === "group" || /分组监测/.test(note)) return "group";
+  if (matchLevel === "model" || matchLevel === "family" || sourceType === "public_model_catalog") return "model";
+  if (sourceType === "priceai_probe") return "offer";
+  return "offer";
 }
 
 function stationGroupMultiplierFromRawPayload(value: unknown): number | null {
@@ -1561,6 +1639,16 @@ function timestampValue(value: unknown): string {
 function availabilitySourceType(value: unknown): TransitAvailabilitySourceType {
   const type = stringValue(value);
   return isTransitAvailabilitySourceType(type) ? type : "unknown";
+}
+
+function availabilityScope(value: unknown): TransitAvailabilityScope | null {
+  const scope = stringValue(value);
+  return scope === "station" || scope === "group" || scope === "model" || scope === "offer" ? scope : null;
+}
+
+function availabilityMatchLevel(value: unknown): TransitAvailabilityMatchLevel | null {
+  const level = stringValue(value);
+  return level === "exact" || level === "group" || level === "model" || level === "family" ? level : null;
 }
 
 function availabilitySourceFromRow(

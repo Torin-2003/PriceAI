@@ -54,6 +54,12 @@ assert.equal(configuredApinodeSource.pricingEndpointUrl, "https://apinode.ltd/ap
 assert.equal(configuredApinodeSource.monitorUrl, "https://apinode.ltd/public/transit?view=monitoring");
 assert.equal(configuredApinodeSource.stationSystem, "sub_to_api");
 assert.equal(configuredApinodeSource.autoPublish, true);
+assert.deepEqual(configuredApinodeSource.groupAliases, {
+  "Team/Plus渠道": "Team/Plus-标准通道",
+  "Plus渠道": "Plus-经济通道",
+  "Pro/Team/Plus渠道": "Pro/Team/Plus-稳定通道",
+  "grok-尝鲜渠道": "Grok尝鲜分组",
+});
 const configuredCallaiSource = transitSourceConfig.find((source) => source.id === "sub-callai-one");
 assert.ok(configuredCallaiSource, "Sub Callai One must stay in API transit public collection sources.");
 assert.equal(configuredCallaiSource.collectorKind, "ai_transit_snapshot");
@@ -1734,6 +1740,102 @@ const aliuapiProGpt54Mini = aliuapiAiTransitSnapshot.offers.find((offer) => offe
 assert.equal(aliuapiProGpt54Mini.model_multiplier, 0.12);
 assert.equal(aliuapiProGpt54Mini.availability_seven_day_samples, 1);
 assert.equal(aliuapiProGpt54Mini.availability_source_type, "public_status");
+
+const currentA6MonitoringGroups = [
+  ["GPT Pro", "GPT Pro - 优质客户单独开通", 98.83],
+  ["GPT Plus SOL - 兜底通道", "GPT Plus - 有SOL模型 - 兜底通道", 81.27],
+  ["特殊 GPT Plus", "特殊 GPT Plus - 没有SOL模型 - 稳定", 98.44],
+  ["GPT Plus SOL - 多通道综合", "GPT Plus - 有SOL模型 - 自动倍率", 96.05],
+];
+const currentA6Snapshot = __test.parsePricingPayload(
+  configuredAliuapiSource,
+  {
+    schema_version: "ai-transit.v1",
+    system: "sub2api",
+    generated_at: "2026-07-20T07:05:00.000Z",
+    groups: currentA6MonitoringGroups.map(([, groupName], index) => ({
+      name: groupName,
+      platform: "openai",
+      rate_multiplier: 0.04 + index * 0.01,
+      models: [{
+        standard_model: "gpt-5.5",
+        raw_model: "gpt-5.5",
+        price: {
+          input_usd_per_token: 0.000005,
+          output_usd_per_token: 0.00003,
+          cache_read_usd_per_token: 0.0000005,
+        },
+      }],
+    })),
+    monitoring: currentA6MonitoringGroups.map(([name, groupName, availability], index) => ({
+      name,
+      group_name: groupName,
+      primary_model: "gpt-5.5",
+      primary_status: "operational",
+      availability_7d: availability,
+      latest_latency_ms: 1_000 + index,
+      last_checked_at: `2026-07-20T07:0${index}:00.000Z`,
+      timeline: [{
+        status: "operational",
+        latency_ms: 1_000 + index,
+        checked_at: `2026-07-20T07:0${index}:00.000Z`,
+      }],
+    })),
+  },
+  "2026-07-20T07:05:00.000Z",
+);
+assert.equal(currentA6Snapshot.offers.length, 4);
+assert.deepEqual(
+  currentA6Snapshot.offers.map((offer) => offer.availability_seven_day_rate),
+  [0.9883, 0.8127, 0.9844, 0.9605],
+);
+assert.ok(currentA6Snapshot.offers.every((offer) => offer.availability_scope === "group"));
+assert.ok(currentA6Snapshot.offers.every((offer) => offer.availability_match_level === "exact"));
+assert.equal(new Set(currentA6Snapshot.offers.map((offer) => offer.monitoring_scope_id)).size, 4);
+assert.deepEqual(
+  new Set(currentA6Snapshot.availabilitySamples.filter((sample) => sample.scope === "offer").map((sample) => sample.group_name)),
+  new Set(currentA6MonitoringGroups.map(([, groupName]) => groupName)),
+);
+
+const sameGroupIndependentModels = __test.parsePricingPayload(
+  configuredApinodeSource,
+  {
+    schema_version: "ai-transit.v1",
+    system: "sub2api",
+    generated_at: "2026-07-20T07:10:00.000Z",
+    groups: [{
+      name: "Pro/Team/Plus-稳定通道",
+      platform: "openai",
+      rate_multiplier: 0.07,
+      models: ["gpt-5.5", "gpt-5.6-sol", "gpt-5.4", "gpt-5.4-mini"].map((standard_model) => ({
+        standard_model,
+        raw_model: standard_model,
+        price: { input_usd_per_token: 0.000005, output_usd_per_token: 0.00003 },
+      })),
+    }],
+    monitoring: [
+      { group_name: "Pro/Team/Plus渠道", primary_model: "gpt-5.5", availability_7d: 99, sample_count_7d: 60 },
+      { group_name: "Pro/Team/Plus渠道", primary_model: "gpt-5.6-sol", availability_7d: 97, sample_count_7d: 60 },
+    ],
+  },
+  "2026-07-20T07:10:00.000Z",
+);
+assert.equal(sameGroupIndependentModels.offers.length, 4);
+const sameGroupExactOffers = sameGroupIndependentModels.offers.filter(
+  (offer) => offer.availability_match_level === "exact",
+);
+const sameGroupFallbackOffers = sameGroupIndependentModels.offers.filter(
+  (offer) => offer.availability_match_level === "group",
+);
+assert.equal(sameGroupExactOffers.length, 2);
+assert.equal(new Set(sameGroupExactOffers.map((offer) => offer.monitoring_scope_id)).size, 2);
+assert.equal(sameGroupFallbackOffers.length, 2);
+assert.equal(new Set(sameGroupFallbackOffers.map((offer) => offer.monitoring_scope_id)).size, 1);
+assert.ok(sameGroupFallbackOffers.every((offer) => offer.availability_seven_day_samples === 120));
+assert.deepEqual(
+  sameGroupExactOffers.map((offer) => offer.availability_seven_day_rate),
+  [0.99, 0.97],
+);
 
 const mfttaiAiTransitSnapshot = __test.parsePricingPayload(
   configuredMfttaiSource,

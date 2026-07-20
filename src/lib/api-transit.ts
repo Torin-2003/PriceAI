@@ -706,9 +706,75 @@ export function getTransitAvailabilityRollupPrices(
     grouped.set(key, [...(grouped.get(key) || []), price]);
   }
 
-  return Array.from(grouped.values())
+  const representatives = Array.from(grouped.values())
     .map((group) => [...group].sort((left, right) => compareTransitAvailabilityRollupPrice(station, left, right))[0])
     .filter((price): price is TransitModelPrice => Boolean(price));
+  const byEvidence = new Map<string, TransitModelPrice>();
+  for (const price of representatives) {
+    const key = getTransitAvailabilityEvidenceKey(station, price);
+    const existing = byEvidence.get(key);
+    if (!existing || compareTransitAvailabilityRollupPrice(station, price, existing) < 0) {
+      byEvidence.set(key, price);
+    }
+  }
+  return Array.from(byEvidence.values());
+}
+
+export function getPreferredTransitAvailabilityRollupPrices(
+  station: TransitStation,
+  prices: TransitModelPrice[]
+): TransitModelPrice[] {
+  const availabilityPrices = getTransitAvailabilityRollupPrices(station, prices);
+  const directEvidence = availabilityPrices.filter(
+    (price) => !isTransitAvailabilityReference(price.availability)
+  );
+  return directEvidence.length ? directEvidence : availabilityPrices;
+}
+
+export function getTransitAvailabilityMatchLevel(
+  availability: Pick<TransitAvailability, "matchLevel" | "note" | "sourceType">
+): NonNullable<TransitAvailability["matchLevel"]> {
+  if (availability.matchLevel) return availability.matchLevel;
+  const note = availability.note || "";
+  if (/同模型族参考/.test(note)) return "family";
+  if (/同模型监测|performance summary|uptime14d/i.test(note)) return "model";
+  if (/同分组监测/.test(note)) return "group";
+  if (availability.sourceType === "public_model_catalog") return "model";
+  if (availability.sourceType === "public_status") return "group";
+  return "exact";
+}
+
+export function getTransitAvailabilityScope(
+  availability: Pick<TransitAvailability, "scope" | "matchLevel" | "note" | "sourceType">
+): NonNullable<TransitAvailability["scope"]> {
+  if (availability.scope) return availability.scope;
+  const matchLevel = getTransitAvailabilityMatchLevel(availability);
+  if (matchLevel === "group") return "group";
+  if (matchLevel === "model" || matchLevel === "family" || availability.sourceType === "public_model_catalog") {
+    return "model";
+  }
+  return availability.sourceType === "priceai_probe" ? "offer" : "offer";
+}
+
+export function isTransitAvailabilityReference(
+  availability: Pick<TransitAvailability, "matchLevel" | "note" | "sourceType">
+): boolean {
+  const matchLevel = getTransitAvailabilityMatchLevel(availability);
+  return matchLevel === "model" || matchLevel === "family";
+}
+
+function getTransitAvailabilityEvidenceKey(station: TransitStation, price: TransitModelPrice): string {
+  const availability = price.availability;
+  if (availability.monitoringScopeId) return availability.monitoringScopeId;
+  const scope = getTransitAvailabilityScope(availability);
+  const matchLevel = getTransitAvailabilityMatchLevel(availability);
+  const scopeKey =
+    scope === "station" ? station.id :
+      scope === "group" ? price.groupName :
+        scope === "model" && matchLevel === "family" ? price.family :
+          scope === "model" ? price.standardModel :
+            `${price.groupName}|${price.standardModel}`;
+  return [station.id, availability.sourceType, availability.sourceUrl || "", scope, scopeKey].join("|");
 }
 
 function compareTransitAvailabilityRollupPrice(
@@ -717,6 +783,7 @@ function compareTransitAvailabilityRollupPrice(
   right: TransitModelPrice
 ): number {
   return (
+    availabilityMatchLevelPriority(right.availability) - availabilityMatchLevelPriority(left.availability) ||
     availabilitySourcePriority(right.availability.sourceType) -
       availabilitySourcePriority(left.availability.sourceType) ||
     right.availability.sevenDaySamples - left.availability.sevenDaySamples ||
@@ -729,6 +796,19 @@ function compareTransitAvailabilityRollupPrice(
       "asc"
     )
   );
+}
+
+function availabilityMatchLevelPriority(availability: TransitAvailability): number {
+  switch (getTransitAvailabilityMatchLevel(availability)) {
+    case "exact":
+      return 4;
+    case "group":
+      return 3;
+    case "model":
+      return 2;
+    case "family":
+      return 1;
+  }
 }
 
 export type TransitFamilyRateSummary = {
@@ -748,6 +828,7 @@ export type TransitFamilyRateSummary = {
   recentSamples?: TransitAvailability["recentSamples"];
   latestLatencyMs: number | null;
   avgLatency7dMs: number | null;
+  referenceOnly: boolean;
 };
 
 export type TransitAvailabilityRollup = Pick<
@@ -764,6 +845,7 @@ export type TransitAvailabilityRollup = Pick<
   | "sourceUrl"
 > & {
   note?: string;
+  referenceOnly: boolean;
 };
 
 export type TransitAvailabilityBarTone = "good" | "warn" | "bad" | "empty";
@@ -863,14 +945,6 @@ export function getTransitRecentAvailabilitySampleLookupScopes(
   if (options.includeStationFallback) pushScope("", "", null, "station");
 
   return scopes;
-}
-
-function getRecentTransitAvailabilitySamplesFromSummaries(
-  summaries: Array<Pick<TransitFamilyRateSummary, "recentSamples">>
-): TransitAvailability["recentSamples"] {
-  return normalizeRecentAvailabilitySamples(
-    summaries.flatMap((summary) => summary.recentSamples || [])
-  );
 }
 
 function normalizeRecentAvailabilitySamples(
@@ -983,7 +1057,7 @@ function summarizeRateScope(
   options: { rollupByGroup?: boolean } = {}
 ): TransitFamilyRateSummary {
   const scopePrices = options.rollupByGroup ? getRepresentativePricesByGroup(prices) : prices;
-  const availabilityPrices = getTransitAvailabilityRollupPrices(station, prices);
+  const availabilityPrices = getPreferredTransitAvailabilityRollupPrices(station, prices);
   const multipliers = scopePrices
     .map((price) => price.modelMultiplier)
     .filter((value): value is number => value !== null && Number.isFinite(value));
@@ -1019,6 +1093,8 @@ function summarizeRateScope(
   const latestLatencyMs = latestLatencyFromPrices(availabilityPrices);
   const avgLatency7dMs = weightedAverageLatency(availabilityPrices);
   const recentSamples = getRecentTransitAvailabilitySamples(availabilityPrices);
+  const referenceOnly =
+    availabilitySamples > 0 && availabilityPrices.every((price) => isTransitAvailabilityReference(price.availability));
 
   return {
     family,
@@ -1037,6 +1113,7 @@ function summarizeRateScope(
     recentSamples,
     latestLatencyMs,
     avgLatency7dMs,
+    referenceOnly,
   };
 }
 
@@ -1114,10 +1191,11 @@ export function getStationComparisonSummary(
 }
 
 export function getStationPublishedAvailabilitySummary(station: TransitStation): TransitAvailabilityRollup {
-  const summaries = TRANSIT_MODEL_FAMILY_ORDER
-    .map((family) => getFamilyRateSummary(station, family))
-    .filter((summary) => summary.priceCount > 0);
-  const samples = summaries.reduce((total, summary) => total + summary.sevenDaySamples, 0);
+  const availabilityPrices = getPreferredTransitAvailabilityRollupPrices(station, station.prices);
+  const samples = availabilityPrices.reduce(
+    (total, price) => total + price.availability.sevenDaySamples,
+    0
+  );
 
   if (!samples) {
     const source = getStationPublishedAvailabilitySourceMeta(station);
@@ -1132,30 +1210,31 @@ export function getStationPublishedAvailabilitySummary(station: TransitStation):
       sourceType: source.sourceType,
       sourceLabel: source.sourceLabel,
       sourceUrl: source.sourceUrl,
+      referenceOnly: false,
     };
   }
 
-  const weightedRate = summaries.reduce((total, summary) => {
-    const rate = summary.sevenDayRate ?? 0;
-    return total + rate * summary.sevenDaySamples;
+  const weightedRate = availabilityPrices.reduce((total, price) => {
+    const rate = price.availability.sevenDayRate ?? 0;
+    return total + rate * price.availability.sevenDaySamples;
   }, 0) / samples;
   const source = getStationPublishedAvailabilitySourceMeta(station);
   const firstCheckedAt =
-    summaries
-      .map((summary) => summary.firstCheckedAt)
+    availabilityPrices
+      .map((price) => price.availability.firstCheckedAt)
       .filter((value): value is string => Boolean(value))
       .sort()
       .at(0) ?? null;
   const lastCheckedAt =
-    summaries
-      .map((summary) => summary.lastCheckedAt)
+    availabilityPrices
+      .map((price) => price.availability.lastCheckedAt)
       .filter((value): value is string => Boolean(value))
       .sort()
       .at(-1) ?? null;
   const stationRecentSamples = normalizeRecentAvailabilitySamples(
     transitAvailabilityRecentSamples(station.availability) || []
   );
-  const summaryRecentSamples = getRecentTransitAvailabilitySamplesFromSummaries(summaries);
+  const summaryRecentSamples = getRecentTransitAvailabilitySamples(availabilityPrices);
 
   return {
     sevenDayRate: roundAvailabilityRate(weightedRate),
@@ -1163,12 +1242,13 @@ export function getStationPublishedAvailabilitySummary(station: TransitStation):
     firstCheckedAt,
     lastCheckedAt,
     recentSamples: stationRecentSamples || summaryRecentSamples,
-    latestLatencyMs: latestLatencyFromSummaries(summaries),
-    avgLatency7dMs: weightedAverageLatencyFromSummaries(summaries),
+    latestLatencyMs: latestLatencyFromPrices(availabilityPrices),
+    avgLatency7dMs: weightedAverageLatency(availabilityPrices),
     note: `按当前公开模型分组汇总：${formatPercent(roundAvailabilityRate(weightedRate))} · 样本 ${samples}`,
     sourceType: source.sourceType,
     sourceLabel: source.sourceLabel,
     sourceUrl: source.sourceUrl,
+    referenceOnly: availabilityPrices.every((price) => isTransitAvailabilityReference(price.availability)),
   };
 }
 
@@ -1559,15 +1639,16 @@ function getTransitStationSortContext(
   const summary = getStationComparisonSummary(station);
   const scope = getActiveSortScope(station, summary, options);
   const prices = getActiveSortPrices(station, options);
+  const referenceOnly = scope ? scope.referenceOnly : summary.availability.referenceOnly;
 
   return {
     station,
     summary,
     scope,
     cost: transitSortCost(scope, summary),
-    stabilityRate: scope ? scope.sevenDayRate : summary.stabilityRate,
-    stabilitySamples: scope ? scope.sevenDaySamples : summary.stabilitySamples,
-    recentSamples: scope ? scope.recentSamples : summary.availability.recentSamples,
+    stabilityRate: referenceOnly ? null : scope ? scope.sevenDayRate : summary.stabilityRate,
+    stabilitySamples: referenceOnly ? 0 : scope ? scope.sevenDaySamples : summary.stabilitySamples,
+    recentSamples: referenceOnly ? undefined : scope ? scope.recentSamples : summary.availability.recentSamples,
     cacheUsage: getRepresentativeCacheUsage(prices),
     lastCheckedAt: scope ? scope.lastCheckedAt : summary.availability.lastCheckedAt,
   };
@@ -1835,7 +1916,7 @@ export function getTransitModelSummaries(
   );
 
   stations.forEach((station) => {
-    getTransitAvailabilityRollupPrices(station, station.prices).forEach((price) => {
+    station.prices.forEach((price) => {
       if (family !== "all" && !transitModelPriceMatchesFamily(price, family)) return;
 
       const entry: TransitModelPriceEntry = {
@@ -1866,6 +1947,18 @@ export function getTransitModelSummaries(
   return summaryModels
     .map((standardModel) => {
       const prices = byModel.get(standardModel) ?? [];
+      const entriesByStation = new Map<string, TransitModelPriceEntry[]>();
+      for (const entry of prices) {
+        entriesByStation.set(entry.station.id, [...(entriesByStation.get(entry.station.id) || []), entry]);
+      }
+      const availabilityEntries = Array.from(entriesByStation.values()).flatMap((stationEntries) => {
+        const station = stationEntries[0]?.station;
+        if (!station) return [];
+        const selectedPrices = new Set(
+          getPreferredTransitAvailabilityRollupPrices(station, stationEntries.map((entry) => entry.price))
+        );
+        return stationEntries.filter((entry) => selectedPrices.has(entry.price));
+      });
       const finiteRates = prices
         .map((entry) => entry.combinedRate)
         .filter((rate): rate is number => rate !== null && Number.isFinite(rate))
@@ -1874,13 +1967,13 @@ export function getTransitModelSummaries(
         .map((entry) => getTransitFixedPriceValue(entry.price))
         .filter((price): price is number => price !== null && Number.isFinite(price) && price > 0)
         .sort((a, b) => a - b);
-      const sampleCount = prices.reduce(
+      const sampleCount = availabilityEntries.reduce(
         (total, entry) => total + entry.price.availability.sevenDaySamples,
         0
       );
       const averageAvailability =
         sampleCount > 0
-          ? prices.reduce((total, entry) => {
+          ? availabilityEntries.reduce((total, entry) => {
               const rate = entry.price.availability.sevenDayRate ?? 0;
               return total + rate * entry.price.availability.sevenDaySamples;
             }, 0) / sampleCount
@@ -2311,30 +2404,6 @@ function weightedAverageLatency(prices: TransitModelPrice[]): number | null {
   return samples > 0 ? total / samples : null;
 }
 
-function latestLatencyFromSummaries(summaries: TransitFamilyRateSummary[]): number | null {
-  return summaries
-    .filter((summary) => summary.latestLatencyMs !== null && summary.latestLatencyMs !== undefined)
-    .sort((left, right) => {
-      const leftTime = new Date(left.lastCheckedAt || left.firstCheckedAt || 0).getTime();
-      const rightTime = new Date(right.lastCheckedAt || right.firstCheckedAt || 0).getTime();
-      return rightTime - leftTime;
-    })[0]?.latestLatencyMs ?? null;
-}
-
-function weightedAverageLatencyFromSummaries(summaries: TransitFamilyRateSummary[]): number | null {
-  let total = 0;
-  let samples = 0;
-  for (const summary of summaries) {
-    if (summary.avgLatency7dMs === null || summary.avgLatency7dMs === undefined || !Number.isFinite(summary.avgLatency7dMs)) {
-      continue;
-    }
-    const weight = Math.max(1, summary.sevenDaySamples || 0);
-    total += summary.avgLatency7dMs * weight;
-    samples += weight;
-  }
-  return samples > 0 ? total / samples : null;
-}
-
 function formatCompactNumber(value: number): string {
   const rounded = Math.round(value * 10) / 10;
   return Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1);
@@ -2353,6 +2422,59 @@ export function formatAvailability(
 }
 
 export type AvailabilitySourceTone = "success" | "info" | "warning" | "muted";
+
+export function getAvailabilityEvidenceMeta(
+  availability: Pick<TransitAvailability, "scope" | "matchLevel" | "note" | "sourceType">
+): { label: string; tone: AvailabilitySourceTone; title: string; reference: boolean } {
+  const scope = getTransitAvailabilityScope(availability);
+  const matchLevel = getTransitAvailabilityMatchLevel(availability);
+  if (matchLevel === "family") {
+    return {
+      label: "同家族参考",
+      tone: "warning",
+      title: "该数值来自同模型家族的公开监测参考，不代表当前套餐或模型独立实测，也不参与稳定性排名。",
+      reference: true,
+    };
+  }
+  if (matchLevel === "model") {
+    return {
+      label: "同模型参考",
+      tone: "warning",
+      title: "该数值来自同一标准模型的公开监测参考，不代表当前套餐独立实测，也不参与稳定性排名。",
+      reference: true,
+    };
+  }
+  if (scope === "station") {
+    return {
+      label: "站点整体参考",
+      tone: "info",
+      title: "该数值覆盖站点整体，不代表任一套餐独立实测。",
+      reference: false,
+    };
+  }
+  if (scope === "group" || matchLevel === "group") {
+    return {
+      label: "分组公开监测",
+      tone: "info",
+      title: "该数值覆盖当前价格分组，组内多个模型共享同一批样本，汇总时只计一次。",
+      reference: false,
+    };
+  }
+  if (availability.sourceType === "priceai_probe") {
+    return {
+      label: "套餐实测",
+      tone: "success",
+      title: "PriceAI 使用当前套餐测试 Key 发起真实请求后记录的独立样本。",
+      reference: false,
+    };
+  }
+  return {
+    label: "套餐公开监测",
+    tone: "info",
+    title: "公开监测与当前模型和分组精确对应，但不等同 PriceAI 测试 Key 实测。",
+    reference: false,
+  };
+}
 
 export function getAvailabilitySourceMeta(
   availability: Pick<TransitAvailability, "sourceType" | "sourceLabel" | "sourceUrl">

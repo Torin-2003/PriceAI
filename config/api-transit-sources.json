@@ -220,6 +220,12 @@
     "commercialRelation": "partner",
     "rechargeRatio": "1:1",
     "autoPublish": true,
+    "groupAliases": {
+      "Team/Plus渠道": "Team/Plus-标准通道",
+      "Plus渠道": "Plus-经济通道",
+      "Pro/Team/Plus渠道": "Pro/Team/Plus-稳定通道",
+      "grok-尝鲜渠道": "Grok尝鲜分组"
+    },
     "channelTypes": ["first_party_pool", "mixed", "undisclosed"],
     "accountPools": ["plus", "team", "pro"],
     "riskLabels": ["insufficient_samples", "pending_feedback"],

@@ -54,6 +54,7 @@ import {
   formatTransitFixedPriceRange,
   formatTransitModelMultiplier,
   getAvailabilitySourceMeta,
+  getAvailabilityEvidenceMeta,
   formatRate,
   getCacheHitRateBadgeClass,
   getCombinedRateForPrice,
@@ -71,7 +72,7 @@ import {
   getRecentTransitAvailabilitySamples,
   getStationRechargeCoefficient,
   getStationPublishedAvailabilitySummary,
-  getTransitAvailabilityRollupPrices,
+  getPreferredTransitAvailabilityRollupPrices,
   getTransitPriceAvailabilitySource,
   getTransitFixedPriceValue,
   getTransitVerificationEvents,
@@ -126,6 +127,9 @@ type TransitPriceGroup = {
   availabilitySourceTitle: string;
   availabilitySourceUrl: string | null;
   availabilitySourceType: TransitModelPrice["availability"]["sourceType"];
+  availabilityEvidenceLabel: string;
+  availabilityEvidenceTitle: string;
+  availabilityEvidenceTone: "success" | "info" | "warning" | "muted";
   history: TransitMultiplierHistoryPoint[];
 };
 
@@ -989,7 +993,7 @@ function PriceTable({
                       <DataTableHead compact explanation={TRANSIT_COMBINED_RATE_EXPLANATION}>{fixedPriceSummary ? "人民币固定价" : "综合倍率"}</DataTableHead>
                       <DataTableHead compact explanation={TRANSIT_CACHE_HIT_RATE_EXPLANATION}>缓存命中率</DataTableHead>
                       <DataTableHead compact explanation={TRANSIT_MONITORED_PRICE_EXPLANATION}>{fixedPriceSummary ? "公开价格" : "监测模型价格"}</DataTableHead>
-                      <DataTableHead compact explanation="展示该分组的可用性探测、来源披露和最近来源更新时间。PriceAI 实测与站方公开状态会分开标注。">监测 / 来源</DataTableHead>
+                      <DataTableHead compact explanation="展示监测证据的真实覆盖范围、来源和更新时间。分组监测只计一次；同模型或同家族数据会明确标为参考，不代表套餐独立实测。">监测 / 来源</DataTableHead>
                     </tr>
                   </thead>
                   <tbody>
@@ -1455,6 +1459,11 @@ function PriceGroupMobileCard({
             {label}
           </StatusChip>
         ))}
+        <span title={group.availabilityEvidenceTitle}>
+          <StatusChip tone={group.availabilityEvidenceTone} className="px-2 py-0.5 text-[10px]">
+            {group.availabilityEvidenceLabel}
+          </StatusChip>
+        </span>
         <ProbePolicyTag
           label={group.availabilitySourceLabel}
           title={group.availabilitySourceTitle}
@@ -1550,7 +1559,7 @@ function PriceGroupRow({
         <ProbePolicyTag
           className="mt-2"
           label={`监测 ${shortModelLabel(primaryPrice.standardModel)}`}
-          title="PriceAI 先拉取该分组 Key 的可用模型列表，再按最新且级别最高的可用模型发起一次请求。监测频率按实际样本展示；价格和分组倍率按公开价格或后台确认记录沉淀。"
+          title={`当前价格分组以 ${shortModelLabel(primaryPrice.standardModel)} 作为代表模型；监测口径为“${group.availabilityEvidenceLabel}”。`}
         />
       </td>
       <td className="px-4 py-4">
@@ -1595,6 +1604,16 @@ function PriceGroupRow({
               {label}
             </StatusChip>
           ))}
+          <span title={group.availabilityEvidenceTitle}>
+            <StatusChip tone={group.availabilityEvidenceTone} className="px-2 py-0.5 text-[10px]">
+              {group.availabilityEvidenceLabel}
+            </StatusChip>
+          </span>
+          <ProbePolicyTag
+            label={group.availabilitySourceLabel}
+            title={group.availabilitySourceTitle}
+            href={group.availabilitySourceUrl}
+          />
         </div>
         <div className="mt-2 flex items-center gap-2">
           <span className="text-xs font-bold text-[#202829]">
@@ -1653,7 +1672,7 @@ function buildPriceGroup(
   prices: TransitModelPrice[],
 ): TransitPriceGroup {
   const primaryPrice = getRepresentativeTransitPrice(prices) ?? prices[0];
-  const availabilityPrices = getTransitAvailabilityRollupPrices(station, prices);
+  const availabilityPrices = getPreferredTransitAvailabilityRollupPrices(station, prices);
   const sortedPrices = [
     primaryPrice,
     ...prices.filter((price) => price !== primaryPrice).sort(comparePricePriority),
@@ -1696,9 +1715,11 @@ function buildPriceGroup(
       .filter(Boolean)
       .sort()
       .at(-1) ?? primaryPrice.lastVerifiedAt;
-  const availabilitySource = getTransitPriceAvailabilitySource(station, primaryPrice);
+  const availabilityPrice = availabilityPrices[0] || primaryPrice;
+  const availabilitySource = getTransitPriceAvailabilitySource(station, availabilityPrice);
   const recentSamples = getRecentTransitAvailabilitySamples(availabilityPrices);
   const sourceMeta = getAvailabilitySourceMeta(availabilitySource);
+  const evidenceMeta = getAvailabilityEvidenceMeta(availabilityPrice.availability);
 
   return {
     groupName,
@@ -1731,6 +1752,9 @@ function buildPriceGroup(
     availabilitySourceTitle: sourceMeta.title,
     availabilitySourceUrl: sourceMeta.url,
     availabilitySourceType: availabilitySource.sourceType,
+    availabilityEvidenceLabel: evidenceMeta.label,
+    availabilityEvidenceTitle: evidenceMeta.title,
+    availabilityEvidenceTone: evidenceMeta.tone,
     history: normalizedGroupHistory(station, primaryPrice),
   };
 }

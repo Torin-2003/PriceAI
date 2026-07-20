@@ -3466,6 +3466,9 @@ create table if not exists api_transit_offers (
   availability_latest_latency_ms integer,
   availability_avg_latency_7d_ms integer,
   availability_note text,
+  availability_scope text check (availability_scope is null or availability_scope in ('station', 'group', 'model', 'offer')),
+  availability_match_level text check (availability_match_level is null or availability_match_level in ('exact', 'group', 'model', 'family')),
+  monitoring_scope_id text,
   last_verified_at timestamptz,
   status text not null default 'needs_review' check (status in ('active', 'needs_review', 'inactive')),
   raw_payload jsonb not null default '{}'::jsonb,
@@ -3755,6 +3758,9 @@ create index if not exists api_transit_stations_collector_kind_idx on api_transi
 create index if not exists api_transit_offers_station_id_idx on api_transit_offers(station_id);
 create index if not exists api_transit_offers_family_idx on api_transit_offers(family);
 create index if not exists api_transit_offers_status_idx on api_transit_offers(status);
+create index if not exists api_transit_offers_monitoring_scope_idx
+  on api_transit_offers(station_id, monitoring_scope_id)
+  where status = 'active' and availability_seven_day_samples > 0;
 create index if not exists api_transit_submissions_review_status_idx on api_transit_submissions(review_status, created_at desc);
 create index if not exists api_transit_submissions_submitted_url_idx on api_transit_submissions(submitted_url);
 create index if not exists api_transit_submissions_normalized_host_idx on api_transit_submissions(normalized_host, review_status, created_at desc);

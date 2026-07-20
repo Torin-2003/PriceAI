@@ -44,6 +44,8 @@ export type TransitAvailabilitySourceType =
   | "merchant_reported"
   | "manual_snapshot"
   | "unknown";
+export type TransitAvailabilityScope = "station" | "group" | "model" | "offer";
+export type TransitAvailabilityMatchLevel = "exact" | "group" | "model" | "family";
 
 export interface TransitAvailability {
   sevenDayRate: number | null;
@@ -61,6 +63,9 @@ export interface TransitAvailability {
   sourceType: TransitAvailabilitySourceType;
   sourceLabel: string | null;
   sourceUrl: string | null;
+  scope?: TransitAvailabilityScope | null;
+  matchLevel?: TransitAvailabilityMatchLevel | null;
+  monitoringScopeId?: string | null;
 }
 
 export interface TransitCacheUsage {

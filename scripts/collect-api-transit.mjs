@@ -988,6 +988,9 @@ function buildAiTransitSnapshotOfferRow({
     availability_source_type: availabilitySource.availability_source_type || "public_model_catalog",
     availability_source_label: availabilitySource.availability_source_label || "公开模型页",
     availability_source_url: availabilitySource.availability_source_url || source.pricingEndpointUrl,
+    availability_scope: availabilitySource.availability_scope || null,
+    availability_match_level: availabilitySource.availability_match_level || null,
+    monitoring_scope_id: availabilitySource.monitoring_scope_id || null,
     last_verified_at: availabilitySource.lastCheckedAt || generatedAt || collectedAt,
     status: autoPublish ? "active" : "needs_review",
     auto_publish: autoPublish,
@@ -1261,10 +1264,11 @@ function aiTransitAvailabilityByKey(payload, generatedAt, source) {
   };
   for (const item of Array.isArray(payload?.monitoring) ? payload.monitoring : []) {
     const standard = standardizeModelName([item?.primary_model, item?.name].filter(Boolean).join(" "));
-    const rawGroupName = stringOrNull(item?.name);
+    const rawGroupName = stringOrNull(item?.group_name) || stringOrNull(item?.name);
     const groupName = rawGroupName ? normalizeSourceGroupName(source, rawGroupName) : null;
     if (standard) {
       addAiTransitAvailabilityCandidate(index, {
+        sourceId: source.id,
         rawGroupName,
         groupName,
         standard,
@@ -1277,6 +1281,7 @@ function aiTransitAvailabilityByKey(payload, generatedAt, source) {
       if (!modelStandard) continue;
       const availability = aiTransitAvailabilityFromMonitoringItem({ ...item, ...model }, modelStandard, generatedAt, source);
       addAiTransitAvailabilityCandidate(index, {
+        sourceId: source.id,
         rawGroupName,
         groupName,
         standard: modelStandard,
@@ -1287,9 +1292,10 @@ function aiTransitAvailabilityByKey(payload, generatedAt, source) {
   return index;
 }
 
-function addAiTransitAvailabilityCandidate(index, { rawGroupName, groupName, standard, availability }) {
+function addAiTransitAvailabilityCandidate(index, { sourceId, rawGroupName, groupName, standard, availability }) {
   if (!availability || !standard) return;
   const family = familyForStandardModel(standard);
+  const scope = groupName ? "group" : "model";
   const candidate = {
     id: [
       stringOrNull(groupName) || "*",
@@ -1301,8 +1307,17 @@ function addAiTransitAvailabilityCandidate(index, { rawGroupName, groupName, sta
     ].join("|"),
     groupName: stringOrNull(groupName),
     rawGroupName: stringOrNull(rawGroupName),
+    sourceId: stringOrNull(sourceId),
     standard,
     family,
+    scope,
+    monitoringScopeId: stableId(
+      "api-transit-monitoring",
+      sourceId,
+      scope,
+      groupName || "*",
+      standard,
+    ),
     availability,
   };
   appendAiTransitAvailabilityCandidate(index.exact, aiTransitAvailabilityKey(groupName, standard), candidate);
@@ -1364,6 +1379,22 @@ function summarizeMatchedAiTransitAvailability(candidates, matchLevel, standard)
   const latestLatencyMs = latest?.latestLatencyMs ?? null;
   const avgLatency7dMs = averageValue(values.map((item) => item.avgLatency7dMs));
   const primary = values[0];
+  const sourceId = candidates[0]?.sourceId || "unknown";
+  const groupName = candidates[0]?.groupName || candidates[0]?.rawGroupName || null;
+  const scope = matchLevel === "exact" || matchLevel === "group"
+    ? candidates[0]?.scope || (groupName ? "group" : "model")
+    : "model";
+  const candidateScopeIds = Array.from(
+    new Set(candidates.map((candidate) => candidate.monitoringScopeId).filter(Boolean))
+  ).sort();
+  const monitoringScopeId = candidateScopeIds.length === 1
+    ? candidateScopeIds[0]
+    : stableId(
+      "api-transit-monitoring-aggregate",
+      sourceId,
+      matchLevel,
+      ...candidateScopeIds,
+    );
   return {
     rate,
     samples,
@@ -1375,6 +1406,9 @@ function summarizeMatchedAiTransitAvailability(candidates, matchLevel, standard)
     availability_source_type: primary.availability_source_type || "public_status",
     availability_source_label: primary.availability_source_label || "公开监测页",
     availability_source_url: primary.availability_source_url || null,
+    availability_scope: scope,
+    availability_match_level: matchLevel,
+    monitoring_scope_id: monitoringScopeId,
   };
 }
 
@@ -1415,7 +1449,7 @@ function aiTransitAvailabilityFromMonitoringItem(item, standard, generatedAt, so
 function aiTransitAvailabilitySamples(source, payload, collectedAt) {
   const samples = [];
   for (const item of Array.isArray(payload?.monitoring) ? payload.monitoring : []) {
-    const rawGroupName = stringOrNull(item?.name);
+    const rawGroupName = stringOrNull(item?.group_name) || stringOrNull(item?.name);
     const groupName = rawGroupName ? normalizeSourceGroupName(source, rawGroupName) : null;
     const standard = standardizeModelName(item?.primary_model || groupName || "");
     const timeline = Array.isArray(item?.timeline) ? recentPublicAvailabilityTimeline(item.timeline) : [];
@@ -1927,7 +1961,7 @@ function applyNewApiPerformanceSummaryAvailability(source, parsed, payload, coll
     const standard = rawName ? standardizeModelName(rawName) : null;
     if (!standard) continue;
 
-    const availability = newApiPerformanceAvailabilityFromModel(source, model, rawName, collectedAt);
+    const availability = newApiPerformanceAvailabilityFromModel(source, model, rawName, standard, collectedAt);
     if (!availability) continue;
 
     availabilityByStandard.set(standard, availability);
@@ -1964,7 +1998,7 @@ function normalizeNewApiPerformanceSummaryModels(payload) {
   return [];
 }
 
-function newApiPerformanceAvailabilityFromModel(source, model, rawName, collectedAt) {
+function newApiPerformanceAvailabilityFromModel(source, model, rawName, standard, collectedAt) {
   const rate = percentValueToRate(model?.success_rate ?? model?.successRate);
   if (rate === null) return null;
 
@@ -1987,6 +2021,9 @@ function newApiPerformanceAvailabilityFromModel(source, model, rawName, collecte
     lastCheckedAt: collectedAt,
     note: `${source.name} 公开 performance summary 近 24 小时：${rawName}${suffix ? ` ${suffix}` : ""}；非 PriceAI API Key 实测。`,
     raw: model,
+    availability_scope: "model",
+    availability_match_level: "model",
+    monitoring_scope_id: stableId("api-transit-monitoring", source.id, "model", standard),
     ...availabilitySourceFields(source, AVAILABILITY_SOURCES.publicStatus),
   };
 }
@@ -2139,6 +2176,9 @@ function applyAvailabilityToOffer(offer, availability) {
   offer.availability_source_type = availability.availability_source_type || offer.availability_source_type || "unknown";
   offer.availability_source_label = availability.availability_source_label ?? offer.availability_source_label ?? null;
   offer.availability_source_url = availability.availability_source_url ?? offer.availability_source_url ?? null;
+  offer.availability_scope = availability.availability_scope ?? offer.availability_scope ?? null;
+  offer.availability_match_level = availability.availability_match_level ?? offer.availability_match_level ?? null;
+  offer.monitoring_scope_id = availability.monitoring_scope_id ?? offer.monitoring_scope_id ?? null;
   offer.last_verified_at = availability.lastCheckedAt || offer.last_verified_at;
 }
 
@@ -2296,7 +2336,7 @@ function buildOneHopPublicModelOfferRow(source, item, standard, collectedAt) {
 
   const groupName = oneHopGroupName(item);
   const sourceText = [item?.source, item?.fullSlug, item?.provider].filter(Boolean).join(" ");
-  const availability = oneHopAvailabilityFromDisplayMetrics(item?.displayMetrics, collectedAt);
+  const availability = oneHopAvailabilityFromDisplayMetrics(item?.displayMetrics, source.id, standard, collectedAt);
   const autoPublish = shouldAutoPublishSource(source);
 
   return {
@@ -2470,7 +2510,7 @@ function inferOneHopChannelType(item) {
   return "undisclosed";
 }
 
-function oneHopAvailabilityFromDisplayMetrics(displayMetrics, collectedAt) {
+function oneHopAvailabilityFromDisplayMetrics(displayMetrics, sourceId, standard, collectedAt) {
   const uptime14d = Array.isArray(displayMetrics?.uptime14d) ? displayMetrics.uptime14d : [];
   const samples = uptime14d
     .map((point) => ({
@@ -2491,6 +2531,9 @@ function oneHopAvailabilityFromDisplayMetrics(displayMetrics, collectedAt) {
       firstCheckedAt: successRate === null ? null : collectedAt,
       lastCheckedAt: collectedAt,
       note: "OneHop 公开模型目录未返回 14 日 uptime；保留页面 successRate 作为商家公开参考。",
+      availability_scope: "model",
+      availability_match_level: "model",
+      monitoring_scope_id: stableId("api-transit-monitoring", sourceId, "model", standard),
       ...availabilitySourceFields(null, AVAILABILITY_SOURCES.publicModelCatalog),
     };
   }
@@ -2503,6 +2546,9 @@ function oneHopAvailabilityFromDisplayMetrics(displayMetrics, collectedAt) {
     firstCheckedAt: earliestDay ? `${earliestDay}T00:00:00.000Z` : null,
     lastCheckedAt: latestDay ? `${latestDay}T00:00:00.000Z` : collectedAt,
     note: `OneHop 公开模型目录 uptime14d，按日可用率样本，非 PriceAI API Key 实测${usageNote}。`,
+    availability_scope: "model",
+    availability_match_level: "model",
+    monitoring_scope_id: stableId("api-transit-monitoring", sourceId, "model", standard),
     ...availabilitySourceFields(null, AVAILABILITY_SOURCES.publicModelCatalog),
   };
 }
@@ -3610,7 +3656,7 @@ async function upsertOfferRows(supabase, offers) {
       compatibility: "api_transit_offers optional columns missing; wrote offers without first-check window, image output split, source labels, or cache hit usage.",
     },
   ];
-  const attempts = withFixedPriceOfferWriteFallbacks(baseAttempts);
+  const attempts = withAvailabilityEvidenceOfferWriteFallbacks(withFixedPriceOfferWriteFallbacks(baseAttempts));
 
   let lastMissingColumnError = null;
   for (const attempt of attempts) {
@@ -3626,7 +3672,8 @@ async function upsertOfferRows(supabase, offers) {
         !isFixedPriceOfferColumnError(error) &&
         !isMissingColumnError(error, "availability_latest_latency_ms") &&
         !isMissingColumnError(error, "availability_avg_latency_7d_ms") &&
-        !isAvailabilitySourceColumnError(error)
+        !isAvailabilitySourceColumnError(error) &&
+        !isAvailabilityEvidenceColumnError(error)
       ) {
         throw error;
       }
@@ -3646,6 +3693,28 @@ function withFixedPriceOfferWriteFallbacks(attempts) {
       {
         rows: removeFixedPriceOfferFields(attempt.rows),
         compatibility: attempt.compatibility || "api_transit_offers fixed price columns missing; wrote offers without fixed-price display fields.",
+      },
+    ]) {
+      const key = Object.keys(candidate.rows[0] || {}).sort().join(",");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      output.push(candidate);
+    }
+  }
+  return output;
+}
+
+function withAvailabilityEvidenceOfferWriteFallbacks(attempts) {
+  const output = [];
+  const seen = new Set();
+  for (const attempt of attempts) {
+    for (const candidate of [
+      attempt,
+      {
+        rows: removeAvailabilityEvidenceFields(attempt.rows),
+        compatibility:
+          attempt.compatibility ||
+          "api_transit_offers availability evidence columns missing; wrote offers without structured scope metadata.",
       },
     ]) {
       const key = Object.keys(candidate.rows[0] || {}).sort().join(",");
@@ -3969,6 +4038,7 @@ function mergeExistingAvailability(row, existing) {
     !isTrustedAvailabilitySource(existing.availability_source_type) ||
     (incomingSamples > 0 && incomingPriority >= existingPriority);
   if (keepIncoming) return row;
+  const existingEvidence = availabilityEvidenceForStoredOffer(existing);
   return {
     ...row,
     availability_seven_day_rate: existing.availability_seven_day_rate ?? row.availability_seven_day_rate,
@@ -3981,6 +4051,32 @@ function mergeExistingAvailability(row, existing) {
     availability_source_type: existing.availability_source_type,
     availability_source_label: existing.availability_source_label ?? row.availability_source_label ?? null,
     availability_source_url: existing.availability_source_url ?? row.availability_source_url ?? null,
+    availability_scope: existingEvidence.scope,
+    availability_match_level: existingEvidence.matchLevel,
+    monitoring_scope_id: existingEvidence.monitoringScopeId,
+  };
+}
+
+function availabilityEvidenceForStoredOffer(offer) {
+  const note = stringOrNull(offer.availability_note) || "";
+  const matchLevel = stringOrNull(offer.availability_match_level) ||
+    (/同模型族参考/.test(note) ? "family" :
+      /同模型监测|performance summary|uptime14d/i.test(note) ? "model" :
+        /同分组监测/.test(note) || offer.availability_source_type === "public_status" ? "group" : "exact");
+  const scope = stringOrNull(offer.availability_scope) ||
+    (matchLevel === "group" ? "group" :
+      matchLevel === "model" || matchLevel === "family" ? "model" : "offer");
+  const scopeKey =
+    scope === "group" ? offer.group_name :
+      scope === "model" && matchLevel === "family" ? offer.family :
+        scope === "model" ? offer.standard_model :
+          `${offer.group_name || ""}|${offer.standard_model || ""}`;
+  return {
+    scope,
+    matchLevel,
+    monitoringScopeId:
+      stringOrNull(offer.monitoring_scope_id) ||
+      stableId("api-transit-monitoring", offer.station_id, offer.availability_source_type, scope, scopeKey),
   };
 }
 
@@ -4149,6 +4245,14 @@ function removeAvailabilitySourceFields(rows) {
   ]);
 }
 
+function removeAvailabilityEvidenceFields(rows) {
+  return removeFieldsFromRows(rows, [
+    "availability_scope",
+    "availability_match_level",
+    "monitoring_scope_id",
+  ]);
+}
+
 function removeLatencyFields(rows) {
   return removeFieldsFromRows(rows, [
     "availability_latest_latency_ms",
@@ -4252,6 +4356,14 @@ function isAvailabilitySourceColumnError(error) {
     isMissingColumnError(error, "availability_source_type") ||
     isMissingColumnError(error, "availability_source_label") ||
     isMissingColumnError(error, "availability_source_url")
+  );
+}
+
+function isAvailabilityEvidenceColumnError(error) {
+  return (
+    isMissingColumnError(error, "availability_scope") ||
+    isMissingColumnError(error, "availability_match_level") ||
+    isMissingColumnError(error, "monitoring_scope_id")
   );
 }
 

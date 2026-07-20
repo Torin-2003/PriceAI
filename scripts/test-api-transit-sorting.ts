@@ -3,6 +3,7 @@ import {
   compareStations,
   compactTransitStationsForList,
   getActiveTransitCommercialOffers,
+  getAvailabilityEvidenceMeta,
   getFamilyRateSummary,
   getStationComparisonSummary,
   getStationPublishedAvailabilitySummary,
@@ -653,15 +654,70 @@ const duplicatePublicStatusPrice = {
 duplicateAvailabilityStation.prices.push(duplicateProbePrice, duplicatePublicStatusPrice);
 const duplicateRollupPrices = getTransitAvailabilityRollupPrices(duplicateAvailabilityStation, duplicateAvailabilityStation.prices);
 assertEqual(duplicateRollupPrices.filter((price) => price.standardModel === "GPT 5.5").length, 1);
-assertEqual(duplicateRollupPrices.find((price) => price.standardModel === "GPT 5.5")?.availability.sourceType, "public_status");
+assertEqual(duplicateRollupPrices.find((price) => price.standardModel === "GPT 5.5")?.availability.sourceType, "priceai_probe");
 const duplicateGptSummary = getFamilyRateSummary(duplicateAvailabilityStation, "gpt");
-assertEqual(duplicateGptSummary.sevenDaySamples, 60);
-assertEqual(duplicateGptSummary.sevenDayRate, 0.95);
-assertDeepEqual(duplicateGptSummary.recentSamples, duplicatePublicStatusPrice.availability.recentSamples);
+assertEqual(duplicateGptSummary.sevenDaySamples, 130);
+assertEqual(Math.round((duplicateGptSummary.sevenDayRate || 0) * 100), 99);
+assertDeepEqual(duplicateGptSummary.recentSamples, duplicateProbePrice.availability.recentSamples);
+assertEqual(getAvailabilityEvidenceMeta(duplicatePublicStatusPrice.availability).label, "分组公开监测");
+
+const sharedGroupEvidenceStation = station({
+  id: "shared-group-evidence",
+  name: "Shared Group Evidence",
+  claudeRate: 0.8,
+  availabilityRate: 0.96,
+  availabilitySamples: 60,
+});
+const sharedGroupModels = ["GPT 5.5", "GPT 5.4", "GPT 5.4 Mini"] as const;
+sharedGroupEvidenceStation.prices = sharedGroupModels.map((standardModel) => ({
+  ...duplicatePublicStatusPrice,
+  standardModel,
+  groupName: "GPT Plus",
+  availability: {
+    ...duplicatePublicStatusPrice.availability,
+    scope: "group" as const,
+    matchLevel: standardModel === "GPT 5.5" ? "exact" as const : "group" as const,
+    monitoringScopeId: "scope:gpt-plus",
+  },
+}));
+const sharedGroupSummary = getFamilyRateSummary(sharedGroupEvidenceStation, "gpt");
+assertEqual(sharedGroupSummary.sevenDaySamples, 60);
+assertEqual(sharedGroupSummary.sevenDayRate, 0.95);
+assertEqual(sharedGroupSummary.referenceOnly, false);
+assertEqual(getStationPublishedAvailabilitySummary(sharedGroupEvidenceStation).sevenDaySamples, 60);
+const sharedGroupModelSummaries = getTransitModelSummaries([sharedGroupEvidenceStation], "gpt")
+  .filter((summary) => sharedGroupModels.includes(summary.standardModel as typeof sharedGroupModels[number]));
+assertEqual(sharedGroupModelSummaries.length, 3);
+assertEqual(sharedGroupModelSummaries.every((summary) => summary.prices.length === 1), true);
+assertEqual(sharedGroupModelSummaries.every((summary) => summary.sampleCount === 60), true);
+
+const familyReferenceStation = station({
+  id: "family-reference-only",
+  name: "Family Reference Only",
+  claudeRate: 0.8,
+  availabilityRate: 0.95,
+  availabilitySamples: 60,
+});
+familyReferenceStation.prices = sharedGroupModels.map((standardModel, index) => ({
+  ...duplicatePublicStatusPrice,
+  standardModel,
+  groupName: `GPT ${index}`,
+  availability: {
+    ...duplicatePublicStatusPrice.availability,
+    scope: "model" as const,
+    matchLevel: "family" as const,
+    monitoringScopeId: "scope:gpt-family",
+  },
+}));
+assertEqual(getFamilyRateSummary(familyReferenceStation, "gpt").sevenDaySamples, 60);
+assertEqual(getFamilyRateSummary(familyReferenceStation, "gpt").referenceOnly, true);
+assertEqual(getTransitStationRankingBreakdowns([familyReferenceStation]).get(familyReferenceStation.id)?.stabilityRate, null);
 const duplicateModelSummary = getTransitModelSummaries([duplicateAvailabilityStation], "gpt")
   .find((summary) => summary.standardModel === "GPT 5.5");
-assertEqual(duplicateModelSummary?.prices.length, 1);
-assertEqual(duplicateModelSummary?.prices[0]?.price.availability.sourceType, "public_status");
+assertEqual(duplicateModelSummary?.prices.length, 2);
+assertEqual(duplicateModelSummary?.sampleCount, 130);
+assertEqual(Math.round((duplicateModelSummary?.averageAvailability || 0) * 100), 99);
+assertEqual(duplicateModelSummary?.prices.some((entry) => entry.price.availability.sourceType === "public_status"), true);
 assertEqual(getTransitPriceAvailabilitySourceMeta(duplicateAvailabilityStation, duplicateProbePrice).label, "站方公开");
 assertDeepEqual(
   getTransitRecentAvailabilitySampleLookupScopes("GPT 5.5", "gpt-plus"),
