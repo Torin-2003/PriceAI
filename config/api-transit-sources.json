@@ -471,6 +471,104 @@
     "adminNote": "用户提交口径：sub2api 系统 / 官网 https://onepig123.com / 公开价格页 https://onepig123.com/public/transit。PriceAI 2026-07-14 读取公开 /.well-known/ai-transit.json 与 /api/public/transit/v1/snapshot 成功，快照显示站点名粉猪模型网关/路由层、1:1 充值、2 个分组、10 个模型条目、公开监控和缓存命中率；当前 autoPublish=false，仅进入后台待审核草稿，不上前台。正式上架前建议补充主体类型、发票、售后/退款、AFF/合作关系、模型来源说明和是否提供测试 Key。"
   },
   {
+    "id": "codex666ai-com",
+    "name": "codex666ai",
+    "websiteUrl": "https://codex666ai.com/",
+    "apiBaseUrl": "https://codex666ai.com/v1",
+    "pricingUrl": "https://codex666ai.com/public/transit",
+    "pricingEndpointUrl": "https://codex666ai.com/api/public/transit/v1/snapshot",
+    "monitorUrl": "https://codex666ai.com/public/transit?view=monitoring",
+    "collectorKind": "ai_transit_snapshot",
+    "stationSystem": "sub_to_api",
+    "rechargeRatio": "1:1",
+    "autoPublish": false,
+    "commercialRelation": "none",
+    "operatorType": "individual",
+    "invoiceSupport": "supported",
+    "channelTypes": ["reverse_engineered", "mixed", "undisclosed"],
+    "accountPools": ["kiro", "pro", "plus", "mixed", "undisclosed"],
+    "supportChannels": ["微信：devwang007", "QQ群：1103091206"],
+    "riskLabels": ["mixed_pool", "undisclosed_upstream", "insufficient_samples", "pending_feedback"],
+    "summary": "codex666ai 使用 Sub2API 系统，公开 ai-transit.v1 快照可读取 Claude、GPT、Grok 和国产模型分组倍率、模型价格、缓存口径及公开监控时间线；用户提交主体为个人并支持发票。当前先作为后台待审核草稿保存，不进入前台公开展示。",
+    "strengths": [
+      "公开 /.well-known/ai-transit.json 可发现结构化快照，/api/public/transit/v1/snapshot 返回分组、模型价格、缓存口径和监控时间线。",
+      "快照无需登录即可读取，包含 7 个分组、77 个公开模型条目，并提供 Claude、GPT 和 Grok 的公开监测目标。"
+    ],
+    "cautions": [
+      "公开监测样本来自 codex666ai 页面，不等同 PriceAI 使用测试 Key 的真实扣费和可用性检测。",
+      "公开快照披露为 mixed / reverse 上游口径，精确上游账号、Key、Cookie 和内部渠道 ID 未公开；首次使用仍建议小额测试。",
+      "用户提交主体为个人并表示支持发票；票种、开票抬头、税点、售后/退款和 AFF/合作关系仍需正式上架前确认。"
+    ],
+    "verificationEvents": [
+      {
+        "id": "codex666ai-merchant-submitted-2026-07-20",
+        "source": "merchant",
+        "status": "info",
+        "title": "补充待审核站点资料",
+        "description": "用户提交 codex666ai 官网与公开价格页，说明系统为 Sub2API、主体为个人并支持发票；要求仅补充后台资料，不直接在前台发布。",
+        "happenedAt": "2026-07-20T05:10:17.000Z"
+      },
+      {
+        "id": "codex666ai-ai-transit-v1-2026-07-20",
+        "source": "priceai",
+        "status": "success",
+        "title": "ai-transit.v1 公开快照可读取",
+        "description": "2026-07-20 检查 https://codex666ai.com/.well-known/ai-transit.json 可发现 snapshot_url，/api/public/transit/v1/snapshot 返回 7 个分组、77 个模型条目、1:1 充值口径、缓存信息和 4 个公开监测目标。",
+        "happenedAt": "2026-07-20T05:10:17.000Z"
+      }
+    ],
+    "adminNote": "用户提交口径：codex666ai / sub2api 系统 / 个人主体 / 支持发票 / 官网 https://codex666ai.com / 公开价格页 https://codex666ai.com/public/transit。PriceAI 2026-07-20 读取公开 /.well-known/ai-transit.json 与 /api/public/transit/v1/snapshot 成功，快照显示 1:1 充值、7 个分组、77 个模型条目、4 个公开监测目标和缓存口径；当前 autoPublish=false，仅进入后台待审核草稿，不上前台。正式上架前需确认票种、开票规则、售后/退款、AFF/合作关系、模型来源说明和是否提供测试 Key。"
+  },
+  {
+    "id": "790053500-com",
+    "name": "鑫旺Neko API",
+    "websiteUrl": "https://790053500.com/",
+    "apiBaseUrl": "https://790053500.com/v1",
+    "pricingUrl": "https://790053500.com/public/transit",
+    "pricingEndpointUrl": "https://790053500.com/api/public/transit/v1/snapshot",
+    "monitorUrl": "https://790053500.com/public/transit?view=monitoring",
+    "collectorKind": "ai_transit_snapshot",
+    "stationSystem": "sub_to_api",
+    "rechargeRatio": "1:1",
+    "autoPublish": false,
+    "commercialRelation": "none",
+    "operatorType": "unknown",
+    "invoiceSupport": "unknown",
+    "channelTypes": ["reverse_engineered", "mixed", "undisclosed"],
+    "accountPools": ["max", "pro", "mixed", "undisclosed"],
+    "supportChannels": ["客服QQ：790053500", "Telegram：LG8115"],
+    "riskLabels": ["mixed_pool", "undisclosed_upstream", "insufficient_samples", "pending_feedback"],
+    "summary": "鑫旺Neko API 使用 Sub2API 系统，公开 ai-transit.v1 快照可读取 Claude、GPT、Grok 和生图分组倍率、模型价格、缓存口径及公开监控时间线；当前先作为后台待审核草稿保存，不进入前台公开展示。",
+    "strengths": [
+      "公开 /.well-known/ai-transit.json 可发现结构化快照，/api/public/transit/v1/snapshot 返回分组、模型价格、缓存口径和监控时间线。",
+      "快照无需登录即可读取，包含 5 个分组、55 个公开模型条目，并提供 Claude、GPT 和 Grok 的公开监测目标。"
+    ],
+    "cautions": [
+      "公开监测样本来自鑫旺Neko API 页面，不等同 PriceAI 使用测试 Key 的真实扣费和可用性检测。",
+      "公开快照披露为 mixed / reverse 上游口径，精确上游账号、Key、Cookie 和内部渠道 ID 未公开；首次使用仍建议小额测试。",
+      "当前仅根据用户提供的站点链接和公开快照补充资料；主体类型、发票、售后/退款、AFF/合作关系仍需后续确认。"
+    ],
+    "verificationEvents": [
+      {
+        "id": "790053500-merchant-submitted-2026-07-20",
+        "source": "merchant",
+        "status": "info",
+        "title": "补充待审核站点资料",
+        "description": "用户提交 790053500.com 官网与公开价格页，要求仅补充后台资料，不直接在前台发布。",
+        "happenedAt": "2026-07-20T05:10:17.000Z"
+      },
+      {
+        "id": "790053500-ai-transit-v1-2026-07-20",
+        "source": "priceai",
+        "status": "success",
+        "title": "ai-transit.v1 公开快照可读取",
+        "description": "2026-07-20 检查 https://790053500.com/.well-known/ai-transit.json 可发现 snapshot_url，/api/public/transit/v1/snapshot 返回站点名鑫旺Neko API、5 个分组、55 个模型条目、1:1 充值口径、缓存信息和 3 个公开监测目标。",
+        "happenedAt": "2026-07-20T05:10:17.000Z"
+      }
+    ],
+    "adminNote": "用户提交口径：官网 https://790053500.com / 公开价格页 https://790053500.com/public/transit。PriceAI 2026-07-20 读取公开 /.well-known/ai-transit.json 与 /api/public/transit/v1/snapshot 成功，核验站点名为鑫旺Neko API、系统为 Sub2API，快照显示 1:1 充值、5 个分组、55 个模型条目、3 个公开监测目标和缓存口径；当前 autoPublish=false，仅进入后台待审核草稿，不上前台。正式上架前需补充主体类型、发票、售后/退款、AFF/合作关系、模型来源说明和是否提供测试 Key。"
+  },
+  {
     "id": "sudocode-chat",
     "name": "SudoCode",
     "websiteUrl": "https://sudocode.chat/",

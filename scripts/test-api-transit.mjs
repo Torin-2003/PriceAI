@@ -154,6 +154,40 @@ assert.ok(
   configuredOnepigSource.adminNote.includes("autoPublish=false"),
   "粉猪模型网关/路由层后台备注必须明确保持待审核草稿，不自动上前台。",
 );
+const configuredCodex666Source = transitSourceConfig.find((source) => source.id === "codex666ai-com");
+assert.ok(configuredCodex666Source, "codex666ai must stay saved as an API transit draft source.");
+assert.equal(configuredCodex666Source.collectorKind, "ai_transit_snapshot");
+assert.equal(configuredCodex666Source.stationSystem, "sub_to_api");
+assert.equal(configuredCodex666Source.websiteUrl, "https://codex666ai.com/");
+assert.equal(configuredCodex666Source.pricingUrl, "https://codex666ai.com/public/transit");
+assert.equal(configuredCodex666Source.pricingEndpointUrl, "https://codex666ai.com/api/public/transit/v1/snapshot");
+assert.equal(configuredCodex666Source.monitorUrl, "https://codex666ai.com/public/transit?view=monitoring");
+assert.equal(configuredCodex666Source.rechargeRatio, "1:1");
+assert.equal(configuredCodex666Source.autoPublish, false);
+assert.equal(configuredCodex666Source.commercialRelation, "none");
+assert.equal(configuredCodex666Source.operatorType, "individual");
+assert.equal(configuredCodex666Source.invoiceSupport, "supported");
+assert.ok(
+  configuredCodex666Source.adminNote.includes("autoPublish=false"),
+  "codex666ai 后台备注必须明确保持待审核草稿，不自动上前台。",
+);
+const configured790053500Source = transitSourceConfig.find((source) => source.id === "790053500-com");
+assert.ok(configured790053500Source, "鑫旺Neko API must stay saved as an API transit draft source.");
+assert.equal(configured790053500Source.collectorKind, "ai_transit_snapshot");
+assert.equal(configured790053500Source.stationSystem, "sub_to_api");
+assert.equal(configured790053500Source.websiteUrl, "https://790053500.com/");
+assert.equal(configured790053500Source.pricingUrl, "https://790053500.com/public/transit");
+assert.equal(configured790053500Source.pricingEndpointUrl, "https://790053500.com/api/public/transit/v1/snapshot");
+assert.equal(configured790053500Source.monitorUrl, "https://790053500.com/public/transit?view=monitoring");
+assert.equal(configured790053500Source.rechargeRatio, "1:1");
+assert.equal(configured790053500Source.autoPublish, false);
+assert.equal(configured790053500Source.commercialRelation, "none");
+assert.equal(configured790053500Source.operatorType, "unknown");
+assert.equal(configured790053500Source.invoiceSupport, "unknown");
+assert.ok(
+  configured790053500Source.adminNote.includes("autoPublish=false"),
+  "鑫旺Neko API 后台备注必须明确保持待审核草稿，不自动上前台。",
+);
 const configuredYujianSource = transitSourceConfig.find((source) => source.id === "yujianwudi-top");
 assert.ok(configuredYujianSource, "天机阁 must stay saved as an API transit draft source.");
 assert.equal(configuredYujianSource.collectorKind, "new_api_pricing");
