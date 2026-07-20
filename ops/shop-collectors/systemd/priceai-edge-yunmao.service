@@ -1,0 +1,13 @@
+[Unit]
+Description=PriceAI Yunmao shop collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/priceai-worker
+RuntimeDirectory=priceai-yunmao
+RuntimeDirectoryMode=0750
+ExecStart=/opt/priceai-worker/run-yunmao-scheduler.sh
+TimeoutStartSec=3600

@@ -36,6 +36,7 @@ const {
   shopApiStoredFeePolicy,
   shopCollectionSchedulerGroupMatches,
   selectShopApiPreferredChannel,
+  selectBuiltinTargets,
 } = await import("./collect-prices.mjs");
 
 assert.deepEqual(shopApiFeeModelFromChannelRate(3), { kind: "fixed_3pct", rate: 0.03 });
@@ -372,5 +373,30 @@ const excludedSources = selectTargets(
   { all: true, excludeSource: "source-a" },
 );
 assert.deepEqual(excludedSources.map((target) => target.sourceId), ["source-b"]);
+
+const shopFamilyTargets = [
+  { sourceId: "ldxp-shop", sourceName: "LDXP", sourceUrl: "https://pay.ldxp.cn/shop/demo", baseUrl: "https://pay.ldxp.cn", kind: "shopApi" },
+  { sourceId: "yunmao-shop", sourceName: "Yunmao", sourceUrl: "https://catfk.com/shop/demo", baseUrl: "https://catfk.com", kind: "shopApi" },
+  { sourceId: "qxvx-shop", sourceName: "QXVX", sourceUrl: "https://pay.qxvx.cn/shop/demo", baseUrl: "https://pay.qxvx.cn", kind: "shopApi" },
+];
+assert.deepEqual(
+  selectTargets(shopFamilyTargets, { all: true, "collector-kind": "shopApi", "include-family": "yunmao" })
+    .map((target) => target.sourceId),
+  ["yunmao-shop"],
+);
+assert.deepEqual(
+  selectTargets(shopFamilyTargets, { all: true, includeFamily: "catfk.com" })
+    .map((target) => target.sourceId),
+  ["yunmao-shop"],
+);
+assert.deepEqual(
+  selectTargets(shopFamilyTargets, { all: true, excludeFamily: "yunmao" })
+    .map((target) => target.sourceId),
+  ["ldxp-shop", "qxvx-shop"],
+);
+assert.deepEqual(
+  selectBuiltinTargets({ source: "ldxp", "include-family": "yunmao" }),
+  [],
+);
 
 console.log("collector rules: ok");

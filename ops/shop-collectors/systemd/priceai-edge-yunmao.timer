@@ -1,0 +1,13 @@
+[Unit]
+Description=Run PriceAI Yunmao shop collector every 30 minutes
+
+[Timer]
+OnBootSec=3min
+OnCalendar=*-*-* *:07,37:00
+AccuracySec=30s
+RandomizedDelaySec=45
+Persistent=false
+Unit=priceai-edge-yunmao.service
+
+[Install]
+WantedBy=timers.target

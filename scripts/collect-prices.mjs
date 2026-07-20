@@ -661,6 +661,7 @@ export {
   shopApiSnapshotReportedGoodsCount,
   shopApiProductLevelFeeModel,
   loadTargets,
+  selectBuiltinTargets,
   selectTargets,
   shopApiFeeModelFromChannelRate,
   shopApiProxyParallelismFor,
@@ -1130,6 +1131,7 @@ async function collectShopApiOnce(target, options = {}) {
       partialReason: partialReasons.join(" "),
       shopApiListMode: shopApiAllGoodsListEnabled(options) ? "all_goods" : "category",
       shopApiPricing: offers.collectionDetails?.shopApiPricing,
+      shopApiRequestRoute: proxyContext ? "proxy" : "direct",
     };
 
     return offers;
@@ -3048,6 +3050,7 @@ async function postCollectorHeartbeat(status, options = {}, input = {}) {
       options: compactObject({
         all: Boolean(options.all),
         kind: options.kind || options.kinds || options["collector-kind"] || options["collector-kinds"] || null,
+        includeFamily: options.includeFamily || options["include-family"] || options.includeFamilies || options["include-families"] || null,
         excludeKind: options.excludeKind || options["exclude-kind"] || options.excludeKinds || options["exclude-kinds"] || null,
         excludeFamily: options.excludeFamily || options["exclude-family"] || options.excludeFamilies || options["exclude-families"] || null,
         excludeSource: options.excludeSource || options["exclude-source"] || options.excludeSources || options["exclude-sources"] || null,
@@ -3055,6 +3058,8 @@ async function postCollectorHeartbeat(status, options = {}, input = {}) {
         shopApiPriceSampleSize: shopApiPriceSampleSizeFor(options),
         shopApiPriceSampleSelection: shopApiPriceSampleSizeFor(options) > 0 ? "high_price_probe" : "disabled",
         shopApiFeeModel: shopApiForcedFeeModel(options)?.kind || null,
+        shopApiProxyMode: shopApiProxyModeFor(options),
+        shopApiProxyHosts: Array.from(shopApiProxyHostsFor(options)).sort().join(",") || null,
       }),
     }),
   };
@@ -3074,6 +3079,9 @@ async function postCollectorHeartbeat(status, options = {}, input = {}) {
 function collectorHeartbeatScopeForOptions(options = {}) {
   const selected = options.source || options.id || options.name;
   if (selected) return `source:${String(selected)}`;
+
+  const includedFamilies = optionList(options.includeFamily || options["include-family"] || options.includeFamilies || options["include-families"]);
+  if (includedFamilies.length) return `family:${includedFamilies.join(",")}`;
 
   const kinds = optionList(options.kind || options.kinds || options["collector-kind"] || options["collector-kinds"]);
   if (kinds.length) return `kind:${kinds.join(",")}`;
@@ -3711,6 +3719,7 @@ function selectTargets(targets, options) {
   const runnable = (target) => target.kind;
   const applyExclusions = (items) => items
     .filter((target) => matchesTargetKinds(target, options))
+    .filter((target) => matchesTargetFamilies(target, options))
     .filter((target) => !shouldExcludeTarget(target, options));
   if (!selected && !options.all) return applyExclusions(targets.filter(runnable));
   if (options.all) return applyExclusions(targets.filter(runnable));
@@ -3739,6 +3748,7 @@ function selectBuiltinTargets(options = {}) {
     .map((target) => ({ ...target, builtinFallback: true }))
     .filter((target) => target.kind)
     .filter((target) => matchesTargetKinds(target, options))
+    .filter((target) => matchesTargetFamilies(target, options))
     .filter((target) => !shouldExcludeTarget(target, options))
     .filter((target) =>
       [target.sourceId, target.sourceName, target.sourceUrl, target.kind, target.configuredKind]
@@ -3985,6 +3995,10 @@ function hasTargetFilters(options = {}) {
       options.kinds ||
       options["collector-kind"] ||
       options["collector-kinds"] ||
+      options.includeFamily ||
+      options["include-family"] ||
+      options.includeFamilies ||
+      options["include-families"] ||
       options.excludeKind ||
       options["exclude-kind"] ||
       options.excludeKinds ||
@@ -4010,7 +4024,7 @@ function shouldExcludeTarget(target, options = {}) {
   }
 
   const families = optionList(options.excludeFamily || options["exclude-family"] || options.excludeFamilies || options["exclude-families"]);
-  if (families.includes("liandong-shop") && isLiandongShopTarget(target)) return true;
+  if (families.some((family) => targetFamilyAliases(target).has(family))) return true;
 
   const sourceIds = optionList(options.excludeSource || options["exclude-source"] || options.excludeSources || options["exclude-sources"]);
   if (sourceIds.includes(String(target.sourceId || "").toLowerCase())) return true;
@@ -4023,6 +4037,14 @@ function matchesTargetKinds(target, options = {}) {
 
   return kinds.includes(String(target.kind || "").toLowerCase()) ||
     kinds.includes(String(target.configuredKind || "").toLowerCase());
+}
+
+function matchesTargetFamilies(target, options = {}) {
+  const families = optionList(options.includeFamily || options["include-family"] || options.includeFamilies || options["include-families"]);
+  if (!families.length) return true;
+
+  const aliases = targetFamilyAliases(target);
+  return families.some((family) => aliases.has(family));
 }
 
 async function applyShopCollectionScheduler(targets, options = {}, logger = null) {
@@ -4831,10 +4853,6 @@ function asPlainRecord(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
-function isLiandongShopTarget(target) {
-  return Boolean(collectionFamilyForTarget(target));
-}
-
 function optionList(value) {
   if (Array.isArray(value)) return value.flatMap(optionList);
   if (value === true || value === false || value === null || value === undefined) return [];
@@ -5067,6 +5085,30 @@ function collectionFamilyForTarget(target) {
     key: `shopApi:${host}`,
     label: `${host} shopApi`,
   };
+}
+
+function targetFamilyAliases(target) {
+  const aliases = new Set();
+  const family = collectionFamilyForTarget(target);
+  const host = normalizeHostname(target.baseUrl || target.sourceUrl);
+
+  if (family) {
+    aliases.add("liandong-shop");
+    aliases.add(family.key.toLowerCase());
+  }
+  if (host) aliases.add(host);
+
+  if (["www.ldxp.cn", "pay.ldxp.cn", "ldxp.cn"].includes(host)) {
+    aliases.add("ldxp");
+  } else if (host === "pay.qxvx.cn") {
+    aliases.add("qxvx");
+  } else if (host === "catfk.com") {
+    aliases.add("catfk");
+    aliases.add("yunmao");
+    aliases.add("yunmao-consignment");
+  }
+
+  return aliases;
 }
 
 function liandongShopBulkLimitFor(options = {}) {
