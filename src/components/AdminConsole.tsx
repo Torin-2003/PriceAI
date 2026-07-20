@@ -24,6 +24,7 @@ import {
   MessageCircle,
   Pencil,
   Plus,
+  Percent,
   RefreshCcw,
   Search,
   Server,
@@ -63,6 +64,12 @@ import {
 import { merchantSourcePlatform } from "@/lib/merchant-collectors";
 import { sponsorAssetDisplayUrl } from "@/lib/sponsor-asset-url";
 import {
+  isSourceBuyerFeePaymentMethod,
+  sourceBuyerFeeNote,
+  sourceBuyerFeePaymentMethodLabel,
+  sourceBuyerFeePaymentMethodOptions,
+} from "@/lib/source-buyer-fee";
+import {
   SPONSOR_DISCLOSURE_LABEL_MAX_LENGTH,
   sponsorCreativeDisclosureLabel,
   sponsorDisclosureLabelOptions,
@@ -84,6 +91,7 @@ import type {
   SiteFeedback,
   SiteFeedbackStatus,
   Source,
+  SourceBuyerFeePolicyInput,
   SourceOfferStats,
   SourceQualityQueueKind,
   SourceQualitySource,
@@ -1763,6 +1771,68 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
       );
     } else {
       showRowFeedback(source.id, "error", result.message || "更新监测组失败。");
+    }
+  }
+
+  async function setSourceBuyerFeePolicy(
+    source: Source,
+    buyerFeePolicy: SourceBuyerFeePolicyInput,
+  ): Promise<boolean> {
+    setLoadingAction(`buyer-fee-source-${source.id}`);
+    try {
+      const result = await requestWithMethod("/api/admin/sources", "PATCH", password, {
+        id: source.id,
+        buyerFeePolicy,
+      });
+
+      if (!result.ok || !result.source) {
+        showRowFeedback(source.id, "error", result.message || "更新整店手续费失败。");
+        return false;
+      }
+
+      const updatedSource = result.source as Source;
+      setSourcePatches((prev) => ({ ...prev, [source.id]: updatedSource }));
+      const canQueueCollection =
+        updatedSource.enabled &&
+        resolvedCollectionMethod(updatedSource) === "http" &&
+        !sourceNeedsCollector(updatedSource);
+
+      if (canQueueCollection) {
+        const collectionResult = await enqueueSourceCollection(updatedSource);
+        if (collectionResult.ok) {
+          showRowFeedback(
+            source.id,
+            "success",
+            buyerFeePolicy.mode === "manual"
+              ? "整店人工手续费已保存，并已加入重采队列。"
+              : "已恢复自动识别，并已加入重采队列。",
+          );
+        } else {
+          showRowFeedback(
+            source.id,
+            "info",
+            `手续费配置已保存，但自动重采未创建：${collectionResult.message || "请手动重采。"}`,
+          );
+        }
+      } else {
+        showRowFeedback(
+          source.id,
+          "success",
+          buyerFeePolicy.mode === "manual" ? "整店人工手续费已保存。" : "已恢复自动识别。",
+        );
+      }
+
+      router.refresh();
+      return true;
+    } catch (error) {
+      showRowFeedback(
+        source.id,
+        "error",
+        error instanceof Error ? error.message : "更新整店手续费失败。",
+      );
+      return false;
+    } finally {
+      setLoadingAction(null);
     }
   }
 
@@ -4144,6 +4214,7 @@ export function AdminConsole({ data }: { data: AdminSummary }) {
                     onCopyCollectorContext={copySourceCollectorContext}
                     onToggleEnabled={toggleSourceEnabled}
                     onSetCollectionGroup={setSourceCollectionGroup}
+                    onSetBuyerFeePolicy={setSourceBuyerFeePolicy}
                     onToggleOffersVisibility={toggleSourceOffersVisibility}
                     onDeleteSource={deleteSourceRow}
                   />
@@ -7187,6 +7258,7 @@ function SourceTable({
   onCopyCollectorContext,
   onToggleEnabled,
   onSetCollectionGroup,
+  onSetBuyerFeePolicy,
   onToggleOffersVisibility,
   onDeleteSource,
 }: {
@@ -7210,6 +7282,7 @@ function SourceTable({
   onCopyCollectorContext: (source: Source) => void;
   onToggleEnabled: (source: Source, enabled?: boolean) => void;
   onSetCollectionGroup: (source: Source, collectionGroup: NonNullable<Source["collectionGroup"]>) => void;
+  onSetBuyerFeePolicy: (source: Source, buyerFeePolicy: SourceBuyerFeePolicyInput) => Promise<boolean>;
   onToggleOffersVisibility: (source: Source, hidden: boolean, mode?: AdminOfferHideMode) => void;
   onDeleteSource: (source: Source) => void;
 }) {
@@ -7421,6 +7494,7 @@ function SourceTable({
             loading={loadingAction === `collect-source-${source.id}` || loadingAction === "batch-collect-sources"}
             toggleLoading={loadingAction === `toggle-source-${source.id}`}
             collectionGroupLoading={loadingAction === `collection-group-${source.id}`}
+            buyerFeeLoading={loadingAction === `buyer-fee-source-${source.id}`}
             tempHideLoading={loadingAction === `temp-hide-source-offers-${source.id}`}
             hideLoading={loadingAction === `hide-source-offers-${source.id}`}
             restoreLoading={loadingAction === `restore-source-offers-${source.id}`}
@@ -7433,6 +7507,7 @@ function SourceTable({
             onCopyCollectorContext={onCopyCollectorContext}
             onToggleEnabled={onToggleEnabled}
             onSetCollectionGroup={onSetCollectionGroup}
+            onSetBuyerFeePolicy={onSetBuyerFeePolicy}
             onToggleOffersVisibility={onToggleOffersVisibility}
             onDeleteSource={onDeleteSource}
           />
@@ -7454,6 +7529,7 @@ function SourceTableRow({
   loading,
   toggleLoading,
   collectionGroupLoading,
+  buyerFeeLoading,
   tempHideLoading,
   hideLoading,
   restoreLoading,
@@ -7466,6 +7542,7 @@ function SourceTableRow({
   onCopyCollectorContext,
   onToggleEnabled,
   onSetCollectionGroup,
+  onSetBuyerFeePolicy,
   onToggleOffersVisibility,
   onDeleteSource,
 }: {
@@ -7477,6 +7554,7 @@ function SourceTableRow({
   loading: boolean;
   toggleLoading: boolean;
   collectionGroupLoading: boolean;
+  buyerFeeLoading: boolean;
   tempHideLoading: boolean;
   hideLoading: boolean;
   restoreLoading: boolean;
@@ -7489,9 +7567,11 @@ function SourceTableRow({
   onCopyCollectorContext: (source: Source) => void;
   onToggleEnabled: (source: Source, enabled?: boolean) => void;
   onSetCollectionGroup: (source: Source, collectionGroup: NonNullable<Source["collectionGroup"]>) => void;
+  onSetBuyerFeePolicy: (source: Source, buyerFeePolicy: SourceBuyerFeePolicyInput) => Promise<boolean>;
   onToggleOffersVisibility: (source: Source, hidden: boolean, mode?: AdminOfferHideMode) => void;
   onDeleteSource: (source: Source) => void;
 }) {
+  const [buyerFeeEditorOpen, setBuyerFeeEditorOpen] = useState(false);
   const displayMethod = resolvedCollectionMethod(source);
   const displayCollector = resolvedCollectorKind(source);
   const needsBrowser = sourceNeedsBrowser(source);
@@ -7527,6 +7607,12 @@ function SourceTableRow({
               <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${hasIssue ? "bg-[#fff7e8] text-[#7a541b]" : "bg-[#e8f3ec] text-[#2f7a4b]"}`}>
                 <Star size={11} />
                 {hasIssue ? "VIP 降级" : "VIP 15分钟"}
+              </span>
+            ) : null}
+            {source.buyerFeeStrategy === "manual_verified" && source.buyerFeeRate !== null && source.buyerFeeRate !== undefined ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#eef3f8] px-2 py-0.5 text-xs font-semibold text-[#47657a]">
+                <Percent size={11} />
+                人工 {sourceBuyerFeePaymentMethodLabel(source.buyerFeePaymentMethod)} {formatBuyerFeePercent(source.buyerFeeRate)}
               </span>
             ) : null}
             {quality ? <Badge tone={quality.tone}>{quality.label}</Badge> : null}
@@ -7672,6 +7758,21 @@ function SourceTableRow({
           ) : null}
           <button
             type="button"
+            aria-expanded={buyerFeeEditorOpen}
+            disabled={buyerFeeLoading}
+            onClick={() => setBuyerFeeEditorOpen((open) => !open)}
+            title="配置整店人工手续费"
+            className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors disabled:opacity-60 ${
+              source.buyerFeeStrategy === "manual_verified"
+                ? "border-[#47657a]/25 bg-[#eef3f8] text-[#47657a] hover:bg-[#e1ebf3]"
+                : "border-[#adb3b4]/30 bg-white text-[#5a6061] hover:bg-[#f2f4f4]"
+            }`}
+          >
+            {buyerFeeLoading ? <Loader2 size={14} className="animate-spin" /> : <Percent size={14} />}
+            手续费
+          </button>
+          <button
+            type="button"
             disabled={tempHideLoading || (stats?.visibleCount ?? offerCount) <= 0}
             onClick={() => onToggleOffersVisibility(source, true, "temporary")}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#7a541b]/20 bg-white px-3 text-xs font-medium text-[#7a541b] transition-colors hover:bg-[#fff7e8] disabled:opacity-50"
@@ -7708,6 +7809,17 @@ function SourceTableRow({
           </button>
         </div>
       </div>
+      {buyerFeeEditorOpen ? (
+        <SourceBuyerFeeEditor
+          source={source}
+          saving={buyerFeeLoading}
+          onCancel={() => setBuyerFeeEditorOpen(false)}
+          onSave={async (buyerFeePolicy) => {
+            const saved = await onSetBuyerFeePolicy(source, buyerFeePolicy);
+            if (saved) setBuyerFeeEditorOpen(false);
+          }}
+        />
+      ) : null}
       {feedback ? (
         <div className={`mt-2 rounded-lg px-3 py-2 text-xs ${rowFeedbackClass(feedback.type)}`}>
           {feedback.text}
@@ -7715,6 +7827,153 @@ function SourceTableRow({
       ) : null}
     </div>
   );
+}
+
+function SourceBuyerFeeEditor({
+  source,
+  saving,
+  onCancel,
+  onSave,
+}: {
+  source: Source;
+  saving: boolean;
+  onCancel: () => void;
+  onSave: (buyerFeePolicy: SourceBuyerFeePolicyInput) => Promise<void>;
+}) {
+  const manualConfigured = source.buyerFeeStrategy === "manual_verified";
+  const [manual, setManual] = useState(manualConfigured);
+  const [ratePercent, setRatePercent] = useState(
+    String(Math.round((source.buyerFeeRate ?? 0.04) * 10_000) / 100),
+  );
+  const [paymentMethod, setPaymentMethod] = useState(
+    isSourceBuyerFeePaymentMethod(source.buyerFeePaymentMethod) ? source.buyerFeePaymentMethod : "alipay",
+  );
+  const [note, setNote] = useState(sourceBuyerFeeNote(source.notes));
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    if (!manual) {
+      await onSave({ mode: "automatic" });
+      return;
+    }
+
+    const parsedPercent = Number(ratePercent);
+    if (!Number.isFinite(parsedPercent) || parsedPercent < 0 || parsedPercent > 20) {
+      setError("手续费率必须在 0% 到 20% 之间。");
+      return;
+    }
+
+    await onSave({
+      mode: "manual",
+      rate: Math.round(parsedPercent * 100) / 10_000,
+      paymentMethod,
+      note: note.trim() || null,
+    });
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="mt-3 border-t border-[#adb3b4]/20 bg-[#fbfcfc] px-3 pb-1 pt-3"
+    >
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex min-h-10 min-w-[220px] flex-[1.2] items-center justify-between gap-4 rounded-lg border border-[#adb3b4]/30 bg-white px-3 py-2">
+          <span>
+            <span className="block text-sm font-medium text-[#2d3435]">整店人工配置</span>
+            <span className="block text-xs leading-5 text-[#5a6061]">关闭后恢复自动识别</span>
+          </span>
+          <input
+            type="checkbox"
+            checked={manual}
+            onChange={(event) => setManual(event.target.checked)}
+            className="h-4 w-4 accent-[#2f7a4b]"
+            aria-label="启用整店人工手续费"
+          />
+        </label>
+
+        <label className="block min-w-[160px] flex-1">
+          <span className="mb-1 block text-xs font-medium text-[#5a6061]">支付方式</span>
+          <select
+            value={paymentMethod}
+            onChange={(event) => setPaymentMethod(event.target.value as typeof paymentMethod)}
+            disabled={!manual || saving}
+            className="h-10 w-full rounded-lg border border-[#adb3b4]/35 bg-white px-3 text-sm text-[#2d3435] outline-none transition-colors focus:border-[#2f7a4b] disabled:bg-[#f2f4f4] disabled:text-[#adb3b4]"
+          >
+            {sourceBuyerFeePaymentMethodOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block min-w-[150px] flex-1">
+          <span className="mb-1 block text-xs font-medium text-[#5a6061]">手续费率</span>
+          <span className="flex h-10 items-center rounded-lg border border-[#adb3b4]/35 bg-white focus-within:border-[#2f7a4b]">
+            <input
+              type="number"
+              min="0"
+              max="20"
+              step="0.01"
+              inputMode="decimal"
+              value={ratePercent}
+              onChange={(event) => setRatePercent(event.target.value)}
+              disabled={!manual || saving}
+              className="min-w-0 flex-1 bg-transparent px-3 text-sm text-[#2d3435] outline-none disabled:text-[#adb3b4]"
+              aria-label="整店手续费率百分比"
+            />
+            <span className="pr-3 text-sm text-[#5a6061]">%</span>
+          </span>
+        </label>
+
+        <label className="block min-w-[220px] flex-[1.5]">
+          <span className="mb-1 block text-xs font-medium text-[#5a6061]">备注</span>
+          <input
+            type="text"
+            maxLength={300}
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            disabled={!manual || saving}
+            placeholder="例如：支付页人工核验"
+            className="h-10 w-full rounded-lg border border-[#adb3b4]/35 bg-white px-3 text-sm text-[#2d3435] outline-none transition-colors placeholder:text-[#6f7778] focus:border-[#2f7a4b] disabled:bg-[#f2f4f4] disabled:text-[#adb3b4]"
+          />
+        </label>
+
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="inline-flex h-10 items-center justify-center rounded-lg border border-[#adb3b4]/30 bg-white px-4 text-sm font-medium text-[#5a6061] transition-colors hover:bg-[#f2f4f4] disabled:opacity-60"
+          >
+            取消
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-[#2d3435] px-4 text-sm font-medium text-white transition-colors hover:bg-[#202829] disabled:opacity-60"
+          >
+            {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+            保存并重采
+          </button>
+        </div>
+      </div>
+
+      {manual ? (
+        <p className="mt-2 rounded-lg bg-[#fff7e8] px-3 py-2 text-xs leading-5 text-[#7a541b]">
+          人工规则会覆盖该店铺全部商品的自动手续费识别，包括源站实际免手续费的商品。
+        </p>
+      ) : (
+        <p className="mt-2 text-xs leading-5 text-[#5a6061]">保存后清除整店人工规则，并恢复采集器自动识别。</p>
+      )}
+      {error ? <p className="mt-2 text-xs font-medium text-[#9b3328]">{error}</p> : null}
+    </form>
+  );
+}
+
+function formatBuyerFeePercent(rate: number): string {
+  const percent = Math.round(rate * 10_000) / 100;
+  return `${Number.isInteger(percent) ? percent.toFixed(0) : percent.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}%`;
 }
 
 const SOURCE_QUALITY_ACTION_ORDER: SourceQualityQueueKind[] = [

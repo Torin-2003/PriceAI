@@ -58,9 +58,11 @@ import type {
   SiteFeedbackStatus,
   SiteFeedbackType,
   Source,
+  SourceBuyerFeePolicyInput,
   SubmissionReviewStage,
   SubmissionStatus,
 } from "./types";
+import { updateSourceBuyerFeeNote } from "./source-buyer-fee";
 import {
   normalizeEffectiveStatus,
   normalizeFreshnessStatus,
@@ -281,19 +283,27 @@ export async function updateSourceState(input: {
   collectionMethod?: CollectionMethod;
   collectorKind?: CollectorKind | null;
   collectionGroup?: Source["collectionGroup"];
+  buyerFeePolicy?: SourceBuyerFeePolicyInput;
   notes?: string | null;
 }): Promise<Source> {
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase 尚未配置，无法更新来源。");
 
-  if (input.collectionGroup !== undefined || input.collectionMethod !== undefined || input.collectorKind !== undefined) {
+  let existingSource: Record<string, unknown> | null = null;
+  if (
+    input.collectionGroup !== undefined ||
+    input.collectionMethod !== undefined ||
+    input.collectorKind !== undefined ||
+    input.buyerFeePolicy !== undefined
+  ) {
     const { data: existing, error: existingError } = await supabase
       .from("sources")
-      .select("id,base_url,entry_url,collector_kind,collection_method,collection_group")
+      .select("id,base_url,entry_url,collector_kind,collection_method,collection_group,notes")
       .eq("id", input.id)
       .maybeSingle();
     if (existingError) throw existingError;
     if (!existing) throw new Error("来源不存在。");
+    existingSource = existing;
     const sourceUrl = String(existing.entry_url || existing.base_url || "");
     let sourceHost = "";
     try {
@@ -319,7 +329,31 @@ export async function updateSourceState(input: {
   if (input.collectionMethod) row.collection_method = input.collectionMethod;
   if (input.collectorKind !== undefined) row.collector_kind = input.collectorKind || null;
   if (input.collectionGroup !== undefined) row.collection_group = input.collectionGroup;
-  if (input.notes !== undefined) row.notes = input.notes;
+  if (input.buyerFeePolicy !== undefined) {
+    const baseNotes = input.notes !== undefined
+      ? input.notes
+      : existingSource?.notes
+        ? String(existingSource.notes)
+        : null;
+    if (input.buyerFeePolicy.mode === "manual") {
+      row.buyer_fee_rate = input.buyerFeePolicy.rate;
+      row.buyer_fee_payment_method = input.buyerFeePolicy.paymentMethod;
+      row.buyer_fee_strategy = "manual_verified";
+      row.notes = updateSourceBuyerFeeNote(
+        baseNotes,
+        input.buyerFeePolicy.note,
+      );
+    } else {
+      row.buyer_fee_rate = null;
+      row.buyer_fee_payment_method = null;
+      row.buyer_fee_strategy = null;
+      row.notes = updateSourceBuyerFeeNote(
+        baseNotes,
+        null,
+      );
+    }
+  }
+  if (input.notes !== undefined && input.buyerFeePolicy === undefined) row.notes = input.notes;
 
   const { data, error } = await supabase
     .from("sources")
@@ -1973,6 +2007,9 @@ function mapSourceRow(row: Record<string, unknown>): Source {
     entryUrl: String(row.entry_url || row.base_url || ""),
     collectionMethod: String(row.collection_method || "http") as CollectionMethod,
     collectorKind: normalizeCollectorKind(row.collector_kind),
+    buyerFeeRate: row.buyer_fee_rate === null || row.buyer_fee_rate === undefined ? null : Number(row.buyer_fee_rate),
+    buyerFeePaymentMethod: row.buyer_fee_payment_method ? String(row.buyer_fee_payment_method) as Source["buyerFeePaymentMethod"] : null,
+    buyerFeeStrategy: row.buyer_fee_strategy === "manual_verified" ? "manual_verified" : null,
     collectionGroup: row.collection_group === "vip_15m" ? "vip_15m" : "automatic",
     enabled: Boolean(row.enabled),
     notes: row.notes ? String(row.notes) : null,

@@ -3,10 +3,19 @@ import { logApiError, safeApiErrorMessage } from "@/lib/api-errors";
 import { normalizeCollectorKind } from "@/lib/collector-registry";
 import { clearPublicDataCache, markPublicApiSnapshotsDirty } from "@/lib/data";
 import { requireAdminRequest } from "@/lib/env";
-import type { CollectorKind } from "@/lib/types";
+import { SOURCE_BUYER_FEE_PAYMENT_METHODS, type CollectorKind } from "@/lib/types";
 import { z } from "zod";
 
 const collectorKindSchema = z.custom<CollectorKind>((value) => normalizeCollectorKind(value) === value);
+const buyerFeePolicySchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("automatic") }),
+  z.object({
+    mode: z.literal("manual"),
+    rate: z.number().min(0).max(0.2),
+    paymentMethod: z.enum(SOURCE_BUYER_FEE_PAYMENT_METHODS),
+    note: z.string().trim().max(300).nullable().optional(),
+  }),
+]);
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -24,6 +33,7 @@ const patchSchema = z.object({
   collectionMethod: z.enum(["public_json", "browser", "http", "manual"]).optional(),
   collectorKind: collectorKindSchema.nullable().optional(),
   collectionGroup: z.enum(["automatic", "vip_15m"]).optional(),
+  buyerFeePolicy: buyerFeePolicySchema.optional(),
   notes: z.string().nullable().optional(),
   offersHidden: z.boolean().optional(),
   offersHiddenMode: z.enum(["manual", "temporary"]).optional(),
@@ -80,6 +90,7 @@ export async function PATCH(request: Request) {
       collectionMethod: payload.collectionMethod,
       collectorKind: payload.collectorKind,
       collectionGroup: payload.collectionGroup,
+      buyerFeePolicy: payload.buyerFeePolicy,
       notes: payload.notes,
     });
     clearPublicDataCache();

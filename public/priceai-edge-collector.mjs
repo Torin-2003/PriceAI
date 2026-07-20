@@ -1741,8 +1741,6 @@ function applySourceBuyerFeePolicy(target, input) {
   const rate = numberOrNull(target?.buyerFeeRate ?? target?.buyer_fee_rate);
   const price = numberOrNull(input?.price);
   if (strategy !== "manual_verified" || rate === null || rate < 0 || rate > 0.2 || price === null) return input;
-  if (input.priceBasis === "settled" || input.priceBasis === "modeled" || numberOrNull(input.feeAmount) !== null) return input;
-
   const listedPrice = numberOrNull(input.listedPrice) ?? price;
   const feeAmount = roundCurrency(listedPrice * rate);
   return {

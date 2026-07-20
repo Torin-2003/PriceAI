@@ -40,6 +40,16 @@ export type CollectorKind =
   | "unsupported";
 
 export type SourceCollectionGroup = "automatic" | "vip_15m";
+export const SOURCE_BUYER_FEE_PAYMENT_METHODS = ["alipay", "wechat", "usdt", "balance", "other"] as const;
+export type SourceBuyerFeePaymentMethod = (typeof SOURCE_BUYER_FEE_PAYMENT_METHODS)[number];
+export type SourceBuyerFeePolicyInput =
+  | { mode: "automatic" }
+  | {
+      mode: "manual";
+      rate: number;
+      paymentMethod: SourceBuyerFeePaymentMethod;
+      note?: string | null;
+    };
 
 export type Source = {
   id: string;
@@ -49,7 +59,7 @@ export type Source = {
   collectionMethod: CollectionMethod;
   collectorKind?: CollectorKind | null;
   buyerFeeRate?: number | null;
-  buyerFeePaymentMethod?: string | null;
+  buyerFeePaymentMethod?: SourceBuyerFeePaymentMethod | null;
   buyerFeeStrategy?: "manual_verified" | null;
   collectionGroup?: SourceCollectionGroup;
   enabled: boolean;

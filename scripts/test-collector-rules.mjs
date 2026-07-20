@@ -51,7 +51,14 @@ assert.deepEqual(
     { buyerFeeRate: 0.04, buyerFeeStrategy: "manual_verified" },
     { price: 103, listedPrice: 100, feeAmount: 3, priceBasis: "settled" },
   ),
-  { price: 103, listedPrice: 100, feeAmount: 3, priceBasis: "settled" },
+  { price: 104, listedPrice: 100, feeAmount: 4, priceBasis: "modeled" },
+);
+assert.deepEqual(
+  applySourceBuyerFeePolicy(
+    { buyerFeeRate: 0, buyerFeeStrategy: "manual_verified" },
+    { price: 103, listedPrice: 100, feeAmount: 3, priceBasis: "modeled" },
+  ),
+  { price: 100, listedPrice: 100, feeAmount: 0, priceBasis: "modeled" },
 );
 
 const preferredAlipayChannel = selectShopApiPreferredChannel([
