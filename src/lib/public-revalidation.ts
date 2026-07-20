@@ -78,10 +78,16 @@ export function revalidateApiTransitPublicPaths(
   revalidatePath("/api-transit/[slug]", "page");
 
   for (const slug of slugs) {
-    const path = apiTransitStationPath(slug);
-    if (!path) continue;
-    revalidatePath(path);
-    paths.add(path);
+    const stationPath = apiTransitStationPath(slug);
+    const detailPath = apiTransitStationDetailPath(slug);
+    if (stationPath) {
+      revalidatePath(stationPath);
+      paths.add(stationPath);
+    }
+    if (detailPath) {
+      revalidatePath(detailPath);
+      paths.add(detailPath);
+    }
   }
 
   return [...paths];
@@ -119,6 +125,12 @@ function apiTransitStationPath(slug: string | null | undefined): string | null {
   const cleanSlug = slug?.trim();
   if (!cleanSlug || cleanSlug.includes("/") || cleanSlug.includes("\\")) return null;
   return `/api-transit/${encodeURIComponent(cleanSlug)}`;
+}
+
+function apiTransitStationDetailPath(slug: string | null | undefined): string | null {
+  const cleanSlug = slug?.trim();
+  if (!cleanSlug || cleanSlug.includes("/") || cleanSlug.includes("\\")) return null;
+  return `/api/api-transit-stations/${encodeURIComponent(cleanSlug)}/detail`;
 }
 
 function publicPrewarmUrls(request: Request, paths: Iterable<string>): string[] {

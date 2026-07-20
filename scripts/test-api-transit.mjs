@@ -547,6 +547,71 @@ const refreshedAiTransitStation = __test.mergeStationForRefresh(
 );
 assert.match(refreshedAiTransitStation.summary, /公开 ai-transit\.v1 快照/);
 
+const removedAutoPublishStation = __test.mergeStationForRefresh(
+  {
+    id: "removed-auto-source",
+    status: "active",
+    auto_publish: true,
+    published: true,
+    collection_status: "success",
+    data_status: "verified",
+    usage_advice: "try_small",
+    admin_note: "自动采集成功。",
+    created_at: "new",
+  },
+  {
+    id: "removed-auto-source",
+    status: "unknown",
+    published: false,
+    removed_at: "2026-07-20T08:19:16.327Z",
+    removed_reason: "后台移除",
+    data_status: "pending_review",
+    usage_advice: "pending",
+    admin_note: "后台移除",
+    created_at: "old",
+  },
+  { publish: true },
+);
+assert.equal(removedAutoPublishStation.published, false);
+assert.equal(removedAutoPublishStation.status, "unknown");
+assert.equal(removedAutoPublishStation.data_status, "pending_review");
+assert.equal(removedAutoPublishStation.usage_advice, "pending");
+assert.equal(removedAutoPublishStation.admin_note, "后台移除");
+
+const removedStateWriteCalls = [];
+const removedStateSupabase = {
+  from(table) {
+    const call = { table };
+    removedStateWriteCalls.push(call);
+    return {
+      update(patch) {
+        call.patch = patch;
+        return this;
+      },
+      in(column, values) {
+        call.idFilter = { column, values };
+        return this;
+      },
+      async not(column, operator, value) {
+        call.removedFilter = { column, operator, value };
+        return { error: null };
+      },
+    };
+  },
+};
+await __test.enforceRemovedStationStateAfterUpsert(removedStateSupabase, ["removed-auto-source"]);
+assert.deepEqual(removedStateWriteCalls, [{
+  table: "api_transit_stations",
+  patch: {
+    published: false,
+    status: "unknown",
+    data_status: "pending_review",
+    usage_advice: "pending",
+  },
+  idFilter: { column: "id", values: ["removed-auto-source"] },
+  removedFilter: { column: "removed_at", operator: "is", value: null },
+}]);
+
 const preservedManualStationSummary = __test.mergeStationForRefresh(
   {
     id: "manual-summary",

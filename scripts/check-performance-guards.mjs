@@ -232,6 +232,9 @@ assert(/PUBLIC_OFFER_MAX_QUERY_LENGTH\s*=\s*80/.test(publicOfferQueryText), "src
 assert(/normalizePublicOfferQuery/.test(publicOfferQueryText), "src/lib/public-offer-query.ts: public offer search query normalization must stay centralized.");
 
 const transitPublicText = read("src/lib/api-transit-db.ts");
+assert(/queryStationEnhancementRows[\s\S]{0,500}\.is\("removed_at", null\)/.test(transitPublicText), "src/lib/api-transit-db.ts: public station enhancement reads must exclude removed stations.");
+assert(/function\s+queryStationRows[\s\S]{0,700}\.is\("removed_at", null\)/.test(transitPublicText), "src/lib/api-transit-db.ts: public station list/detail reads must exclude removed stations.");
+assert(/refreshTransitStationsSnapshot[\s\S]{0,500}writeTransitStationsSnapshot\(stations, generatedAt\)/.test(transitPublicText), "src/lib/api-transit-db.ts: API transit snapshot refresh must replace snapshots even when the public station set is empty.");
 const transitLogicText = read("src/lib/api-transit.ts");
 assert(!/api_transit_detection_runs/.test(transitPublicText), "src/lib/api-transit-db.ts: public API transit reads must not query detection runs.");
 assert(!/raw_snapshot/.test(transitPublicText), "src/lib/api-transit-db.ts: public API transit reads must not parse raw snapshots.");

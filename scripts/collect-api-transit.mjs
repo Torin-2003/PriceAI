@@ -3514,6 +3514,7 @@ async function postRows(rows, options) {
   const staleOfferIds = findStaleRefreshedOfferIds(existingOffers, refreshedOfferKeys);
 
   await upsertRows(supabase, "api_transit_stations", stations, { onConflict: "id" });
+  await enforceRemovedStationStateAfterUpsert(supabase, stations.map((station) => station.id));
   const offerWriteResult = await upsertOfferRows(supabase, offers);
   await deactivateOffersById(supabase, staleOfferIds);
   await upsertRows(supabase, "api_transit_detection_runs", rows.runs, { onConflict: "id" });
@@ -3527,6 +3528,27 @@ async function postRows(rows, options) {
     skipped: false,
     message: postRowsMessage(options, refreshedOfferKeys, autoPublishStationIds),
   };
+}
+
+async function enforceRemovedStationStateAfterUpsert(supabase, stationIds) {
+  const ids = uniqueText(stationIds).filter(Boolean);
+  for (const chunk of chunks(ids, 300)) {
+    if (!chunk.length) continue;
+    const { error } = await supabase
+      .from("api_transit_stations")
+      .update({
+        published: false,
+        status: "unknown",
+        data_status: "pending_review",
+        usage_advice: "pending",
+      })
+      .in("id", chunk)
+      .not("removed_at", "is", null);
+    if (!error) continue;
+    if (isMissingColumnError(error, "removed_at")) return;
+    error.table = "api_transit_stations";
+    throw error;
+  }
 }
 
 async function deleteSupersededAvailabilitySampleSnapshots(supabase, snapshots) {
@@ -3918,6 +3940,7 @@ function offerKey(offer) {
 async function readExistingStations(supabase, stationIds) {
   return readExistingStationsWithColumns(supabase, stationIds, [
     "id",
+    "status",
     "source_type",
     "commercial_relation",
     "station_system",
@@ -3926,6 +3949,7 @@ async function readExistingStations(supabase, stationIds) {
     "channel_types",
     "account_pools",
     "risk_labels",
+    "usage_advice",
     "summary",
     "payment_methods",
     "minimum_top_up",
@@ -3947,6 +3971,8 @@ async function readExistingStations(supabase, stationIds) {
     "availability_source_label",
     "availability_source_url",
     "published",
+    "removed_at",
+    "removed_reason",
     "admin_note",
     "created_at",
   ]);
@@ -3979,7 +4005,8 @@ async function readExistingStationsWithColumns(supabase, stationIds, columns) {
 
 function mergeStationForRefresh(station, existing, options) {
   const { auto_publish: autoPublish, ...row } = station;
-  const shouldPublish = options.publish || autoPublish;
+  const manuallyRemoved = Boolean(stringOrNull(existing?.removed_at));
+  const shouldPublish = !manuallyRemoved && (options.publish || autoPublish);
   const refreshFailed = row.collection_status === "failed";
   if (!existing) {
     return normalizeUnknownAvailability({
@@ -3992,7 +4019,7 @@ function mergeStationForRefresh(station, existing, options) {
 
   return normalizeUnknownAvailability(mergeExistingAvailability({
     ...row,
-    status: refreshFailed ? existing.status || station.status : row.status,
+    status: manuallyRemoved ? existing.status || "unknown" : refreshFailed ? existing.status || station.status : row.status,
     source_type: existing.source_type || station.source_type,
     commercial_relation: existing.commercial_relation || station.commercial_relation,
     station_system: keepConfiguredValue(existing.station_system, station.station_system),
@@ -4007,15 +4034,20 @@ function mergeStationForRefresh(station, existing, options) {
     balance_expiry: existing.balance_expiry ?? station.balance_expiry,
     support_channels: Array.isArray(existing.support_channels) ? existing.support_channels : station.support_channels,
     refund_policy: existing.refund_policy ?? station.refund_policy,
-    data_status: refreshFailed ? existing.data_status || station.data_status : shouldPublish ? "verified" : existing.data_status || station.data_status,
+    usage_advice: manuallyRemoved ? existing.usage_advice || "pending" : row.usage_advice,
+    data_status: manuallyRemoved
+      ? existing.data_status || "pending_review"
+      : refreshFailed ? existing.data_status || station.data_status : shouldPublish ? "verified" : existing.data_status || station.data_status,
     monitor_url: existing.monitor_url ?? station.monitor_url,
     commercial_offers: existing.commercial_offers ?? station.commercial_offers,
     verification_events: existing.verification_events ?? station.verification_events,
     availability_first_checked_at: existing.availability_first_checked_at || station.availability_first_checked_at,
     availability_latest_latency_ms: station.availability_latest_latency_ms ?? existing.availability_latest_latency_ms,
     availability_avg_latency_7d_ms: station.availability_avg_latency_7d_ms ?? existing.availability_avg_latency_7d_ms,
-    published: refreshFailed ? Boolean(existing.published) : shouldPublish ? true : Boolean(existing.published),
-    admin_note: shouldPublish && row.collection_status === "success" ? row.admin_note : existing.admin_note || station.admin_note,
+    published: manuallyRemoved ? false : refreshFailed ? Boolean(existing.published) : shouldPublish ? true : Boolean(existing.published),
+    admin_note: manuallyRemoved
+      ? existing.admin_note || station.admin_note
+      : shouldPublish && row.collection_status === "success" ? row.admin_note : existing.admin_note || station.admin_note,
     created_at: existing.created_at || station.created_at,
   }, existing), "已抓取公开价格，尚未接入 API Key 可用性检测。");
 }
@@ -4636,6 +4668,7 @@ export const __test = {
   collectRefreshedOfferKeys,
   clearUnpricedPreviewModelRates,
   dedupeRowsById,
+  enforceRemovedStationStateAfterUpsert,
   filterSourcesByPublishedStationIds,
   findStaleRefreshedOfferIds,
   mergeStationForRefresh,

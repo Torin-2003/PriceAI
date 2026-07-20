@@ -7,6 +7,7 @@ import {
   restoreApiTransitStation,
   updateApiTransitStation,
 } from "@/lib/api-transit-admin";
+import { clearTransitStationsCache, refreshTransitStationsSnapshot } from "@/lib/api-transit-db";
 import { clearAdminDataCache } from "@/lib/data";
 import { requireAdminRequest } from "@/lib/env";
 import { prewarmPublicPaths, revalidateApiTransitPublicPaths } from "@/lib/public-revalidation";
@@ -157,9 +158,11 @@ export async function PATCH(request: Request) {
 
 async function clearApiTransitAdminCaches(request: Request, slugs: string[] = []): Promise<void> {
   clearAdminDataCache();
+  clearTransitStationsCache();
+  const snapshot = await refreshTransitStationsSnapshot();
   revalidatePath("/admin");
   revalidatePath("/admin/api-transit");
-  const publicPaths = revalidateApiTransitPublicPaths(slugs);
+  const publicPaths = revalidateApiTransitPublicPaths([...slugs, ...snapshot.slugs]);
   await prewarmPublicPaths(request, publicPaths);
 }
 

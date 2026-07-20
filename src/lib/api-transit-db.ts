@@ -298,15 +298,6 @@ export async function refreshTransitStationsSnapshot(): Promise<TransitStationsS
   const generatedAt = new Date().toISOString();
   const stations = await readStationsFromSupabase({ signal: publicTransitRefreshReadSignal() });
 
-  if (!stations.length) {
-    return {
-      generatedAt,
-      snapshotWritten: false,
-      slugs: [],
-      stationCount: 0,
-    };
-  }
-
   setTransitStationsCache(stations, new Date(generatedAt).getTime());
   const snapshotWritten = await writeTransitStationsSnapshot(stations, generatedAt);
 
@@ -331,13 +322,8 @@ export async function getTransitStations(): Promise<TransitStation[]> {
 
   try {
     const stations = await readStationsFromSupabase();
-    if (!stations.length && snapshot?.stations.length) {
-      console.warn("Using stale API transit stations because Supabase returned an empty published set.");
-      setTransitStationsCache(snapshot.stations, now);
-      return snapshot.stations;
-    }
     setTransitStationsCache(stations, now);
-    if (stations.length && !hasStaticDemoTransitStations(stations)) await writeTransitStationsSnapshot(stations);
+    if (!hasStaticDemoTransitStations(stations)) await writeTransitStationsSnapshot(stations);
     return stations;
   } catch (error) {
     const fallback = filterStaticDemoTransitStations(staleMemory || snapshot?.stations || []);
@@ -554,42 +540,41 @@ async function readStationsFromSupabase(options: TransitStationsReadOptions = {}
   }
 
   async function readStationEnhancementRows(): Promise<DbRow[]> {
-    try {
-      const { data, error } = await client
+    async function queryStationEnhancementRows(columns: string, filterRemoved: boolean): Promise<DbRow[]> {
+      let query = client
         .from("api_transit_stations")
-        .select(STATION_ENHANCEMENT_COLUMNS)
-        .eq("published", true)
-        .abortSignal(signal);
+        .select(columns)
+        .eq("published", true);
+      if (filterRemoved) query = query.is("removed_at", null);
+      const { data, error } = await query.abortSignal(signal);
       if (error) throw error;
       return dbRows(data);
-    } catch (error) {
-      if (isMissingColumnError(error)) {
-        return readStationEnhancementRowsWithoutLogo();
-      }
-      if (!isMissingColumnError(error) && !hasWarnedMissingEnhancementColumns) {
-        hasWarnedMissingEnhancementColumns = true;
-        console.warn("API transit station enhancement columns are unavailable:", error);
-      }
-      return [];
     }
-  }
 
-  async function readStationEnhancementRowsWithoutLogo(): Promise<DbRow[]> {
-    try {
-      const { data, error } = await client
-        .from("api_transit_stations")
-        .select(STATION_ENHANCEMENT_COLUMNS_WITHOUT_LOGO)
-        .eq("published", true)
-        .abortSignal(signal);
-      if (error) throw error;
-      return dbRows(data);
-    } catch (fallbackError) {
-      if (!hasWarnedMissingEnhancementColumns) {
-        hasWarnedMissingEnhancementColumns = true;
-        console.warn("API transit station enhancement columns are unavailable:", fallbackError);
+    const attempts = [STATION_ENHANCEMENT_COLUMNS, STATION_ENHANCEMENT_COLUMNS_WITHOUT_LOGO];
+    let lastError: unknown = null;
+    for (const columns of attempts) {
+      try {
+        return await queryStationEnhancementRows(columns, true);
+      } catch (error) {
+        if (isMissingRemovedAtColumnError(error)) {
+          try {
+            return await queryStationEnhancementRows(columns, false);
+          } catch (fallbackError) {
+            if (!isMissingColumnError(fallbackError)) throw fallbackError;
+            lastError = fallbackError;
+            continue;
+          }
+        }
+        if (!isMissingColumnError(error)) throw error;
+        lastError = error;
       }
-      return [];
     }
+    if (!hasWarnedMissingEnhancementColumns) {
+      hasWarnedMissingEnhancementColumns = true;
+      console.warn("API transit station enhancement columns are unavailable:", lastError);
+    }
+    return [];
   }
 
 }
@@ -780,6 +765,15 @@ async function queryPublishedStationRows(
     try {
       return await queryStationRows(client, signal, columns, slug);
     } catch (error) {
+      if (isMissingRemovedAtColumnError(error)) {
+        try {
+          return await queryStationRows(client, signal, columns, slug, false);
+        } catch (fallbackError) {
+          if (!isMissingColumnError(fallbackError)) throw fallbackError;
+          lastMissingColumnError = fallbackError;
+          continue;
+        }
+      }
       if (!isMissingColumnError(error)) throw error;
       lastMissingColumnError = error;
     }
@@ -792,25 +786,28 @@ async function queryStationRows(
   client: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
   signal: AbortSignal,
   columns: string,
-  slug?: string
+  slug?: string,
+  filterRemoved = true
 ): Promise<DbRow[]> {
   let query = client
     .from("api_transit_stations")
     .select(columns)
-    .eq("published", true)
-    .order("last_updated_at", { ascending: false })
-    .abortSignal(signal);
+    .eq("published", true);
+  if (filterRemoved) query = query.is("removed_at", null);
+  query = query.order("last_updated_at", { ascending: false }).abortSignal(signal);
   if (slug) query = query.eq("slug", slug).limit(1);
   const { data, error } = await query;
   if (error) throw error;
   const rows = dbRows(data);
   if (rows.length || !slug) return rows;
 
-  const fallback = await client
+  let fallbackQuery = client
     .from("api_transit_stations")
     .select(columns)
     .eq("published", true)
-    .eq("id", slug)
+    .eq("id", slug);
+  if (filterRemoved) fallbackQuery = fallbackQuery.is("removed_at", null);
+  const fallback = await fallbackQuery
     .order("last_updated_at", { ascending: false })
     .limit(1)
     .abortSignal(signal);
@@ -1538,6 +1535,13 @@ function isMissingColumnError(error: unknown): boolean {
       "code" in error &&
       ((error as { code?: unknown }).code === "42703" || (error as { code?: unknown }).code === "PGRST204")
   );
+}
+
+function isMissingRemovedAtColumnError(error: unknown): boolean {
+  if (!isMissingColumnError(error) || !error || typeof error !== "object") return false;
+  const value = error as { message?: unknown; details?: unknown; hint?: unknown };
+  return [value.message, value.details, value.hint]
+    .some((item) => typeof item === "string" && item.includes("removed_at"));
 }
 
 function isMissingTableError(error: unknown): boolean {
