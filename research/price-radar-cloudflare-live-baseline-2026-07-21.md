@@ -79,4 +79,6 @@ Observability 日志当前采样率为 `1%`，因此下述 URL/UA 数量是 Dash
   - 动作：符合缓存条件。
 - 启用 `priceai.cc` zone 的 Smart Tiered Cache；控制台复核 `aria-checked=true`。
 
+首次发布验证发现 Cloudflare Free 会把 Cache Rule 内的 `latest.json` 短 TTL 提升为 `max-age=14400`。因此最终将易变 pointer 移到规则外的 `/latest.json`，只让 `/v1/snapshots/*` 不可变对象进入强缓存；pointer 仍直接由 R2 提供，不进入 OpenNext Worker。
+
 代码部署并首次发布快照后，仍需用两次独立请求验证 `CF-Cache-Status` 从 `MISS`/`DYNAMIC` 转为 `HIT`，并确认响应没有 `x-opennext`。

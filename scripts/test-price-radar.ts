@@ -62,6 +62,7 @@ async function main() {
   assert.equal(bundle.latest.schema_version, PRICE_RADAR_SCHEMA_VERSION);
   assert.equal(bundle.latest.product_count, 1);
   assert.equal(bundle.latest.resource_count, 1);
+  assert.match(bundle.latest.snapshot_url, /^https:\/\/data\.priceai\.cc\/v1\/snapshots\//);
   assert.equal(bundle.objects.length, 1);
   assert.match(bundle.latest.snapshot_url, /\/v1\/snapshots\/[^/]+\.json$/);
 

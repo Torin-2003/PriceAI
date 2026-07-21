@@ -4,7 +4,7 @@ PriceAI Price Radar is a read-only public snapshot feed for agents, scripts, and
 
 ## Start
 
-1. Fetch `https://data.priceai.cc/v1/latest.json`.
+1. Fetch `https://data.priceai.cc/latest.json`.
 2. Read `snapshot_url` from the response.
 3. Find a product by `id` or `slug` for its minimum price and current Top 5 offers.
 4. Read that product's `presets` for common filtered Top 5 rankings.
@@ -28,6 +28,6 @@ Arbitrary searches, combined filters, price ranges, raw-offer exports, and deep 
 
 ## Usage
 
-Cache responses and respect `ETag`, `Last-Modified`, and `Cache-Control`. Poll `latest.json` no more often than once per minute. Download `snapshot_url` only when `snapshot_id` changes; immutable snapshot URLs can be cached indefinitely.
+Cache responses and respect `ETag`, `Last-Modified`, and `Cache-Control`. Poll `latest.json` no more often than once per minute. The pointer intentionally sits outside the `/v1/` immutable Cache Rule so Cloudflare Free does not stretch its five-minute freshness window to four hours. Download `snapshot_url` only when `snapshot_id` changes; immutable snapshot URLs can be cached indefinitely.
 
 PriceAI is an information and comparison service. Verify final price, stock, delivery, warranty, and after-sales terms with the original source before purchase.

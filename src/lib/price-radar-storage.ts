@@ -17,7 +17,7 @@ import {
 import type { ExplorerData } from "./types";
 
 const PRICE_RADAR_BINDING = "PRICE_RADAR_BUCKET";
-const PRICE_RADAR_LATEST_KEY = "v1/latest.json";
+const PRICE_RADAR_LATEST_KEY = "latest.json";
 const PRICE_RADAR_WRITE_BATCH_SIZE = 20;
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const LATEST_CACHE_CONTROL = "public, max-age=300, stale-while-revalidate=1800";

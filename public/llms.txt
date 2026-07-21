@@ -38,7 +38,7 @@ GitHub: [physics-dimension/PriceAI](https://github.com/physics-dimension/PriceAI
 ## Machine-readable Price Radar
 
 - [Price Radar discovery](https://priceai.cc/.well-known/price-radar.json)
-- [Latest Price Radar snapshot](https://data.priceai.cc/v1/latest.json)
+- [Latest Price Radar snapshot](https://data.priceai.cc/latest.json)
 - [Price Radar schema](https://priceai.cc/price-radar-v1.schema.json)
 - [Price Radar documentation](https://priceai.cc/price-radar-api.md)
 
