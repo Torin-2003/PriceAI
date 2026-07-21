@@ -326,3 +326,36 @@ A6 and APINode monitoring now preserve group/model evidence scope, deduplicate s
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: 商品详情库存与更新时间快捷筛选生产发布
+
+**Date**: 2026-07-21
+**Task**: 商品详情库存与更新时间快捷筛选生产发布
+**Branch**: `main`
+
+### Summary
+
+Supabase Preview 与生产 RPC 验证成功；Cloudflare Actions 29804093084 发布成功；priceai.cc 运行 versionTag 8596417；商品详情筛选 API 返回 30 条且全部库存>=50、1小时内确认，边缘缓存 HIT；390px 页面无溢出或运行时错误。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `85964176774ae45fd62c41d5fd740f4fbe21495d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
