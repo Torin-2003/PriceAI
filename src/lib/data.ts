@@ -5274,7 +5274,9 @@ export async function listPublicMerchants(filters: MerchantListFilters = {}): Pr
     const snapshot = await readPublicApiSnapshot<PublicMerchantsResult>("merchants", snapshotKey);
     if (snapshot && isPublicMerchantsSnapshot(snapshot.value)) {
       const hydratedValue = hydrateGeneratedAt(snapshot);
-      const value = snapshotKey === PUBLIC_MERCHANTS_SNAPSHOT_KEY
+      const needsDefaultCatalogPagination = snapshotKey === PUBLIC_MERCHANTS_SNAPSHOT_KEY &&
+        (hydratedValue.limit == null || hydratedValue.offset == null);
+      const value = needsDefaultCatalogPagination
         ? paginatePublicMerchants(hydratedValue, normalizedFilters)
         : hydratedValue;
       if (isPublicApiSnapshotFresh(snapshot)) {
