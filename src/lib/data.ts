@@ -98,6 +98,10 @@ import type {
 } from "./types";
 import { publicOfferDedupeKey, stableId } from "./utils";
 import { PUBLIC_PRICE_CACHE_ONLY_MODE } from "./public-price-emergency";
+import {
+  inspectPublicSnapshotRefreshFailures,
+  mergePendingPublicSnapshotProductIds,
+} from "./public-snapshot-refresh";
 
 const SUPABASE_PAGE_SIZE = 1000;
 const PUBLIC_FALLBACK_MAX_ROWS = 5000;
@@ -355,7 +359,7 @@ export type PublicApiSnapshotRefreshDecision =
   | {
       refreshed: false;
       skipped: true;
-      reason: "cache_only" | "clean" | "cooldown";
+      reason: "clean" | "cooldown";
       state: PublicApiSnapshotRefreshState;
       retryAfter: string | null;
     };
@@ -572,16 +576,6 @@ export async function refreshPublicApiSnapshotsIfDue({
   );
   const state = normalizePublicApiSnapshotRefreshState(snapshot?.value);
 
-  if (PUBLIC_PRICE_CACHE_ONLY_MODE) {
-    return {
-      refreshed: false,
-      skipped: true,
-      reason: "cache_only",
-      state,
-      retryAfter: null,
-    };
-  }
-
   if (!force && !state.dirty && snapshot) {
     const lastFullRefreshTime = timestampMs(state.lastFullRefreshCompletedAt);
     const fullRefreshDue = !lastFullRefreshTime || now.getTime() - lastFullRefreshTime >= fullRefreshMaxIntervalMs;
@@ -650,6 +644,7 @@ export async function refreshPublicApiSnapshotsIfDue({
         productIds: scope.productIds,
         refreshGlobal,
       });
+  const failures = inspectPublicSnapshotRefreshFailures(result, refreshGlobal);
   const completedAt = new Date().toISOString();
   const latestSnapshot = await readPublicApiSnapshot<PublicApiSnapshotRefreshState>(
     PUBLIC_API_SNAPSHOT_REFRESH_STATE_KIND,
@@ -664,22 +659,43 @@ export async function refreshPublicApiSnapshotsIfDue({
   const nextState = buildNextPublicApiSnapshotRefreshState({
     completedAt,
     dirtiedDuringRefresh,
-    globalRefreshed: mustRunFullRefresh || refreshGlobal,
-    fullRefreshAttempted: mustRunFullRefresh,
+    globalRefreshed: refreshGlobal && failures.failedGlobalKinds.length === 0,
+    fullRefreshAttempted: mustRunFullRefresh && failures.failedGlobalKinds.length === 0,
     latestState,
     minIntervalMs,
     previousState: state,
-    processedProductIds: result.productIds,
-    remainingProductIds: result.remainingProductIds || [],
+    processedProductIds: result.productIds.filter((id) => !failures.failedProductIds.includes(id)),
+    remainingProductIds: normalizePublicSnapshotIdList([
+      ...(result.remainingProductIds || []),
+      ...failures.failedProductIds,
+    ]),
     startedAt,
   });
+  if (!failures.ok) {
+    nextState.dirty = true;
+    nextState.dirtyAt = nextState.dirtyAt || state.dirtyAt || completedAt;
+    nextState.reason = "snapshot refresh failed";
+    nextState.lastRefreshCompletedAt = state.lastRefreshCompletedAt;
+    nextState.lastGlobalRefreshCompletedAt = state.lastGlobalRefreshCompletedAt;
+    nextState.lastFullRefreshCompletedAt = state.lastFullRefreshCompletedAt;
+    nextState.globalDirty = nextState.globalDirty || failures.failedGlobalKinds.length > 0;
+    nextState.fullRefreshRequired = nextState.fullRefreshRequired || (mustRunFullRefresh && failures.failedGlobalKinds.length > 0);
+  }
 
-  await writePublicApiSnapshot({
+  const refreshStateWritten = await writePublicApiSnapshot({
     kind: PUBLIC_API_SNAPSHOT_REFRESH_STATE_KIND,
     key: PUBLIC_API_SNAPSHOT_REFRESH_STATE_KEY,
     payload: nextState,
     generatedAt: completedAt,
   });
+  if (!refreshStateWritten) {
+    throw new Error("Public API snapshot refresh state write failed.");
+  }
+  if (!failures.ok) {
+    throw new Error(
+      `Public API snapshot refresh incomplete: global=${failures.failedGlobalKinds.join(",") || "ok"}; products=${failures.failedProductIds.length}.`,
+    );
+  }
 
   return {
     refreshed: true,
@@ -922,12 +938,13 @@ function buildNextPublicApiSnapshotRefreshState({
     };
   }
 
-  const processed = new Set(processedProductIds);
-  const affectedProductIds = fullRefreshAttempted
-    ? remainingProductIds
-    : previousState.fullRefreshRequired
-      ? previousState.affectedProductIds
-      : previousState.affectedProductIds.filter((id) => !processed.has(id));
+  const affectedProductIds = mergePendingPublicSnapshotProductIds({
+    fullRefreshAttempted,
+    previousAffectedProductIds: previousState.affectedProductIds,
+    previousFullRefreshRequired: previousState.fullRefreshRequired,
+    processedProductIds,
+    remainingProductIds,
+  });
   const globalDirty = !globalRefreshed && previousState.globalDirty;
   const fullRefreshRequired = fullRefreshAttempted
     ? false

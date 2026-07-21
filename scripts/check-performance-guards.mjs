@@ -72,6 +72,12 @@ assert(/readPublicApiSnapshot<PublicMerchantsResult>\(\s*["']merchants["']/.test
 assert(/refreshPublicApiSnapshots/.test(dataText), "src/lib/data.ts: public API snapshot refresh must stay available for writes and manual warmup.");
 assert(/markPublicApiSnapshotsDirty/.test(dataText), "src/lib/data.ts: public API snapshot writes must support a cheap dirty marker.");
 assert(/refreshPublicApiSnapshotsIfDue/.test(dataText), "src/lib/data.ts: public API snapshot refresh must be coalesced and rate-limited.");
+assert(
+  !/refreshPublicApiSnapshotsIfDue[\s\S]{0,1200}PUBLIC_PRICE_CACHE_ONLY_MODE/.test(dataText),
+  "src/lib/data.ts: cache-only public reads must not disable the protected background snapshot refresh path.",
+);
+assert(/inspectPublicSnapshotRefreshFailures/.test(dataText), "src/lib/data.ts: snapshot refresh must inspect partial global and product failures.");
+assert(/snapshot refresh incomplete/.test(dataText), "src/lib/data.ts: partial snapshot refresh failures must propagate to the protected refresh endpoint.");
 assert(/PUBLIC_API_SNAPSHOT_INCREMENTAL_REFRESH_MIN_INTERVAL_MS\s*=\s*3\s*\*\s*60\s*\*\s*1000/.test(dataText), "src/lib/data.ts: public API snapshot incremental refresh must stay on the 3 minute cadence.");
 assert(/PUBLIC_API_SNAPSHOT_GLOBAL_REFRESH_MIN_INTERVAL_MS\s*=\s*5\s*\*\s*60\s*\*\s*1000/.test(dataText), "src/lib/data.ts: explorer/offers snapshot refresh must stay coalesced to 5 minutes.");
 assert(/PUBLIC_API_SNAPSHOT_FULL_REFRESH_MAX_INTERVAL_MS\s*=\s*60\s*\*\s*60\s*\*\s*1000/.test(dataText), "src/lib/data.ts: full public snapshot refresh must remain a low-frequency 60 minute fallback.");
