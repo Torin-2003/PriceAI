@@ -10,7 +10,6 @@ import { parseOfferFilterTags } from "@/lib/offer-filter-tags";
 import { PRICE_DATA_EDGE_SECONDS } from "@/lib/public-cache-policy";
 import { normalizePublicOfferQuery, PUBLIC_OFFER_DEFAULT_LIMIT } from "@/lib/public-offer-query";
 import { parseProductOfferFreshnessMinutes, parseProductOfferStockThreshold } from "@/lib/product-offer-filters";
-import { withPriceRadarMigrationHeaders } from "@/lib/price-radar-migration";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -33,7 +32,7 @@ export async function GET(
   };
   const cachePagination = cachePaginationParams(searchParams);
 
-  const response = await withCloudflarePublicCache(request, {
+  return withCloudflarePublicCache(request, {
     namespace: "product-offers-v4-read-model",
     ttlSeconds: PRICE_DATA_EDGE_SECONDS,
     cacheKeySearchParams: cacheSearchParams({
@@ -73,8 +72,6 @@ export async function GET(
       }
     },
   });
-
-  return withPriceRadarMigrationHeaders(response);
 }
 
 function parseNumberParam(value: string | null): number | null {
