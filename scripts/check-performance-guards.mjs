@@ -70,6 +70,7 @@ assert(/readPublicApiSnapshot<PublicOffersResult>\(\s*["']offers["']/.test(dataT
 assert(/readPublicApiSnapshot<PublicProductOffersResult>\(\s*[\r\n\s]*["']product_offers["']/.test(dataText), "src/lib/data.ts: default product offer pages must try the shared public API snapshot before expensive source reads.");
 assert(/readPublicApiSnapshot<PublicMerchantsResult>\(\s*["']merchants["']/.test(dataText), "src/lib/data.ts: default public merchant list must try the shared public API snapshot before expensive source reads.");
 assert(/if \(!platform && !stock && !collector && !signal\) return PUBLIC_MERCHANTS_SNAPSHOT_KEY/.test(dataText), "src/lib/data.ts: the unfiltered merchant route must reuse the warmed default merchant snapshot key.");
+assert(/snapshotKey === PUBLIC_MERCHANTS_SNAPSHOT_KEY[\s\S]{0,160}paginatePublicMerchants\(hydratedValue, normalizedFilters\)/.test(dataText), "src/lib/data.ts: the full default merchant catalog snapshot must be paginated before it reaches the public API.");
 assert(/refreshPublicApiSnapshots/.test(dataText), "src/lib/data.ts: public API snapshot refresh must stay available for writes and manual warmup.");
 assert(/markPublicApiSnapshotsDirty/.test(dataText), "src/lib/data.ts: public API snapshot writes must support a cheap dirty marker.");
 assert(/refreshPublicApiSnapshotsIfDue/.test(dataText), "src/lib/data.ts: public API snapshot refresh must be coalesced and rate-limited.");

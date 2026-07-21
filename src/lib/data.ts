@@ -5273,7 +5273,10 @@ export async function listPublicMerchants(filters: MerchantListFilters = {}): Pr
     let staleSnapshotValue = cached?.value || null;
     const snapshot = await readPublicApiSnapshot<PublicMerchantsResult>("merchants", snapshotKey);
     if (snapshot && isPublicMerchantsSnapshot(snapshot.value)) {
-      const value = hydrateGeneratedAt(snapshot);
+      const hydratedValue = hydrateGeneratedAt(snapshot);
+      const value = snapshotKey === PUBLIC_MERCHANTS_SNAPSHOT_KEY
+        ? paginatePublicMerchants(hydratedValue, normalizedFilters)
+        : hydratedValue;
       if (isPublicApiSnapshotFresh(snapshot)) {
         publicMerchantViewCache.set(snapshotKey, {
           expiresAt: Date.now() + PUBLIC_DATA_CACHE_TTL_MS,
