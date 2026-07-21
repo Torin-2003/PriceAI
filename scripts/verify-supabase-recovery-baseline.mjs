@@ -32,7 +32,10 @@ assert(
 for (const requiredSql of [
   "create table if not exists canonical_products",
   "create table if not exists raw_offers",
+  "create table if not exists public_offer_read_model",
   "create table if not exists public_user_profiles",
+  "create or replace function refresh_public_offer_read_model",
+  "create or replace function list_public_offers_page_v2",
   "create or replace function public.claim_runtime_lease",
   "create or replace function public.consume_feedback_evidence_upload_quota",
 ]) {
@@ -80,11 +83,45 @@ function verifyWithDocker(schemaSql) {
     `);
     runPsql(docker, container, schemaSql);
     runPsql(docker, container, `
+      insert into canonical_products (
+        id, slug, display_name, platform, product_type
+      ) values (
+        'recovery-offer-product', 'recovery-offer-product', 'Recovery offer product', 'ChatGPT', 'subscription'
+      );
+
+      insert into raw_offers (
+        id, source_name, source_title, price, status, source_status,
+        effective_status, freshness_status, url, canonical_product_id,
+        verified_at, expires_at
+      ) values (
+        'recovery-offer', 'Recovery source', 'Recovery offer', 9.9, 'available', 'available',
+        'available', 'fresh', 'https://example.com/recovery-offer', 'recovery-offer-product',
+        now(), now() + interval '1 day'
+      );
+
       do $$
       declare
         v_result jsonb;
         v_index integer;
       begin
+        perform public.refresh_public_offer_read_model();
+        if (select count(*) from public_offer_read_model) <> 1 then
+          raise exception 'public offer read model initial refresh failed';
+        end if;
+
+        update raw_offers set hidden = true where id = 'recovery-offer';
+        begin
+          perform public.refresh_public_offer_read_model();
+          raise exception 'empty public offer read model refresh did not fail';
+        exception when others then
+          if sqlerrm not like 'public offer read model refresh produced zero rows%' then
+            raise;
+          end if;
+        end;
+        if (select count(*) from public_offer_read_model) <> 1 then
+          raise exception 'empty refresh removed the last known good public offer generation';
+        end if;
+
         v_result := public.claim_runtime_lease('recovery-test', 'owner-one', 60, '{}'::jsonb);
         if coalesce((v_result ->> 'acquired')::boolean, false) is not true then
           raise exception 'runtime lease claim failed';
@@ -123,6 +160,9 @@ function verifyWithDocker(schemaSql) {
       select json_build_object(
         'canonicalProducts', to_regclass('public.canonical_products') is not null,
         'rawOffers', to_regclass('public.raw_offers') is not null,
+        'publicOfferReadModel', to_regclass('public.public_offer_read_model') is not null,
+        'publicOfferReadModelRefresh', to_regprocedure('public.refresh_public_offer_read_model()') is not null,
+        'publicOffersV2', to_regprocedure('public.list_public_offers_page_v2(text,text,text,text,text,numeric,numeric,integer,integer)') is not null,
         'userProfiles', to_regclass('public.public_user_profiles') is not null,
         'runtimeLease', to_regprocedure('public.claim_runtime_lease(text,text,integer,jsonb)') is not null,
         'uploadQuota', to_regprocedure('public.consume_feedback_evidence_upload_quota(text,integer,integer)') is not null

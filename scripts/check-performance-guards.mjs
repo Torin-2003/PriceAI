@@ -81,7 +81,12 @@ assert(/snapshot refresh incomplete/.test(dataText), "src/lib/data.ts: partial s
 assert(/PUBLIC_API_SNAPSHOT_INCREMENTAL_REFRESH_MIN_INTERVAL_MS\s*=\s*3\s*\*\s*60\s*\*\s*1000/.test(dataText), "src/lib/data.ts: public API snapshot incremental refresh must stay on the 3 minute cadence.");
 assert(/PUBLIC_API_SNAPSHOT_GLOBAL_REFRESH_MIN_INTERVAL_MS\s*=\s*5\s*\*\s*60\s*\*\s*1000/.test(dataText), "src/lib/data.ts: explorer/offers snapshot refresh must stay coalesced to 5 minutes.");
 assert(/PUBLIC_SUPABASE_REFRESH_READ_TIMEOUT_MS\s*=\s*15_000/.test(dataText), "src/lib/data.ts: protected snapshot refresh may use a longer 15 second Supabase read window.");
-assert(/options\.refresh\s*\?\s*publicSupabaseRefreshReadSignal\(\)\s*:\s*publicSupabaseReadSignal\(\)/.test(dataText), "src/lib/data.ts: long Supabase reads must be limited to protected background refreshes.");
+assert(/options\.background\s*\?\s*publicSupabaseRefreshReadSignal\(\)\s*:\s*publicSupabaseReadSignal\(\)/.test(dataText), "src/lib/data.ts: long Supabase reads must be limited to protected background refreshes.");
+assert(/refresh_public_offer_read_model/.test(dataText), "src/lib/data.ts: protected offers snapshot refresh must rebuild the public offer read model first.");
+assert(/refreshPublicApiSnapshotsForScope[\s\S]{0,500}refreshPublicOfferReadModel\(\)/.test(dataText), "src/lib/data.ts: product-scoped snapshot refreshes must also rebuild the global offer read model.");
+assert(/list_public_offers_page_v2/.test(dataText), "src/lib/data.ts: public offer reads must prefer the precomputed v2 read-model RPC.");
+assert(/isMissingPublicOfferReadModelRpc/.test(dataText), "src/lib/data.ts: the legacy offers RPC may only bridge a missing read-model migration or schema cache entry.");
+assert(/refresh produced zero rows; preserving the previous generation/.test(readFileSync(path.join(repoRoot, "supabase", "schema.sql"), "utf8")), "supabase/schema.sql: an empty read-model rebuild must preserve the last known good generation.");
 assert(/PUBLIC_API_SNAPSHOT_FULL_REFRESH_MAX_INTERVAL_MS\s*=\s*60\s*\*\s*60\s*\*\s*1000/.test(dataText), "src/lib/data.ts: full public snapshot refresh must remain a low-frequency 60 minute fallback.");
 assert(/PUBLIC_API_SNAPSHOT_MAX_STALE_MS\s*=\s*PRICE_DATA_CACHE_TTL_MS\s*\*\s*2/.test(dataText), "src/lib/data.ts: public API snapshots must stop serving old default snapshots after two public cache TTLs.");
 assert(/PUBLIC_API_SNAPSHOT_PRODUCT_REFRESH_BATCH_SIZE\s*=\s*4/.test(dataText), "src/lib/data.ts: product snapshot refreshes must stay batched to protect Worker CPU.");
@@ -157,6 +162,12 @@ const publicApiSnapshotsMigrationText = read("supabase/migrations/20260624083000
 assert(/create table if not exists public_api_snapshots/.test(publicApiSnapshotsMigrationText), "public API snapshots migration must create the snapshot table.");
 assert(/primary key \(kind, cache_key\)/.test(publicApiSnapshotsMigrationText), "public API snapshots migration must key snapshots by kind and cache key.");
 assert(/grant select, insert, update, delete on table public_api_snapshots to service_role/.test(publicApiSnapshotsMigrationText), "public API snapshots migration must grant service_role access only.");
+
+const publicOfferReadModelMigrationText = read("supabase/migrations/20260721180000_public_offer_read_model.sql");
+assert(/create table if not exists public_offer_read_model/.test(publicOfferReadModelMigrationText), "public offer read model migration must create a precomputed table.");
+assert(/create or replace function refresh_public_offer_read_model\(\)/.test(publicOfferReadModelMigrationText), "public offer read model migration must provide a protected atomic rebuild RPC.");
+assert(/create or replace function list_public_offers_page_v2/.test(publicOfferReadModelMigrationText), "public offer read model migration must provide the v2 pagination RPC.");
+assert(!/delete from public_api_snapshots\s+where kind = 'offers'/i.test(publicOfferReadModelMigrationText), "public offer read model migration must preserve last-known-good offers snapshots.");
 
 const latestFacetMigration = latestMigrationDefining("list_public_product_offer_filter_facets");
 assert(Boolean(latestFacetMigration), "supabase/migrations: list_public_product_offer_filter_facets must be defined by a migration.");

@@ -995,6 +995,7 @@ function comparePublicSnapshotProductRefreshPriority(
 }
 
 export async function refreshPublicApiSnapshots(): Promise<PublicApiSnapshotRefreshResult> {
+  const readModelReady = await refreshPublicOfferReadModel();
   const explorerData = await buildExplorerData({ skipSnapshot: true });
   const explorer = !explorerData.degraded && await writePublicApiSnapshot({
     kind: "explorer",
@@ -1003,11 +1004,14 @@ export async function refreshPublicApiSnapshots(): Promise<PublicApiSnapshotRefr
     generatedAt: explorerData.generatedAt,
   });
 
-  const offersData = await loadPublicOffers({
-    limit: PUBLIC_OFFERS_SNAPSHOT_LIMIT,
-    offset: PUBLIC_OFFERS_SNAPSHOT_OFFSET,
-    skipSnapshot: true,
-  });
+  const offersData = await loadPublicOffers(
+    {
+      limit: PUBLIC_OFFERS_SNAPSHOT_LIMIT,
+      offset: PUBLIC_OFFERS_SNAPSHOT_OFFSET,
+      skipSnapshot: true,
+    },
+    { background: true, useLegacyRpc: !readModelReady },
+  );
   const offers = !offersData.degraded && await writePublicApiSnapshot({
     kind: "offers",
     key: PUBLIC_OFFERS_SNAPSHOT_KEY,
@@ -1052,6 +1056,7 @@ async function refreshPublicApiSnapshotsForScope({
   let offers: boolean | undefined;
   let merchants: boolean | undefined;
   let explorerProducts: Array<{ id: string; slug?: string | null }> = [];
+  const readModelReady = await refreshPublicOfferReadModel();
 
   if (refreshGlobal) {
     const explorerData = await buildExplorerData({ skipSnapshot: true });
@@ -1063,11 +1068,14 @@ async function refreshPublicApiSnapshotsForScope({
     });
     explorerProducts = explorerData.products.map((product) => ({ id: product.id, slug: product.slug }));
 
-    const offersData = await loadPublicOffers({
-      limit: PUBLIC_OFFERS_SNAPSHOT_LIMIT,
-      offset: PUBLIC_OFFERS_SNAPSHOT_OFFSET,
-      skipSnapshot: true,
-    });
+    const offersData = await loadPublicOffers(
+      {
+        limit: PUBLIC_OFFERS_SNAPSHOT_LIMIT,
+        offset: PUBLIC_OFFERS_SNAPSHOT_OFFSET,
+        skipSnapshot: true,
+      },
+      { background: true, useLegacyRpc: !readModelReady },
+    );
     offers = !offersData.degraded && await writePublicApiSnapshot({
       kind: "offers",
       key: PUBLIC_OFFERS_SNAPSHOT_KEY,
@@ -5591,10 +5599,11 @@ function comparePublicMerchantsBySort(a: PublicMerchantSummary, b: PublicMerchan
   return comparePublicMerchants(a, b);
 }
 
-async function loadPublicOffers(filters: OfferListFilters & { skipSnapshot?: boolean } = {}): Promise<PublicOffersResult> {
-  const rpcData = await listPublicOffersFromDatabase(filters, {
-    refresh: filters.skipSnapshot === true,
-  });
+async function loadPublicOffers(
+  filters: OfferListFilters & { skipSnapshot?: boolean } = {},
+  options: { background?: boolean; useLegacyRpc?: boolean } = {},
+): Promise<PublicOffersResult> {
+  const rpcData = await listPublicOffersFromDatabase(filters, options);
   if (rpcData) return rpcData;
 
   if (isSupabaseConfigured()) {
@@ -5686,26 +5695,37 @@ async function loadPublicOffers(filters: OfferListFilters & { skipSnapshot?: boo
 
 async function listPublicOffersFromDatabase(
   filters: OfferListFilters = {},
-  options: { refresh?: boolean } = {},
+  options: { background?: boolean; useLegacyRpc?: boolean } = {},
 ) {
   const supabase = getSupabaseServerClient();
   if (!supabase) return null;
 
   const limit = normalizePublicOfferLimit(filters.limit);
   const offset = normalizePublicOfferOffset(filters.offset);
-  const { data, error } = await supabase
-    .rpc("list_public_offers_page", {
-      p_query: filters.query || null,
-      p_platform: filters.platform || null,
-      p_product_type: filters.productType || null,
-      p_stock: filters.stock || null,
-      p_sort: filters.sort || null,
-      p_min_price: filters.minPrice ?? null,
-      p_max_price: filters.maxPrice ?? null,
-      p_limit: limit,
-      p_offset: offset,
-    })
-    .abortSignal(options.refresh ? publicSupabaseRefreshReadSignal() : publicSupabaseReadSignal());
+  const rpcParams = {
+    p_query: filters.query || null,
+    p_platform: filters.platform || null,
+    p_product_type: filters.productType || null,
+    p_stock: filters.stock || null,
+    p_sort: filters.sort || null,
+    p_min_price: filters.minPrice ?? null,
+    p_max_price: filters.maxPrice ?? null,
+    p_limit: limit,
+    p_offset: offset,
+  };
+  const useLegacyRpc = options.useLegacyRpc === true;
+
+  let { data, error } = await supabase
+    .rpc(useLegacyRpc ? "list_public_offers_page" : "list_public_offers_page_v2", rpcParams)
+    .abortSignal(options.background ? publicSupabaseRefreshReadSignal() : publicSupabaseReadSignal());
+
+  if (error && !useLegacyRpc && isMissingPublicOfferReadModelRpc(error)) {
+    const legacyResult = await supabase
+      .rpc("list_public_offers_page", rpcParams)
+      .abortSignal(options.background ? publicSupabaseRefreshReadSignal() : publicSupabaseReadSignal());
+    data = legacyResult.data;
+    error = legacyResult.error;
+  }
 
   if (error) {
     console.error("Public offers RPC failed:", error.message);
@@ -5738,6 +5758,25 @@ async function listPublicOffersFromDatabase(
     degraded: false,
     message: null,
   };
+}
+
+async function refreshPublicOfferReadModel(): Promise<boolean> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return false;
+
+  const { error } = await supabase
+    .rpc("refresh_public_offer_read_model")
+    .abortSignal(publicSupabaseRefreshReadSignal());
+  if (!error) return true;
+  if (isMissingPublicOfferReadModelRpc(error)) return false;
+
+  throw new Error(`Public offer read model refresh failed: ${error.message}`);
+}
+
+function isMissingPublicOfferReadModelRpc(error: { code?: string; message?: string }): boolean {
+  const message = error.message || "";
+  return error.code === "PGRST202" ||
+    /refresh_public_offer_read_model|list_public_offers_page_v2|schema cache/i.test(message);
 }
 
 async function listPublicMerchantsFromDatabase(): Promise<PublicMerchantsResult | null> {
