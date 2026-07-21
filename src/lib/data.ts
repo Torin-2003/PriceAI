@@ -5201,6 +5201,10 @@ export async function listPublicMerchants(filters: MerchantListFilters = {}): Pr
       staleSnapshotValue = value;
     }
 
+    if (PUBLIC_PRICE_CACHE_ONLY_MODE) {
+      return emptyCacheOnlyPublicMerchantsResult(normalizedFilters.limit, normalizedFilters.offset);
+    }
+
     const catalog = await loadPublicMerchantCatalog();
     const value = paginatePublicMerchants(catalog, normalizedFilters);
     const nextValue = preferStalePublicMerchants(staleSnapshotValue, value);
@@ -5219,6 +5223,10 @@ export async function listPublicMerchants(filters: MerchantListFilters = {}): Pr
       });
     }
     return nextValue;
+  }
+
+  if (PUBLIC_PRICE_CACHE_ONLY_MODE) {
+    return emptyCacheOnlyPublicMerchantsResult(normalizedFilters.limit, normalizedFilters.offset);
   }
 
   const catalog = await loadPublicMerchantCatalog();
@@ -5267,6 +5275,10 @@ async function buildPublicMerchants(options: { skipSnapshot?: boolean } = {}): P
     }
   }
 
+  if (PUBLIC_PRICE_CACHE_ONLY_MODE && !options.skipSnapshot) {
+    return emptyCacheOnlyPublicMerchantsResult(PUBLIC_OFFERS_SNAPSHOT_LIMIT, PUBLIC_OFFERS_SNAPSHOT_OFFSET);
+  }
+
   const rpcData = await listPublicMerchantsFromDatabase();
   if (rpcData) {
     const compactRpcData = compactPublicMerchantsResult(rpcData);
@@ -5308,6 +5320,19 @@ async function buildPublicMerchants(options: { skipSnapshot?: boolean } = {}): P
   }
 
   return staleSnapshotValue ? preferStalePublicMerchants(staleSnapshotValue, value) : value;
+}
+
+function emptyCacheOnlyPublicMerchantsResult(limit: number, offset: number): PublicMerchantsResult {
+  return {
+    rows: [],
+    total: 0,
+    limited: false,
+    limit,
+    offset,
+    generatedAt: new Date().toISOString(),
+    degraded: true,
+    message: STALE_PUBLIC_DATA_MESSAGE,
+  };
 }
 
 function paginatePublicMerchants(value: PublicMerchantsResult, filters: MerchantListFilters): PublicMerchantsResult {
