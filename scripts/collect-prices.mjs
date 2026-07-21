@@ -257,13 +257,19 @@ export async function runPriceCollection(options = {}) {
         await writeQueue.flush("final", { persistOnFailure: true });
       } catch (error) {
         if (options.post) {
-          await postCollectorHeartbeat("failed", options, {
+          const heartbeat = collectorHeartbeatForWritebackFailure(summary, error);
+          await postCollectorHeartbeat(heartbeat.status, options, {
             startedAt,
             finishedAt: new Date().toISOString(),
-            failureCount: 1,
-            message: errorMessage(error),
+            successCount: heartbeat.successCount,
+            failureCount: heartbeat.failureCount,
+            offerCount: heartbeat.offerCount,
+            message: heartbeat.message,
             details: {
               phase: "crawl-log-final-flush",
+              collectionCompleted: heartbeat.collectionCompleted,
+              writebackPending: heartbeat.spoolPersisted,
+              spoolPersisted: heartbeat.spoolPersisted,
               targetCount: selectedTargets.length,
               groupCount: groups.length,
               shopScheduler: shopSchedule.summary,
@@ -281,13 +287,19 @@ export async function runPriceCollection(options = {}) {
     if (writeQueue) writeQueue.throwIfFailed();
   } catch (error) {
     if (options.post) {
-      await postCollectorHeartbeat("failed", options, {
+      const heartbeat = collectorHeartbeatForWritebackFailure(summary, error);
+      await postCollectorHeartbeat(heartbeat.status, options, {
         startedAt,
         finishedAt: new Date().toISOString(),
-        failureCount: 1,
-        message: errorMessage(error),
+        successCount: heartbeat.successCount,
+        failureCount: heartbeat.failureCount,
+        offerCount: heartbeat.offerCount,
+        message: heartbeat.message,
         details: {
           phase: "crawl-log-flush",
+          collectionCompleted: heartbeat.collectionCompleted,
+          writebackPending: heartbeat.spoolPersisted,
+          spoolPersisted: heartbeat.spoolPersisted,
           targetCount: selectedTargets.length,
           groupCount: groups.length,
           shopScheduler: shopSchedule.summary,
@@ -390,6 +402,8 @@ async function collectOneTarget(target, options, logger, lockOwner, familyState,
   markCollectionFamilyStarted(target, familyState);
 
   logger?.log(`\n==> ${target.sourceName} [${target.kind}]`);
+  let releaseDeferred = false;
+  const deferReleaseUntilWriteback = target.collectionGroup === "vip_15m";
 
   try {
     const collection = await collectTargetWithRetries(target, options, logger);
@@ -412,8 +426,11 @@ async function collectOneTarget(target, options, logger, lockOwner, familyState,
         attempts: collection.attempts,
         maxAttempts: collection.maxAttempts,
         ...(collection.details || {}),
-      }, writeQueue);
+      }, writeQueue, deferReleaseUntilWriteback
+        ? async () => { await releaseCollectionLock(target, lockOwner, logger); }
+        : null);
       if (posted.queued) {
+        releaseDeferred = deferReleaseUntilWriteback;
         logger?.log(`Queued ${posted.successCount} offers for batched write.`);
       } else {
         logger?.log(
@@ -464,7 +481,7 @@ async function collectOneTarget(target, options, logger, lockOwner, familyState,
       message,
     };
   } finally {
-    await releaseCollectionLock(target, lockOwner, logger);
+    if (!releaseDeferred) await releaseCollectionLock(target, lockOwner, logger);
   }
 }
 
@@ -641,6 +658,7 @@ export {
   blackcatWholesaleActionIdFromChunk,
   blockShopApiDirectExitForTarget,
   calculateShopApiBuyerAdjustment,
+  collectorHeartbeatForWritebackFailure,
   cooldownSkipReason,
   createShopApiProxyReusePool,
   extractProxyLeaseFromPayload,
@@ -3104,6 +3122,30 @@ function collectorHeartbeatStatusForResult(result = {}) {
   return "success";
 }
 
+function collectorHeartbeatForWritebackFailure(summary = [], error = null) {
+  const rows = Array.isArray(summary) ? summary : [];
+  const successCount = rows.filter((item) => item?.status === "success").length;
+  const sourceFailureCount = rows.filter((item) => item?.status !== "success" && item?.status !== "skipped").length;
+  const offerCount = rows.reduce((sum, item) => sum + Number(item?.offers || 0), 0);
+  const collectionCompleted = successCount > 0 && sourceFailureCount === 0;
+  const spoolPersisted = error?.spoolPersisted === true;
+  const writebackError = errorMessage(error);
+
+  return {
+    status: collectionCompleted && spoolPersisted ? "partial" : "failed",
+    successCount,
+    failureCount: sourceFailureCount,
+    offerCount,
+    collectionCompleted,
+    spoolPersisted,
+    message: collectionCompleted && spoolPersisted
+      ? `源站采集已完成，结果回传延迟并已进入本地 spool，等待下轮补写：${writebackError}`
+      : collectionCompleted
+        ? `源站采集已完成，但结果回传和本地 spool 持久化均失败：${writebackError}`
+        : `采集结果回传失败：${writebackError}`,
+  };
+}
+
 async function postCrawlLogPayload(payload, options = {}) {
   const config = crawlLogPostConfig(options);
   const response = await fetch(`${config.endpoint}/api/admin/crawl-log`, {
@@ -3163,12 +3205,12 @@ async function postCrawlLog(target, offers, status, message, options = {}, detai
   return postCrawlLogPayload(crawlLogPayloadFor(target, offers, status, message, options, details), options);
 }
 
-async function postCrawlLogBatched(target, offers, status, message, options = {}, details = {}, writeQueue = null) {
+async function postCrawlLogBatched(target, offers, status, message, options = {}, details = {}, writeQueue = null, onSettled = null) {
   const runs = crawlLogPayloadsFor(target, offers, status, message, options, details);
 
   const canQueue = runs.every((run) => run.status === "success" || run.status === "partial");
   if (writeQueue && canQueue) {
-    writeQueue.enqueue(runs, { sourceId: target.sourceId, sourceName: target.sourceName });
+    writeQueue.enqueue(runs, { sourceId: target.sourceId, sourceName: target.sourceName, onSettled });
     return { ok: true, queued: true, successCount: offers.length };
   }
 
@@ -3214,6 +3256,7 @@ function createCrawlLogWriteQueue(options = {}, logger = null) {
   let pendingRuns = [];
   let pendingSourceCount = 0;
   let firstQueuedAt = 0;
+  let pendingSettlers = [];
   let timer = null;
   let flushChain = Promise.resolve();
   let lastError = null;
@@ -3242,9 +3285,11 @@ function createCrawlLogWriteQueue(options = {}, logger = null) {
     const runs = pendingRuns;
     const sourceCount = pendingSourceCount;
     const queuedAt = firstQueuedAt;
+    const settlers = pendingSettlers;
     pendingRuns = [];
     pendingSourceCount = 0;
     firstQueuedAt = 0;
+    pendingSettlers = [];
 
     let successCount = 0;
     let writtenCount = 0;
@@ -3269,16 +3314,28 @@ function createCrawlLogWriteQueue(options = {}, logger = null) {
       }
     } catch (error) {
       if (flushOptions.persistOnFailure) {
-        spool.write(runs, {
-          reason,
-          sourceCount,
-          queuedAt: queuedAt || Date.now(),
-          error: errorMessage(error),
-        });
+        try {
+          spool.write(runs, {
+            reason,
+            sourceCount,
+            queuedAt: queuedAt || Date.now(),
+            error: errorMessage(error),
+          });
+          error.spoolPersisted = true;
+          await settleCrawlLogQueue(settlers, logger);
+        } catch (spoolError) {
+          const combinedError = new Error(
+            `${errorMessage(error)}; spool persistence failed: ${errorMessage(spoolError)}`,
+            { cause: error },
+          );
+          combinedError.spoolPersisted = false;
+          throw combinedError;
+        }
       } else {
         pendingRuns = [...runs, ...pendingRuns];
         pendingSourceCount += sourceCount;
         firstQueuedAt = firstQueuedAt || queuedAt || Date.now();
+        pendingSettlers = [...settlers, ...pendingSettlers];
         scheduleTimer();
       }
       throw error;
@@ -3288,6 +3345,7 @@ function createCrawlLogWriteQueue(options = {}, logger = null) {
       `Flushed ${runs.length} crawl log run(s) from ${sourceCount} source(s) via ${requestCount} request(s).`,
     );
     lastError = null;
+    await settleCrawlLogQueue(settlers, logger);
 
     return { ok: true, runCount: runs.length, successCount, writtenCount, unchangedCount, refreshedCount };
   };
@@ -3305,6 +3363,7 @@ function createCrawlLogWriteQueue(options = {}, logger = null) {
 
       pendingRuns.push(...items);
       pendingSourceCount++;
+      if (typeof source.onSettled === "function") pendingSettlers.push(source.onSettled);
       if (!firstQueuedAt) firstQueuedAt = Date.now();
       scheduleTimer();
 
@@ -3343,6 +3402,16 @@ function createCrawlLogWriteQueue(options = {}, logger = null) {
       if (lastError) throw lastError;
     },
   };
+}
+
+async function settleCrawlLogQueue(settlers, logger = null) {
+  for (const settle of settlers) {
+    try {
+      await settle();
+    } catch (error) {
+      logger?.error(`Failed to settle crawl log queue source: ${errorMessage(error)}`);
+    }
+  }
 }
 
 function createCrawlLogSpool(options = {}, logger = null) {
@@ -4105,7 +4174,7 @@ async function applyShopCollectionScheduler(targets, options = {}, logger = null
     const contextLoader = typeof options.shopSchedulerContextLoader === "function"
       ? options.shopSchedulerContextLoader
       : loadShopCollectionSchedulerContext;
-    const context = await contextLoader(supabase, shopTargets);
+    const context = await contextLoader(supabase, shopTargets, options);
     const nowMs = Date.now();
     const schedulerOptions = shopCollectionSchedulerOptionsFor(options);
     const shardConfig = shopCollectionSchedulerShardConfig(options);
@@ -4228,11 +4297,11 @@ function isShopCollectionSchedulerPlanMode(options = {}) {
   return truthyFlag(options.shopSchedulerPlan) || truthyFlag(options["shop-scheduler-plan"]);
 }
 
-async function loadShopCollectionSchedulerContext(supabase, targets) {
+async function loadShopCollectionSchedulerContext(supabase, targets, options = {}) {
   const sourceIds = Array.from(new Set(targets.map((target) => target.sourceId).filter(Boolean)));
   const [offerStats, priceStats, crawlRuns, shardAssignments] = await Promise.all([
     listShopCollectionSourceOfferStats(supabase),
-    listShopCollectionPriceStats(supabase),
+    listShopCollectionPriceStats(supabase, { refresh: shopCollectionSchedulerGroupFor(options) !== "vip_15m" }),
     listShopCollectionRecentCrawlRuns(supabase, sourceIds),
     listShopCollectionShardAssignments(supabase, sourceIds),
   ]);
@@ -4274,12 +4343,14 @@ async function listShopCollectionSourceOfferStats(supabase) {
   })).filter((row) => row.sourceId);
 }
 
-async function listShopCollectionPriceStats(supabase) {
-  const refreshResult = await supabase.rpc("refresh_source_quality_price_benchmarks_if_stale", {
-    p_max_age_minutes: 15,
-  });
-  if (refreshResult.error) {
-    console.warn(`Shop scheduler benchmark refresh skipped: ${errorMessage(refreshResult.error)}`);
+async function listShopCollectionPriceStats(supabase, options = {}) {
+  if (options.refresh !== false) {
+    const refreshResult = await supabase.rpc("refresh_source_quality_price_benchmarks_if_stale", {
+      p_max_age_minutes: 15,
+    });
+    if (refreshResult.error) {
+      console.warn(`Shop scheduler benchmark refresh skipped: ${errorMessage(refreshResult.error)}`);
+    }
   }
 
   const { data, error } = await supabase.rpc("list_source_quality_price_benchmarks");

@@ -10,6 +10,7 @@ const {
   blackcatWholesaleActionIdFromChunk,
   blockShopApiDirectExitForTarget,
   calculateShopApiBuyerAdjustment,
+  collectorHeartbeatForWritebackFailure,
   cooldownSkipReason,
   classifyShopCollectionScheduleTier,
   createShopApiProxyReusePool,
@@ -268,6 +269,24 @@ assert.deepEqual(failedVipContextSchedule.targets.map((target) => target.sourceI
 assert.equal(failedVipContextSchedule.summary.effectiveTargetCount, 0);
 assert.equal(failedVipContextSchedule.summary.reason, "scheduler-context-failed");
 
+let forwardedSchedulerOptions = null;
+await applyShopCollectionScheduler(
+  [{ sourceId: "vip-source", sourceName: "VIP", kind: "shopApi", baseUrl: "https://pay.ldxp.cn", collectionGroup: "vip_15m" }],
+  {
+    "shop-scheduler-group": "vip_15m",
+    shopSchedulerContextLoader: async (_supabase, _targets, schedulerOptions) => {
+      forwardedSchedulerOptions = schedulerOptions;
+      return {
+        offerStatsBySource: new Map(),
+        priceStatsBySource: new Map(),
+        latestRunBySource: new Map(),
+        shardAssignmentsBySource: new Map(),
+      };
+    },
+  },
+);
+assert.equal(forwardedSchedulerOptions?.["shop-scheduler-group"], "vip_15m");
+
 const originalWarn = console.warn;
 const schedulerWarnings = [];
 console.warn = (message) => schedulerWarnings.push(String(message));
@@ -287,6 +306,44 @@ console.warn = originalWarn;
 assert.equal(priceStatsAfterRefreshTimeout.length, 1);
 assert.equal(priceStatsAfterRefreshTimeout[0].sourceId, "ldxp-youzhi");
 assert.match(schedulerWarnings[0], /statement timeout/);
+
+const benchmarkCalls = [];
+const vipPriceStats = await listShopCollectionPriceStats({
+  async rpc(name) {
+    benchmarkCalls.push(name);
+    return {
+      data: name === "list_source_quality_price_benchmarks"
+        ? [{ source_id: "ldxp-youzhi", benchmark_offer_count: 75 }]
+        : null,
+      error: null,
+    };
+  },
+}, { refresh: false });
+assert.deepEqual(benchmarkCalls, ["list_source_quality_price_benchmarks"]);
+assert.equal(vipPriceStats[0].sourceId, "ldxp-youzhi");
+
+assert.deepEqual(
+  collectorHeartbeatForWritebackFailure([
+    { status: "success", offers: 77 },
+  ], Object.assign(new Error("fetch failed: ETIMEDOUT"), { spoolPersisted: true })),
+  {
+    status: "partial",
+    successCount: 1,
+    failureCount: 0,
+    offerCount: 77,
+    collectionCompleted: true,
+    spoolPersisted: true,
+    message: "源站采集已完成，结果回传延迟并已进入本地 spool，等待下轮补写：fetch failed: ETIMEDOUT",
+  },
+);
+assert.equal(
+  collectorHeartbeatForWritebackFailure([{ status: "success", offers: 77 }], new Error("disk full")).status,
+  "failed",
+);
+assert.equal(
+  collectorHeartbeatForWritebackFailure([{ status: "failed", offers: 0 }], new Error("HTTP 520")).status,
+  "failed",
+);
 
 const now = Date.now();
 assert.equal(
