@@ -2,6 +2,8 @@ import {
   buildTransitAvailabilityBars,
   compareStations,
   compactTransitStationsForList,
+  TRANSIT_RANKING_WEIGHTS,
+  TRANSIT_RESPONSE_LATENCY_WEIGHTS,
   getActiveTransitCommercialOffers,
   getAvailabilityEvidenceMeta,
   getFamilyRateSummary,
@@ -26,7 +28,7 @@ import {
   formatTransitFixedPriceValue,
   scoreTransitRelativeCost,
   scoreTransitReliability,
-  scoreTransitTtft,
+  scoreTransitResponseLatency,
 } from "../src/lib/api-transit";
 import {
   TRANSIT_DEFAULT_COMMERCIAL_OFFER_DISCLOSURE,
@@ -200,7 +202,14 @@ assertEqual(getFamilyRateSummary(mixedQwenStation, "qwen").combinedRateMin, 0.5)
 
 assertEqual(scoreTransitRelativeCost(0.3, [0.3, 1.5]) > scoreTransitRelativeCost(1.5, [0.3, 1.5]), true);
 assertEqual(scoreTransitReliability(0.99, 600) > scoreTransitReliability(1, 3), true);
-assertEqual(scoreTransitTtft(500, [500, 2000]) > scoreTransitTtft(2000, [500, 2000]), true);
+assertEqual(
+  scoreTransitResponseLatency(500, [500, 2000]) > scoreTransitResponseLatency(2000, [500, 2000]),
+  true,
+);
+assertEqual(
+  TRANSIT_RESPONSE_LATENCY_WEIGHTS.average7d + TRANSIT_RESPONSE_LATENCY_WEIGHTS.latest,
+  TRANSIT_RANKING_WEIGHTS.responseLatency,
+);
 assertEqual(getRechargeCoefficientFromRatio("1 CNY = 1 USD balance"), 1);
 assertEqual(getRechargeCoefficientFromRatio("1 CNY = 5 USD balance"), 0.2);
 assertEqual(
@@ -277,6 +286,121 @@ assertDeepEqual(
   }).map((item) => item.id),
   ["cheaper-station", "pricier-station"],
 );
+
+function setResponseLatency(target: TransitStation, latestLatencyMs: number, avgLatency7dMs: number) {
+  target.availability.latestLatencyMs = latestLatencyMs;
+  target.availability.avgLatency7dMs = avgLatency7dMs;
+  for (const price of target.prices) {
+    price.availability.latestLatencyMs = latestLatencyMs;
+    price.availability.avgLatency7dMs = avgLatency7dMs;
+  }
+}
+
+const fastLatencyStation = station({
+  id: "fast-latency-station",
+  name: "Fast Latency Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+const mediumLatencyStation = station({
+  id: "medium-latency-station",
+  name: "Medium Latency Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+const slowLatencyStation = station({
+  id: "slow-latency-station",
+  name: "Slow Latency Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+const missingLatencyStation = station({
+  id: "missing-latency-station",
+  name: "Missing Latency Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 180,
+});
+setResponseLatency(fastLatencyStation, 450, 600);
+setResponseLatency(mediumLatencyStation, 900, 1200);
+setResponseLatency(slowLatencyStation, 1800, 2400);
+const latencyStations = [
+  slowLatencyStation,
+  missingLatencyStation,
+  mediumLatencyStation,
+  fastLatencyStation,
+];
+const latencyScores = getTransitStationRankingBreakdowns(latencyStations, {
+  activeFamily: "claude",
+  now,
+});
+assertEqual(latencyScores.get(fastLatencyStation.id)?.responseLatencyEnabled, true);
+assertEqual(latencyScores.get(fastLatencyStation.id)?.responseLatencyCoverage, 0.75);
+assertEqual(latencyScores.get(fastLatencyStation.id)?.responseLatencyScore, 15);
+assertEqual(
+  (latencyScores.get(fastLatencyStation.id)?.averageLatencyScore ?? 0) >
+    (latencyScores.get(slowLatencyStation.id)?.averageLatencyScore ?? 0),
+  true,
+);
+assertEqual(
+  (latencyScores.get(fastLatencyStation.id)?.latestLatencyScore ?? 0) >
+    (latencyScores.get(slowLatencyStation.id)?.latestLatencyScore ?? 0),
+  true,
+);
+assertEqual(latencyScores.get(missingLatencyStation.id)?.responseLatencyScore, 0);
+assertDeepEqual(
+  compareStations(latencyStations, "overall", { activeFamily: "claude", now }).map((item) => item.id),
+  ["fast-latency-station", "medium-latency-station", "slow-latency-station", "missing-latency-station"],
+);
+
+const insufficientLatencyCoverageScores = getTransitStationRankingBreakdowns(
+  [fastLatencyStation, slowLatencyStation, missingLatencyStation],
+  { activeFamily: "claude", now },
+);
+assertEqual(insufficientLatencyCoverageScores.get(fastLatencyStation.id)?.responseLatencyEnabled, false);
+assertEqual(insufficientLatencyCoverageScores.get(fastLatencyStation.id)?.responseLatencyScore, 0);
+
+const lowSampleLatencyStation = station({
+  id: "low-sample-latency-station",
+  name: "Low Sample Latency Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 29,
+});
+setResponseLatency(lowSampleLatencyStation, 300, 400);
+const lowSampleLatencyScores = getTransitStationRankingBreakdowns(
+  [fastLatencyStation, mediumLatencyStation, slowLatencyStation, lowSampleLatencyStation],
+  { activeFamily: "claude", now },
+);
+assertEqual(lowSampleLatencyScores.get(fastLatencyStation.id)?.responseLatencyCoverage, 0.75);
+assertEqual(lowSampleLatencyScores.get(lowSampleLatencyStation.id)?.responseLatencyScore, 0);
+
+const familyBalancedLatencyStation = station({
+  id: "family-balanced-latency-station",
+  name: "Family Balanced Latency Station",
+  claudeRate: 0.2,
+  availabilityRate: 0.99,
+  availabilitySamples: 1000,
+});
+setResponseLatency(familyBalancedLatencyStation, 1000, 1000);
+familyBalancedLatencyStation.prices.push({
+  ...familyBalancedLatencyStation.prices[0]!,
+  family: "gpt",
+  standardModel: "GPT 5.4",
+  groupName: "GPT",
+  availability: {
+    ...familyBalancedLatencyStation.prices[0]!.availability,
+    sevenDaySamples: 100,
+    latestLatencyMs: 9000,
+    avgLatency7dMs: 9000,
+  },
+});
+const familyBalancedLatency = getStationPublishedAvailabilitySummary(familyBalancedLatencyStation);
+assertEqual(familyBalancedLatency.latestLatencyMs, 5000);
+assertEqual(familyBalancedLatency.avgLatency7dMs, 5000);
 
 const cheapImageStation = imageStation({
   id: "cheap-image-station",

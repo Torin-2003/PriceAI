@@ -1174,7 +1174,7 @@ export function getStationComparisonSummary(
     (value): value is number => value !== null
   );
   const bestCombinedRate = combinedRates.length ? Math.min(...combinedRates) : null;
-  const availability = getStationPublishedAvailabilitySummary(station);
+  const availability = getStationPublishedAvailabilitySummary(station, Object.values(families));
   const stabilityRate = availability.sevenDayRate;
   const stabilitySamples = availability.sevenDaySamples;
 
@@ -1190,7 +1190,10 @@ export function getStationComparisonSummary(
   };
 }
 
-export function getStationPublishedAvailabilitySummary(station: TransitStation): TransitAvailabilityRollup {
+export function getStationPublishedAvailabilitySummary(
+  station: TransitStation,
+  familySummaries?: TransitFamilyRateSummary[]
+): TransitAvailabilityRollup {
   const availabilityPrices = getPreferredTransitAvailabilityRollupPrices(station, station.prices);
   const samples = availabilityPrices.reduce(
     (total, price) => total + price.availability.sevenDaySamples,
@@ -1235,6 +1238,9 @@ export function getStationPublishedAvailabilitySummary(station: TransitStation):
     transitAvailabilityRecentSamples(station.availability) || []
   );
   const summaryRecentSamples = getRecentTransitAvailabilitySamples(availabilityPrices);
+  const latencyFamilies = familySummaries ?? TRANSIT_MODEL_FAMILY_ORDER.map((family) =>
+    getFamilyRateSummary(station, family)
+  );
 
   return {
     sevenDayRate: roundAvailabilityRate(weightedRate),
@@ -1242,14 +1248,26 @@ export function getStationPublishedAvailabilitySummary(station: TransitStation):
     firstCheckedAt,
     lastCheckedAt,
     recentSamples: stationRecentSamples || summaryRecentSamples,
-    latestLatencyMs: latestLatencyFromPrices(availabilityPrices),
-    avgLatency7dMs: weightedAverageLatency(availabilityPrices),
+    latestLatencyMs: averageFamilyLatency(latencyFamilies, "latestLatencyMs"),
+    avgLatency7dMs: averageFamilyLatency(latencyFamilies, "avgLatency7dMs"),
     note: `按当前公开模型分组汇总：${formatPercent(roundAvailabilityRate(weightedRate))} · 样本 ${samples}`,
     sourceType: source.sourceType,
     sourceLabel: source.sourceLabel,
     sourceUrl: source.sourceUrl,
     referenceOnly: availabilityPrices.every((price) => isTransitAvailabilityReference(price.availability)),
   };
+}
+
+function averageFamilyLatency(
+  summaries: TransitFamilyRateSummary[],
+  field: "latestLatencyMs" | "avgLatency7dMs"
+): number | null {
+  const values = summaries
+    .filter((summary) => summary.sevenDaySamples > 0)
+    .map((summary) => summary[field])
+    .filter((value): value is number => value !== null && Number.isFinite(value) && value > 0);
+  if (!values.length) return null;
+  return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
 function getStationPublishedAvailabilitySourceMeta(station: TransitStation): Pick<
@@ -1521,11 +1539,18 @@ export const TRANSIT_RANKING_WEIGHTS = {
   cost: 30,
   recentReliability: 18,
   sevenDayReliability: 12,
-  // Reserved until real TTFT samples are part of the public transit DTO.
-  ttft: 15,
+  responseLatency: 15,
   cacheHit: 10,
   modelDetection: 15,
 } as const;
+
+export const TRANSIT_RESPONSE_LATENCY_WEIGHTS = {
+  average7d: 12,
+  latest: 3,
+} as const;
+
+export const TRANSIT_RESPONSE_LATENCY_MIN_SAMPLES = 30;
+export const TRANSIT_RESPONSE_LATENCY_COVERAGE_THRESHOLD = 0.7;
 
 export type TransitStationRankingOptions = {
   activeFamily?: TransitModelFamily | "all";
@@ -1539,7 +1564,11 @@ export type TransitStationRankingBreakdown = {
   recentReliabilityScore: number;
   sevenDayReliabilityScore: number;
   reliabilityScore: number;
-  ttftScore: number;
+  responseLatencyScore: number;
+  averageLatencyScore: number;
+  latestLatencyScore: number;
+  responseLatencyEnabled: boolean;
+  responseLatencyCoverage: number;
   cacheHitScore: number;
   modelDetectionScore: number;
   eligible: boolean;
@@ -1547,6 +1576,8 @@ export type TransitStationRankingBreakdown = {
   stabilityRate: number | null;
   stabilitySamples: number;
   recentSamples: number;
+  latestLatencyMs: number | null;
+  avgLatency7dMs: number | null;
 };
 
 type TransitStationSortContext = {
@@ -1559,6 +1590,8 @@ type TransitStationSortContext = {
   recentSamples: TransitAvailability["recentSamples"];
   cacheUsage: TransitModelPrice["cacheUsage"] | undefined;
   lastCheckedAt: string | null;
+  latestLatencyMs: number | null;
+  avgLatency7dMs: number | null;
 };
 
 export function compareStations(
@@ -1651,6 +1684,8 @@ function getTransitStationSortContext(
     recentSamples: referenceOnly ? undefined : scope ? scope.recentSamples : summary.availability.recentSamples,
     cacheUsage: getRepresentativeCacheUsage(prices),
     lastCheckedAt: scope ? scope.lastCheckedAt : summary.availability.lastCheckedAt,
+    latestLatencyMs: (scope ? scope.latestLatencyMs : summary.availability.latestLatencyMs) ?? null,
+    avgLatency7dMs: (scope ? scope.avgLatency7dMs : summary.availability.avgLatency7dMs) ?? null,
   };
 }
 
@@ -1683,6 +1718,21 @@ function scoreTransitStationContexts(
     .map((context) => context.cost)
     .filter((rate): rate is number => rate !== null && Number.isFinite(rate) && rate > 0);
   const now = rankingTimestamp(options.now);
+  const rankingEligibleContexts = contexts.filter((context) => isTransitRankingEligible(context, now));
+  const latencyEligibleContexts = rankingEligibleContexts.filter((context) =>
+    isTransitResponseLatencyEligible(context, now)
+  );
+  const responseLatencyCoverage = rankingEligibleContexts.length > 0
+    ? latencyEligibleContexts.length / rankingEligibleContexts.length
+    : 0;
+  const responseLatencyEnabled =
+    responseLatencyCoverage >= TRANSIT_RESPONSE_LATENCY_COVERAGE_THRESHOLD;
+  const peerAverageLatencies = latencyEligibleContexts
+    .map((context) => context.avgLatency7dMs)
+    .filter((value): value is number => value !== null);
+  const peerLatestLatencies = latencyEligibleContexts
+    .map((context) => context.latestLatencyMs)
+    .filter((value): value is number => value !== null);
 
   return new Map(contexts.map((context) => {
     const costScore = scoreTransitRelativeCost(context.cost, peerRates) * TRANSIT_RANKING_WEIGHTS.cost;
@@ -1698,7 +1748,16 @@ function scoreTransitStationContexts(
     const recentReliabilityScore = recentReliability * TRANSIT_RANKING_WEIGHTS.recentReliability;
     const sevenDayReliabilityScore = sevenDayReliability * TRANSIT_RANKING_WEIGHTS.sevenDayReliability;
     const reliabilityScore = recentReliabilityScore + sevenDayReliabilityScore;
-    const ttftScore = scoreTransitTtft(null, []) * TRANSIT_RANKING_WEIGHTS.ttft;
+    const hasScoredLatency = responseLatencyEnabled && isTransitResponseLatencyEligible(context, now);
+    const averageLatencyScore = hasScoredLatency
+      ? scoreTransitResponseLatency(context.avgLatency7dMs, peerAverageLatencies) *
+        TRANSIT_RESPONSE_LATENCY_WEIGHTS.average7d
+      : 0;
+    const latestLatencyScore = hasScoredLatency
+      ? scoreTransitResponseLatency(context.latestLatencyMs, peerLatestLatencies) *
+        TRANSIT_RESPONSE_LATENCY_WEIGHTS.latest
+      : 0;
+    const responseLatencyScore = averageLatencyScore + latestLatencyScore;
     const cacheHitScore = scoreTransitCacheHit(context.cacheUsage) * TRANSIT_RANKING_WEIGHTS.cacheHit;
     const modelDetectionScore = scoreTransitModelDetection(
       context.station,
@@ -1712,7 +1771,7 @@ function scoreTransitStationContexts(
     const eligible = isTransitRankingEligible(context, now);
     const totalScore = eligible
       ? clampNumber(
-          costScore + reliabilityScore + ttftScore + cacheHitScore + modelDetectionScore,
+          costScore + reliabilityScore + responseLatencyScore + cacheHitScore + modelDetectionScore,
           0,
           100
         )
@@ -1724,7 +1783,11 @@ function scoreTransitStationContexts(
       recentReliabilityScore,
       sevenDayReliabilityScore,
       reliabilityScore,
-      ttftScore,
+      responseLatencyScore,
+      averageLatencyScore,
+      latestLatencyScore,
+      responseLatencyEnabled,
+      responseLatencyCoverage,
       cacheHitScore,
       modelDetectionScore,
       eligible,
@@ -1732,6 +1795,8 @@ function scoreTransitStationContexts(
       stabilityRate: context.stabilityRate,
       stabilitySamples: context.stabilitySamples,
       recentSamples: context.recentSamples?.length ?? 0,
+      latestLatencyMs: context.latestLatencyMs,
+      avgLatency7dMs: context.avgLatency7dMs,
     }];
   }));
 }
@@ -1783,8 +1848,11 @@ export function scoreTransitCacheHit(
   return clampNumber(cacheUsage.hitRate, 0, 1);
 }
 
-export function scoreTransitTtft(ttftMs: number | null, peerTtftValues: number[]): number {
-  return scoreTransitRelativeCost(ttftMs, peerTtftValues);
+export function scoreTransitResponseLatency(
+  latencyMs: number | null,
+  peerLatencyValues: number[]
+): number {
+  return scoreTransitRelativeCost(latencyMs, peerLatencyValues);
 }
 
 export function scoreTransitModelDetection(
@@ -1824,6 +1892,22 @@ function isTransitRankingEligible(context: TransitStationSortContext, now: numbe
   const checkedAt = parseAvailabilityTimestamp(context.lastCheckedAt);
   if (checkedAt === null) return false;
   return Math.max(0, now - checkedAt) <= 7 * 24 * 60 * 60 * 1000;
+}
+
+function isTransitResponseLatencyEligible(
+  context: TransitStationSortContext,
+  now: number
+): boolean {
+  if (!isTransitRankingEligible(context, now)) return false;
+  if (context.stabilitySamples < TRANSIT_RESPONSE_LATENCY_MIN_SAMPLES) return false;
+  return (
+    context.latestLatencyMs !== null &&
+    Number.isFinite(context.latestLatencyMs) &&
+    context.latestLatencyMs > 0 &&
+    context.avgLatency7dMs !== null &&
+    Number.isFinite(context.avgLatency7dMs) &&
+    context.avgLatency7dMs > 0
+  );
 }
 
 function percentile(sortedValues: number[], fraction: number): number {
